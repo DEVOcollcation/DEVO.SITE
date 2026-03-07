@@ -40,6 +40,7 @@ module.exports = {
         'devo-float': '0 10px 40px -10px rgba(0,0,0,0.8)',
       }
     },
+    
   },
   plugins: [],
 }
