@@ -210,274 +210,262 @@
 
             </div>
 
-            <div id="view-models" class="view-section hidden h-full">
-                
-<div class="h-full flex flex-col space-y-6 animate-fade-in relative">
-    
-<div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-6 rounded-2xl shadow-sm">
-        <div>
-            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
-                <i class="ph ph-t-shirt text-devo-orange"></i> إدارة الموديلات
-            </h2>
-            <p class="text-devo-muted text-sm mt-1">إدارة جميع موديلات المصنع، الكميات، الألوان، والتسعير.</p>
-        </div>
-        <div class="flex flex-wrap gap-3">
-            <button onclick="openExcelImportModal()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2 border border-devo-success/20">
-                <i class="ph ph-file-xls text-2xl"></i> استيراد من Excel
-            </button>
-            
-            <button onclick="openModelModal()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20">
-                <i class="ph ph-plus-square text-2xl"></i> إضافة موديل جديد
-            </button>
-        </div>
-    </div>
-
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-devo-black border border-devo-gray p-4 rounded-xl flex flex-col justify-center items-center">
-            <span class="text-devo-muted text-xs font-bold mb-1">إجمالي الموديلات</span>
-            <span class="text-2xl text-white font-bold" id="stat-total">0</span>
-        </div>
-        <div class="bg-devo-black border border-devo-success/30 p-4 rounded-xl flex flex-col justify-center items-center">
-            <span class="text-devo-success text-xs font-bold mb-1">الموديلات النشطة</span>
-            <span class="text-2xl text-devo-success font-bold" id="stat-active">0</span>
-        </div>
-        <div class="bg-devo-black border border-devo-error/30 p-4 rounded-xl flex flex-col justify-center items-center">
-            <span class="text-devo-error text-xs font-bold mb-1">نفذت الكمية</span>
-            <span class="text-2xl text-devo-error font-bold" id="stat-out">0</span>
-        </div>
-        <div class="bg-devo-black border border-devo-info/30 p-4 rounded-xl flex flex-col justify-center items-center">
-            <span class="text-devo-info text-xs font-bold mb-1">إجمالي السريات المتاحة</span>
-            <span class="text-2xl text-devo-info font-bold" id="stat-series">0</span>
-        </div>
-    </div>
-
-<div class="bg-devo-dark border border-devo-gray p-5 rounded-2xl flex flex-col gap-4">
-        <div class="flex flex-col md:flex-row gap-4 items-center w-full">
-            <div class="relative flex-[2] w-full">
-                <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-devo-muted text-xl"></i>
-                <input type="text" id="model-search" placeholder="بحث بكود المصنع أو اسم الموديل..." 
-                    class="w-full bg-devo-black border border-devo-gray rounded-xl pr-12 pl-4 py-3 text-white focus:border-devo-orange outline-none transition-all text-sm">
-            </div>
-            <select id="filter-category" class="flex-1 w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-sm">
-                <option value="">جميع التصنيفات</option>
-            </select>
-            <select id="filter-class" class="flex-1 w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-sm">
-                <option value="">جميع الفئات</option>
-            </select>
-            <select id="filter-stock" class="flex-1 w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-sm">
-                <option value="">حالة المخزون (الكل)</option>
-                <option value="in_stock">متوفر</option>
-                <option value="out_stock">نفذت الكمية</option>
-            </select>
-        </div>
+<div id="view-models" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-4">
         
-        <div class="flex flex-col md:flex-row gap-4 items-center w-full border-t border-devo-gray pt-4">
-            <div class="flex items-center gap-3 flex-1 w-full">
-                <label class="text-sm font-bold text-devo-muted whitespace-nowrap">من تاريخ:</label>
-                <input type="date" id="filter-date-from" class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all cursor-pointer">
+        <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <div>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-t-shirt text-devo-orange"></i> إدارة الموديلات
+                </h2>
             </div>
-            <div class="flex items-center gap-3 flex-1 w-full">
-                <label class="text-sm font-bold text-devo-muted whitespace-nowrap">إلى تاريخ:</label>
-                <input type="date" id="filter-date-to" class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all cursor-pointer">
-            </div>
-            <div class="flex-1 w-full flex justify-end">
-                <button onclick="clearModelFilters()" class="text-sm font-bold bg-devo-gray/30 text-devo-muted hover:text-white hover:bg-devo-gray px-4 py-2.5 rounded-xl transition-all flex items-center gap-2">
-                    <i class="ph ph-eraser text-lg"></i> مسح الفلاتر
+            <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                <button onclick="openExcelImportModal()" class="flex-1 md:flex-none bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border border-devo-success/20 text-sm">
+                    <i class="ph ph-file-xls text-xl"></i> استيراد من Excel
+                </button>
+                <button onclick="openModelModal()" class="flex-1 md:flex-none bg-devo-orange hover:bg-devo-orangeHover text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20 text-sm">
+                    <i class="ph ph-plus-square text-xl"></i> إضافة موديل جديد
                 </button>
             </div>
         </div>
-    </div>
 
-    <div id="models-container" class="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 pb-10">
-        </div>
-        </div>
-
-<div id="model-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-5xl max-h-[95vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-            <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50">
-                <h3 class="text-xl font-bold text-white flex items-center gap-2" id="model-modal-title">
-                    <i class="ph ph-plus-circle text-devo-orange text-2xl"></i> إنشاء موديل جديد
-                </h3>
-                <button onclick="closeModelModal()" class="text-devo-muted hover:text-white transition-colors">
-                    <i class="ph ph-x text-2xl"></i>
-                </button>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-devo-dark border border-devo-gray py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-muted text-xs font-bold">إجمالي الموديلات</span>
+                <span class="text-lg text-white font-bold" id="stat-total">0</span>
             </div>
+            <div class="bg-devo-dark border border-devo-success/30 py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-success text-xs font-bold">النشطة</span>
+                <span class="text-lg text-devo-success font-bold" id="stat-active">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-error/30 py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-error text-xs font-bold">نفذت الكمية</span>
+                <span class="text-lg text-devo-error font-bold" id="stat-out">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-info/30 py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-info text-xs font-bold">إجمالي السريات</span>
+                <span class="text-lg text-devo-info font-bold" id="stat-series">0</span>
+            </div>
+        </div>
 
-            <form id="model-form" class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                <input type="hidden" id="m-id">
+        <div class="sticky top-[-32px] z-40 bg-devo-black/95 backdrop-blur-md border-b border-devo-gray py-3">
+            <div class="flex flex-wrap xl:flex-nowrap gap-2 items-center">
                 
-                <div class="flex items-center justify-end gap-3 mb-2">
-                    <span class="text-sm font-bold text-devo-muted">حالة الموديل:</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="m-status" class="sr-only peer" checked>
-                        <div class="w-11 h-6 bg-devo-gray rounded-full peer peer-checked:bg-devo-success after:content-[''] after:absolute after:top-0.5 after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:-translate-x-full shadow-inner"></div>
-                    </label>
-                    <span class="text-sm font-medium text-devo-success min-w-[40px]" id="m-status-text">نشط</span>
+                <div class="relative flex-[2] min-w-[200px]">
+                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                    <input type="text" id="model-search" placeholder="بحث بكود المصنع أو اسم الموديل..." 
+                        class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                </div>
+                
+                <select id="filter-category" class="flex-1 min-w-[100px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
+                    <option value="">جميع التصنيفات</option>
+                </select>
+                <select id="filter-class" class="flex-1 min-w-[100px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
+                    <option value="">جميع الفئات</option>
+                </select>
+                <select id="filter-stock" class="flex-1 min-w-[100px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
+                    <option value="">حالة المخزون (الكل)</option>
+                    <option value="in_stock">متوفر</option>
+                    <option value="out_stock">نفذت الكمية</option>
+                </select>
+
+                <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[110px]">
+                    <span class="text-[10px] text-devo-muted font-bold">من:</span>
+                    <input type="date" id="filter-date-from" class="bg-transparent text-white outline-none text-[11px] py-2.5 cursor-pointer w-full">
+                </div>
+                <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[110px]">
+                    <span class="text-[10px] text-devo-muted font-bold">إلى:</span>
+                    <input type="date" id="filter-date-to" class="bg-transparent text-white outline-none text-[11px] py-2.5 cursor-pointer w-full">
                 </div>
 
-                <div class="bg-devo-black/30 p-5 rounded-xl border border-devo-gray">
-                    <h4 class="text-devo-orange font-bold mb-4 text-sm">1. البيانات الأساسية</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                            <label class="block text-xs text-devo-muted mb-1">كود السيستم <span class="text-devo-error">*</span></label>
-                            <input type="number" id="m-system-code" required placeholder="أرقام فقط" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-devo-muted mb-1">كود المصنع <span class="text-devo-error">*</span></label>
-                            <input type="text" id="m-factory-code" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-xs text-devo-muted mb-1">اسم الموديل <span class="text-devo-error">*</span></label>
-                            <input type="text" id="m-name" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-devo-muted mb-1">السعر (ج.م) <span class="text-devo-error">*</span></label>
-                            <input type="number" id="m-price" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-devo-muted mb-1">التصنيف <span class="text-devo-error">*</span></label>
-                            <select id="m-category" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none cursor-pointer text-sm transition-all"></select>
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-xs text-devo-muted mb-1">الفئة العمرية <span class="text-devo-error">*</span></label>
-                            <select id="m-class" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none cursor-pointer text-sm transition-all"></select>
-                        </div>
+                <button onclick="clearModelFilters()" class="bg-devo-dark border border-devo-gray text-devo-error hover:bg-devo-error hover:text-white px-3 py-2.5 rounded-lg transition-all text-xs flex items-center justify-center" title="مسح الفلاتر">
+                    <i class="ph ph-eraser text-lg"></i>
+                </button>
+
+            </div>
+        </div>
+
+        <div id="models-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pt-2">
+            </div>
+
+        <div id="model-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-5xl max-h-[95vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50">
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2" id="model-modal-title">
+                        <i class="ph ph-plus-circle text-devo-orange text-2xl"></i> إنشاء موديل جديد
+                    </h3>
+                    <button onclick="closeModelModal()" class="text-devo-muted hover:text-white transition-colors">
+                        <i class="ph ph-x text-2xl"></i>
+                    </button>
+                </div>
+
+                <form id="model-form" class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                    <input type="hidden" id="m-id">
+                    
+                    <div class="flex items-center justify-end gap-3 mb-2">
+                        <span class="text-sm font-bold text-devo-muted">حالة الموديل:</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="m-status" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-devo-gray rounded-full peer peer-checked:bg-devo-success after:content-[''] after:absolute after:top-0.5 after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:-translate-x-full shadow-inner"></div>
+                        </label>
+                        <span class="text-sm font-medium text-devo-success min-w-[40px]" id="m-status-text">نشط</span>
                     </div>
-                </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-devo-black/30 p-5 rounded-xl border border-devo-gray">
-                        <h4 class="text-devo-orange font-bold mb-4 text-sm">2. مقاسات السيريه</h4>
-                        <div id="m-sizes-container" class="flex flex-wrap gap-2"></div>
+                        <h4 class="text-devo-orange font-bold mb-4 text-sm">1. البيانات الأساسية</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs text-devo-muted mb-1">كود السيستم <span class="text-devo-error">*</span></label>
+                                <input type="number" id="m-system-code" required placeholder="أرقام فقط" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-devo-muted mb-1">كود المصنع <span class="text-devo-error">*</span></label>
+                                <input type="text" id="m-factory-code" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs text-devo-muted mb-1">اسم الموديل <span class="text-devo-error">*</span></label>
+                                <input type="text" id="m-name" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-devo-muted mb-1">السعر (ج.م) <span class="text-devo-error">*</span></label>
+                                <input type="number" id="m-price" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange text-sm outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-devo-muted mb-1">التصنيف <span class="text-devo-error">*</span></label>
+                                <select id="m-category" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none cursor-pointer text-sm transition-all"></select>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs text-devo-muted mb-1">الفئة العمرية <span class="text-devo-error">*</span></label>
+                                <select id="m-class" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none cursor-pointer text-sm transition-all"></select>
+                            </div>
+                        </div>
                     </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-devo-black/30 p-5 rounded-xl border border-devo-gray">
+                            <h4 class="text-devo-orange font-bold mb-4 text-sm">2. مقاسات السيريه</h4>
+                            <div id="m-sizes-container" class="flex flex-wrap gap-2"></div>
+                        </div>
+                        <div class="bg-devo-black/30 p-5 rounded-xl border border-devo-gray">
+                            <div class="flex justify-between items-center mb-4">
+                                <h4 class="text-devo-orange font-bold text-sm">3. الألوان والكميات الافتتاحية</h4>
+                                <button type="button" onclick="addInventoryRow()" class="text-xs text-devo-orange hover:text-white flex items-center gap-1"><i class="ph ph-plus-circle"></i> إضافة لون</button>
+                            </div>
+                            <div id="m-inventory-container" class="space-y-2"></div>
+                        </div>
+                    </div>
+
                     <div class="bg-devo-black/30 p-5 rounded-xl border border-devo-gray">
-                        <div class="flex justify-between items-center mb-4">
-                            <h4 class="text-devo-orange font-bold text-sm">3. الألوان والكميات الافتتاحية</h4>
-                            <button type="button" onclick="addInventoryRow()" class="text-xs text-devo-orange hover:text-white flex items-center gap-1"><i class="ph ph-plus-circle"></i> إضافة لون</button>
+                        <h4 class="text-devo-orange font-bold mb-4 text-sm">4. الصور (روابط درايف - اختياري)</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <input type="url" id="m-img-1" placeholder="رابط الصورة 1" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-devo-orange transition-all">
+                            <input type="url" id="m-img-2" placeholder="رابط الصورة 2" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-devo-orange transition-all">
+                            <input type="url" id="m-img-3" placeholder="رابط الصورة 3" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-devo-orange transition-all">
                         </div>
-                        <div id="m-inventory-container" class="space-y-2"></div>
+                    </div>
+
+                    <div class="flex gap-4 pt-4 sticky bottom-0 bg-devo-dark pb-2 z-10 border-t border-devo-gray">
+                        <button type="button" onclick="closeModelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
+                        <button type="submit" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg transition-all text-sm">حفظ الموديل</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="view-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50">
+                    <h3 class="text-xl font-bold text-white">تفاصيل الموديل والمخزون</h3>
+                    <button onclick="closeDetailsModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar" id="details-content">
+                    </div>
+            </div>
+        </div>
+
+        <div id="add-stock-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2"><i class="ph ph-package text-devo-orange text-2xl"></i> إضافة شحنة جديدة</h3>
+                <p class="text-xs text-devo-muted mb-6">إضافة كمية جديدة للمخزن سيتم تسجيلها في الحركات ولن تؤثر على البيانات الأساسية للموديل.</p>
+                
+                <form id="add-stock-form" class="space-y-4">
+                    <input type="hidden" id="stock-model-id">
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">اختر اللون الوارد <span class="text-devo-error">*</span></label>
+                        <select id="stock-color" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">الكمية (عدد السريات المضافة) <span class="text-devo-error">*</span></label>
+                        <input type="number" id="stock-qty" required min="1" placeholder="مثال: 10" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm">
+                    </div>
+                    <div class="flex gap-3 pt-4 mt-4 border-t border-devo-gray">
+                        <button type="button" onclick="closeAddStockModal()" class="flex-1 py-2.5 rounded-lg border border-devo-gray text-white text-sm hover:bg-devo-gray transition-all">إلغاء</button>
+                        <button type="submit" id="stock-save-btn" class="flex-1 py-2.5 rounded-lg bg-devo-success text-white text-sm font-bold hover:bg-green-600 transition-all flex justify-center items-center gap-2">
+                            <span>حفظ الشحنة</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="excel-import-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-2xl p-8 flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-file-xls text-devo-success text-3xl"></i> استيراد ومعاينة الموديلات
+                    </h3>
+                    <button onclick="closeExcelImportModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
+                </div>
+
+                <div id="excel-step-1" class="flex flex-col">
+                    <p class="text-sm text-devo-muted mb-6 leading-relaxed">
+                        قم برفع ملف الإكسيل (.xlsx). سيقوم النظام باستخراج البيانات وفحصها أولاً قبل تسجيل أي عنصر في قاعدة البيانات.
+                    </p>
+
+                    <div class="border-2 border-dashed border-devo-gray hover:border-devo-success transition-colors rounded-xl p-8 text-center bg-devo-black mb-6 relative">
+                        <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                        <i class="ph ph-upload-simple text-4xl text-devo-muted mb-2"></i>
+                        <p class="text-white font-bold" id="excel-file-name">اسحب الملف هنا أو اضغط للاختيار</p>
+                    </div>
+
+                    <div class="flex gap-3 mt-auto">
+                        <button type="button" onclick="closeExcelImportModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
+                        <button type="button" onclick="processExcelPreview()" id="excel-preview-btn" class="flex-[2] py-3 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
+                            <i class="ph ph-magnifying-glass text-xl"></i> تحليل ومعاينة الملف
+                        </button>
                     </div>
                 </div>
 
-                <div class="bg-devo-black/30 p-5 rounded-xl border border-devo-gray">
-                    <h4 class="text-devo-orange font-bold mb-4 text-sm">4. الصور (روابط درايف - اختياري)</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <input type="url" id="m-img-1" placeholder="رابط الصورة 1" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-devo-orange transition-all">
-                        <input type="url" id="m-img-2" placeholder="رابط الصورة 2" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-devo-orange transition-all">
-                        <input type="url" id="m-img-3" placeholder="رابط الصورة 3" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-devo-orange transition-all">
-                    </div>
-                </div>
-
-                <div class="flex gap-4 pt-4 sticky bottom-0 bg-devo-dark pb-2 z-10 border-t border-devo-gray">
-                    <button type="button" onclick="closeModelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
-                    <button type="submit" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg transition-all text-sm">حفظ الموديل</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="view-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-            <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50">
-                <h3 class="text-xl font-bold text-white">تفاصيل الموديل والمخزون</h3>
-                <button onclick="closeDetailsModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar" id="details-content">
-                </div>
-        </div>
-    </div>
-
-    <div id="add-stock-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2"><i class="ph ph-package text-devo-orange text-2xl"></i> إضافة شحنة جديدة</h3>
-            <p class="text-xs text-devo-muted mb-6">إضافة كمية جديدة للمخزن سيتم تسجيلها في الحركات ولن تؤثر على البيانات الأساسية للموديل.</p>
-            
-            <form id="add-stock-form" class="space-y-4">
-                <input type="hidden" id="stock-model-id">
-                <div>
-                    <label class="block text-xs font-bold text-devo-muted mb-1">اختر اللون الوارد <span class="text-devo-error">*</span></label>
-                    <select id="stock-color" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm"></select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-devo-muted mb-1">الكمية (عدد السريات المضافة) <span class="text-devo-error">*</span></label>
-                    <input type="number" id="stock-qty" required min="1" placeholder="مثال: 10" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm">
-                </div>
-                <div class="flex gap-3 pt-4 mt-4 border-t border-devo-gray">
-                    <button type="button" onclick="closeAddStockModal()" class="flex-1 py-2.5 rounded-lg border border-devo-gray text-white text-sm hover:bg-devo-gray transition-all">إلغاء</button>
-                    <button type="submit" id="stock-save-btn" class="flex-1 py-2.5 rounded-lg bg-devo-success text-white text-sm font-bold hover:bg-green-600 transition-all flex justify-center items-center gap-2">
-                        <span>حفظ الشحنة</span>
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="view-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-            <div class="p-5 border-b border-devo-gray flex justify-between items-center">
-                <h3 class="text-xl font-bold text-white">تفاصيل الموديل</h3>
-                <button onclick="closeDetailsModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar" id="details-content">
-                </div>
-        </div>
-    </div>
-<div id="excel-import-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-2xl p-8 flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                    <i class="ph ph-file-xls text-devo-success text-3xl"></i> استيراد ومعاينة الموديلات
-                </h3>
-                <button onclick="closeExcelImportModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
-            </div>
-
-            <div id="excel-step-1" class="flex flex-col">
-                <p class="text-sm text-devo-muted mb-6 leading-relaxed">
-                    قم برفع ملف الإكسيل (.xlsx). سيقوم النظام باستخراج البيانات وفحصها أولاً قبل تسجيل أي عنصر في قاعدة البيانات.
-                </p>
-
-                <div class="border-2 border-dashed border-devo-gray hover:border-devo-success transition-colors rounded-xl p-8 text-center bg-devo-black mb-6 relative">
-                    <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-                    <i class="ph ph-upload-simple text-4xl text-devo-muted mb-2"></i>
-                    <p class="text-white font-bold" id="excel-file-name">اسحب الملف هنا أو اضغط للاختيار</p>
-                </div>
-
-                <div class="flex gap-3 mt-auto">
-                    <button type="button" onclick="closeExcelImportModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
-                    <button type="button" onclick="processExcelPreview()" id="excel-preview-btn" class="flex-[2] py-3 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
-                        <i class="ph ph-magnifying-glass text-xl"></i> تحليل ومعاينة الملف
-                    </button>
-                </div>
-            </div>
-
-            <div id="excel-step-2" class="hidden flex-col gap-4">
-                <div class="grid grid-cols-2 gap-4 mb-2">
-                    <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
-                        <span class="block text-devo-muted text-xs mb-1">موديلات جديدة صالحة للإضافة</span>
-                        <span class="text-3xl font-bold text-devo-success" id="excel-new-count">0</span>
-                    </div>
-                    <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
-                        <span class="block text-devo-muted text-xs mb-1">مكررة (سيتم تجاهلها)</span>
-                        <span class="text-3xl font-bold text-devo-error" id="excel-dup-count">0</span>
-                    </div>
-                </div>
-
-                <div id="excel-dup-warning" class="hidden bg-devo-error/10 border border-devo-error/30 p-4 rounded-xl text-sm text-devo-error leading-relaxed">
-                    <p class="font-bold flex items-center gap-1 mb-2"><i class="ph ph-warning-circle text-lg"></i> تحذير: تم اكتشاف بيانات متكررة</p>
-                    <p>الموديلات التالية مسجلة مسبقاً بنفس "كود السيستم". <span class="font-bold text-white">لن يتم تسجيلها أو العبث بها</span> منعاً لتلف البيانات القديمة. يرجى الذهاب للوحة وتعديلها يدوياً إن أردت.</p>
-                    <div class="mt-3 max-h-32 overflow-y-auto custom-scrollbar text-xs space-y-1" id="excel-dup-list">
+                <div id="excel-step-2" class="hidden flex-col gap-4">
+                    <div class="grid grid-cols-2 gap-4 mb-2">
+                        <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                            <span class="block text-devo-muted text-xs mb-1">موديلات جديدة صالحة للإضافة</span>
+                            <span class="text-3xl font-bold text-devo-success" id="excel-new-count">0</span>
                         </div>
+                        <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                            <span class="block text-devo-muted text-xs mb-1">مكررة (سيتم تجاهلها)</span>
+                            <span class="text-3xl font-bold text-devo-error" id="excel-dup-count">0</span>
+                        </div>
+                    </div>
+
+                    <div id="excel-dup-warning" class="hidden bg-devo-error/10 border border-devo-error/30 p-4 rounded-xl text-sm text-devo-error leading-relaxed">
+                        <p class="font-bold flex items-center gap-1 mb-2"><i class="ph ph-warning-circle text-lg"></i> تحذير: تم اكتشاف بيانات متكررة</p>
+                        <p>الموديلات التالية مسجلة مسبقاً بنفس "كود السيستم". <span class="font-bold text-white">لن يتم تسجيلها أو العبث بها</span> منعاً لتلف البيانات القديمة. يرجى الذهاب للوحة وتعديلها يدوياً إن أردت.</p>
+                        <div class="mt-3 max-h-32 overflow-y-auto custom-scrollbar text-xs space-y-1" id="excel-dup-list">
+                            </div>
+                    </div>
+
+                    <div class="flex gap-3 mt-4">
+                        <button type="button" onclick="resetExcelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">رجوع للخلف</button>
+                        <button type="button" onclick="executeExcelImport()" id="excel-import-btn" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg shadow-devo-orange/20 transition-all text-sm flex items-center justify-center gap-2">
+                            <i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الموديلات الجديدة
+                        </button>
+                    </div>
                 </div>
 
-                <div class="flex gap-3 mt-4">
-                    <button type="button" onclick="resetExcelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">رجوع للخلف</button>
-                    <button type="button" onclick="executeExcelImport()" id="excel-import-btn" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg shadow-devo-orange/20 transition-all text-sm flex items-center justify-center gap-2">
-                        <i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الموديلات الجديدة
-                    </button>
-                </div>
             </div>
-
         </div>
+
     </div>
 </div>
 
