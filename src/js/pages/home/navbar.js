@@ -47,15 +47,15 @@ export function initNavbar() {
         desktopLinks.innerHTML = `
             <button onclick="switchSiteView('view-home')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">الرئيسية</button>
             <button onclick="switchSiteView('view-gallery')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">المعرض</button>
-            <a href="cart.html" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-shopping-cart"></i> السلة</a>
-            <a href="orders.html" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-receipt"></i> الأوردرات</a>
+            <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-shopping-cart"></i> السلة</button>
+            <button onclick="switchSiteView('view-orders')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-receipt"></i> الأوردرات</button>
         `;
         
         mobileLinks.innerHTML = `
             <button onclick="switchSiteView('view-home')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">الرئيسية</button>
             <button onclick="switchSiteView('view-gallery')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">المعرض</button>
-            <a href="cart.html" class="py-3 text-devo-muted hover:text-white border-b border-devo-gray">السلة</a>
-            <a href="orders.html" class="py-3 text-devo-muted hover:text-white border-b border-devo-gray">الأوردرات</a>
+            <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-shopping-cart"></i> السلة</button>
+            <button onclick="switchSiteView('view-orders')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-receipt"></i> الأوردرات</button>
             ${isAdmin ? `<a href="admin.html" class="py-3 text-devo-info hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-shield-check"></i> لوحة الإدارة</a>` : ''}
             <button onclick="handleLogout()" class="py-3 text-devo-error text-right mt-4 flex items-center gap-2"><i class="ph ph-sign-out"></i> تسجيل خروج</button>
         `;

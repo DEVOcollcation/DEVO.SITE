@@ -3,8 +3,39 @@ import { getCurrentSession } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
 
 let allModels = [];
+let currentCategories = new Set();
 let currentUser = null;
+let isWorker = false;
+let localCart = []; // سلة المشتريات في المتصفح
 
+// --- تهيئة الصفحة ---
+export async function initGallery() {
+    const { session } = getCurrentSession();
+    currentUser = session ? session.user : null;
+    isWorker = currentUser && (currentUser.role === 'worker' || currentUser.role === 'admin' || currentUser.role === 'owner');
+
+    // تحميل السلة من المتصفح إذا كان مسجلاً للدخول
+    if (isWorker) {
+        loadLocalCart();
+        document.getElementById('floating-cart-btn').classList.remove('hidden');
+    }
+
+    // ربط الفلاتر
+    document.getElementById('gal-search')?.addEventListener('input', applyGalleryFilters);
+    document.getElementById('gal-category')?.addEventListener('change', applyGalleryFilters);
+    document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
+
+    await fetchGalleryModels();
+}
+
+window.clearGalleryFilters = () => {
+    document.getElementById('gal-search').value = '';
+    document.getElementById('gal-category').value = '';
+    document.getElementById('gal-sort').value = 'newest';
+    applyGalleryFilters();
+};
+
+// --- جلب ومعالجة البيانات ---
 function resolveImageUrl(url) {
     if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.jpeg';
     try {
@@ -16,52 +47,74 @@ function resolveImageUrl(url) {
     return url; 
 }
 
-export async function initGallery() {
-    const { session } = getCurrentSession();
-    currentUser = session ? session.user : null;
-
-    // ربط محرك البحث
-    document.getElementById('gallery-search')?.addEventListener('input', handleSearch);
-
-    // دالة مؤقتة لفتح التفاصيل
-    window.openModelViewer = (id) => {
-        showToast('سيتم فتح نافذة التفاصيل لإضافة الموديل للسلة في الخطوة القادمة!', 'info');
-    };
-
-    await fetchGalleryModels();
-}
-
 async function fetchGalleryModels() {
     const container = document.getElementById('gallery-grid');
     if(!container) return;
 
-    // جلب الموديلات النشطة فقط
+    container.innerHTML = `<div class="col-span-full py-20 text-center"><i class="ph ph-spinner animate-spin text-5xl text-devo-orange"></i></div>`;
+
     const { data, error } = await supabase
         .from('models')
         .select(`
-            id, system_code, factory_code, name, price, is_active,
+            *,
             categories(name),
-            model_inventory(available_series),
+            model_sizes(sizes(name)),
+            model_inventory(color_id, available_series, colors(name)),
             model_images(image_url)
         `)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
     if (error) {
-        container.innerHTML = `<div class="col-span-full text-center text-devo-error">حدث خطأ أثناء جلب البيانات.</div>`;
+        container.innerHTML = `<div class="col-span-full text-center text-devo-error font-bold">حدث خطأ أثناء الاتصال بقاعدة البيانات.</div>`;
         return;
     }
 
     allModels = data;
-    renderGallery(data);
+    
+    // استخراج التصنيفات لملء الفلتر
+    const catSelect = document.getElementById('gal-category');
+    currentCategories.clear();
+    allModels.forEach(m => { if(m.categories?.name) currentCategories.add(m.categories.name); });
+    
+    let catOptions = `<option value="">جميع التصنيفات</option>`;
+    currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
+    if(catSelect) catSelect.innerHTML = catOptions;
+
+    applyGalleryFilters();
 }
 
+// --- محرك الفلترة والترتيب ---
+function applyGalleryFilters() {
+    const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
+    const cat = document.getElementById('gal-category')?.value || '';
+    const sort = document.getElementById('gal-sort')?.value || 'newest';
+
+    let filtered = allModels.filter(m => {
+        let isMatch = true;
+        const searchStr = `${m.name} ${m.factory_code} ${m.system_code} ${m.categories?.name}`.toLowerCase();
+        
+        if (term && !searchStr.includes(term)) isMatch = false;
+        if (cat && m.categories?.name !== cat) isMatch = false;
+        
+        return isMatch;
+    });
+
+    // الترتيب
+    if (sort === 'price_asc') filtered.sort((a, b) => a.price - b.price);
+    else if (sort === 'price_desc') filtered.sort((a, b) => b.price - a.price);
+    else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    renderGallery(filtered);
+}
+
+// --- رسم الكروت في المعرض ---
 function renderGallery(models) {
     const container = document.getElementById('gallery-grid');
     if (!container) return;
 
     if (models.length === 0) {
-        container.innerHTML = `<div class="col-span-full py-10 text-center text-devo-muted">لا توجد موديلات تطابق بحثك حالياً.</div>`;
+        container.innerHTML = `<div class="col-span-full py-20 text-center text-devo-muted flex flex-col items-center"><i class="ph ph-magnifying-glass text-6xl mb-4 opacity-50"></i><p>لا توجد موديلات تطابق بحثك حالياً.</p></div>`;
         return;
     }
 
@@ -70,54 +123,247 @@ function renderGallery(models) {
         const isOut = totalSeries === 0;
         const mainImg = resolveImageUrl(m.model_images?.[0]?.image_url);
         
+        // هندسة الشارات بناءً على الصلاحية
         let stockBadge = '';
-        if (currentUser) {
-            if (isOut) {
-                stockBadge = `<span class="absolute top-3 right-3 bg-devo-error text-white text-xs px-2 py-1 rounded shadow-md z-10 font-bold">نفذت الكمية</span>`;
-            } else if (totalSeries <= 5) {
-                stockBadge = `<span class="absolute top-3 right-3 bg-devo-orange text-white text-xs px-2 py-1 rounded shadow-md z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
-            } else {
-                stockBadge = `<span class="absolute top-3 right-3 bg-devo-success text-white text-xs px-2 py-1 rounded shadow-md z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
-            }
+        if (isWorker) {
+            if (isOut) stockBadge = `<span class="absolute top-3 right-3 bg-devo-error text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold flex items-center gap-1"><i class="ph ph-warning-circle"></i> نفذت الكمية</span>`;
+            else if (totalSeries <= 5) stockBadge = `<span class="absolute top-3 right-3 bg-devo-orange text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
+            else stockBadge = `<span class="absolute top-3 right-3 bg-devo-success text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
         } else {
-            if (isOut) {
-                stockBadge = `<span class="absolute top-3 right-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-10 font-bold">نفذت الكمية</span>`;
-            }
+            // الزائر لا يرى الأرقام
+            if (isOut) stockBadge = `<span class="absolute top-3 right-3 bg-devo-black/80 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold border border-devo-gray">نفذت الكمية</span>`;
+            else stockBadge = `<span class="absolute top-3 right-3 bg-devo-success/20 text-devo-success backdrop-blur-sm border border-devo-success/50 text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متوفر</span>`;
         }
 
-        const cardStyle = isOut ? 'grayscale opacity-75' : 'card-hover cursor-pointer';
+        const cardStyle = isOut ? 'grayscale opacity-80' : 'card-hover cursor-pointer';
 
         return `
         <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
             ${stockBadge}
-            <div class="h-64 bg-devo-black relative overflow-hidden">
-                <img src="${mainImg}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" onerror="this.src='./src/assets/icons/devo.jpeg'" loading="lazy">
-                <div class="absolute inset-0 bg-gradient-to-t from-devo-black via-transparent to-transparent opacity-80"></div>
+            <div class="h-72 bg-devo-black relative overflow-hidden">
+                <img src="${mainImg}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='./src/assets/icons/devo.jpeg'" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-devo-black via-devo-black/20 to-transparent opacity-90"></div>
             </div>
-            <div class="p-5 flex-1 flex flex-col justify-between -mt-8 z-10 relative">
-                <div class="bg-devo-black/80 backdrop-blur-sm border border-devo-gray/50 rounded-xl p-3 mb-3 shadow-lg">
-                    <div class="flex justify-between items-start mb-1">
-                        <h3 class="text-white font-bold truncate pr-2" title="${m.name}">${m.name}</h3>
-                        <span class="text-devo-muted text-[10px] font-mono bg-devo-gray/30 px-2 py-0.5 rounded">${m.factory_code || m.system_code}</span>
-                    </div>
-                    <p class="text-devo-orange font-bold">${m.price} ج.م</p>
-                </div>
-                <div class="flex justify-between items-center text-xs text-devo-muted">
-                    <span class="flex items-center gap-1"><i class="ph ph-tag"></i> ${m.categories?.name || '---'}</span>
-                    <span class="flex items-center gap-1 text-white group-hover:text-devo-orange transition-colors">عرض التفاصيل <i class="ph ph-caret-left"></i></span>
+            <div class="p-5 flex flex-col flex-1 justify-end z-10 -mt-16 relative">
+                <p class="text-devo-muted text-[10px] font-mono tracking-wider mb-1">${m.factory_code || m.system_code}</p>
+                <h3 class="text-white font-bold text-lg mb-1 truncate" title="${m.name}">${m.name}</h3>
+                <div class="flex justify-between items-end mt-2">
+                    <span class="text-devo-muted text-xs flex items-center gap-1"><i class="ph ph-tag"></i> ${m.categories?.name || 'بدون تصنيف'}</span>
+                    <p class="text-devo-orange font-black text-xl">${m.price} <span class="text-xs font-normal">ج.م</span></p>
                 </div>
             </div>
         </div>`;
     }).join('');
 }
 
-function handleSearch(e) {
-    const term = e.target.value.toLowerCase().trim();
-    const filtered = allModels.filter(m => {
-        const codeMatch = String(m.factory_code).toLowerCase().includes(term) || String(m.system_code).toLowerCase().includes(term);
-        const nameMatch = m.name.toLowerCase().includes(term);
-        const catMatch = (m.categories?.name || '').toLowerCase().includes(term);
-        return codeMatch || nameMatch || catMatch;
-    });
-    renderGallery(filtered);
+// --- نافذة تفاصيل الموديل (الـ Modal) ---
+window.openModelViewer = (id) => {
+    const model = allModels.find(m => m.id === id);
+    if (!model) return;
+
+    const content = document.getElementById('model-viewer-content');
+    
+    // 1. تجهيز معرض الصور
+    const imgs = model.model_images?.length > 0 ? model.model_images : [{image_url: null}];
+    const mainImg = resolveImageUrl(imgs[0].image_url);
+    let imagesGalleryHtml = `
+        <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-80 md:h-[400px] mb-3">
+            <img src="${mainImg}" id="viewer-main-img" class="w-full h-full object-cover" onerror="this.src='./src/assets/icons/devo.jpeg'">
+        </div>
+        ${imgs.length > 1 ? `
+        <div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+            ${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src" class="w-20 h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}
+        </div>` : ''}
+    `;
+
+    // 2. تجهيز المقاسات
+    const sizesHtml = model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('') || '<span class="text-devo-muted text-xs">غير محدد</span>';
+
+    // 3. تجهيز صفوف الألوان والكميات (حسب الصلاحية)
+    let colorsHtml = '';
+    
+    if (model.model_inventory && model.model_inventory.length > 0) {
+        colorsHtml = model.model_inventory.map(inv => {
+            const available = inv.available_series || 0;
+            const isOut = available === 0;
+            
+            if (!isWorker) {
+                // عرض للزوار
+                return `
+                <div class="flex justify-between items-center p-3 bg-devo-black border border-devo-gray rounded-xl mb-2">
+                    <span class="text-white font-bold">${inv.colors?.name}</span>
+                    <span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span>
+                </div>`;
+            }
+
+            // عرض للعمال (شراء)
+            return `
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-devo-black border ${isOut ? 'border-devo-error/30' : 'border-devo-gray'} rounded-xl mb-2 gap-3">
+                <div class="flex justify-between w-full sm:w-auto flex-1">
+                    <span class="text-white font-bold flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full ${isOut ? 'bg-devo-error' : 'bg-devo-success'}"></span>
+                        ${inv.colors?.name}
+                    </span>
+                    <span class="text-xs text-devo-muted font-mono mt-1">متبقي: ${available}</span>
+                </div>
+                
+                ${isOut ? `
+                    <button disabled class="w-full sm:w-auto px-4 py-2 bg-devo-gray/20 text-devo-muted rounded-lg text-sm font-bold cursor-not-allowed">نفذت الكمية</button>
+                ` : `
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <div class="flex items-center bg-devo-dark border border-devo-gray rounded-lg overflow-hidden h-9">
+                            <button onclick="decrementQty('qty-${inv.color_id}')" class="px-3 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus"></i></button>
+                            <input type="number" id="qty-${inv.color_id}" value="1" min="1" max="${available}" readonly class="w-10 bg-transparent text-center text-white text-sm font-bold outline-none border-x border-devo-gray">
+                            <button onclick="incrementQty('qty-${inv.color_id}', ${available})" class="px-3 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus"></i></button>
+                        </div>
+                        <button onclick="addToCart(event, '${model.id}', '${inv.color_id}', '${model.name.replace(/'/g, "\\'")}', '${inv.colors?.name}', ${model.price}, '${mainImg}', ${available})" class="flex-1 sm:flex-none px-4 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-sm font-bold transition-all shadow-md flex justify-center items-center gap-2">
+                            <i class="ph ph-shopping-cart-simple text-lg"></i> إضافة
+                        </button>
+                    </div>
+                `}
+            </div>`;
+        }).join('');
+    } else {
+        colorsHtml = `<div class="text-center p-4 text-devo-error bg-devo-error/10 rounded-xl text-sm border border-devo-error/20">لا توجد ألوان مسجلة أو متوفرة لهذا الموديل.</div>`;
+    }
+
+    // حقن الهيكل النهائي في النافذة
+    content.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 md:p-0">
+            <div>
+                ${imagesGalleryHtml}
+            </div>
+            
+            <div class="flex flex-col">
+                <div class="mb-4 pb-4 border-b border-devo-gray">
+                    <p class="text-devo-muted text-xs font-mono mb-1">كود: ${model.factory_code || model.system_code}</p>
+                    <h2 class="text-2xl font-black text-white mb-2 leading-tight">${model.name}</h2>
+                    <p class="text-3xl text-devo-orange font-black">${model.price} <span class="text-base font-normal">ج.م للسيريه</span></p>
+                </div>
+
+                <div class="mb-6">
+                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات داخل السيريه</h4>
+                    <div class="flex flex-wrap gap-2">${sizesHtml}</div>
+                </div>
+
+                <div class="flex-1">
+                    <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i class="ph ph-palette"></i> الألوان المتاحة للطلب</h4>
+                    <div class="space-y-1">
+                        ${colorsHtml}
+                    </div>
+                </div>
+                
+                ${!isWorker ? `
+                    <div class="mt-6 p-4 bg-devo-info/10 border border-devo-info/20 rounded-xl flex items-start gap-3">
+                        <i class="ph ph-info text-devo-info text-2xl mt-0.5"></i>
+                        <p class="text-xs text-devo-muted leading-relaxed">أنت تتصفح الموقع كزائر. لمعرفة الكميات الدقيقة وإضافة المنتجات للفاتورة، يرجى تسجيل الدخول بحساب الموظف الخاص بك من الإدارة.</p>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+
+    const modal = document.getElementById('model-viewer-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+};
+
+window.closeModelViewer = () => {
+    const modal = document.getElementById('model-viewer-modal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+};
+
+// --- دوال التحكم في الكمية داخل النافذة ---
+window.incrementQty = (inputId, max) => {
+    const input = document.getElementById(inputId);
+    let val = parseInt(input.value);
+    if (val < max) input.value = val + 1;
+};
+window.decrementQty = (inputId) => {
+    const input = document.getElementById(inputId);
+    let val = parseInt(input.value);
+    if (val > 1) input.value = val - 1;
+};
+
+// --- نظام السلة (Cart Logic) ---
+function loadLocalCart() {
+    const saved = localStorage.getItem('devo_cart');
+    if (saved) {
+        try { localCart = JSON.parse(saved); } catch(e) { localCart = []; }
+    }
+    updateFloatingCart();
 }
+
+function saveLocalCart() {
+    localStorage.setItem('devo_cart', JSON.stringify(localCart));
+    updateFloatingCart();
+}
+
+function updateFloatingCart() {
+    const countEl = document.getElementById('floating-cart-count');
+    if (!countEl) return;
+    
+    // حساب إجمالي عدد السيريّات المطلوبة (وليس عدد العناصر)
+    const totalItems = localCart.reduce((sum, item) => sum + item.qty, 0);
+    countEl.textContent = totalItems;
+    
+    if (totalItems > 0) {
+        countEl.parentElement.parentElement.classList.add('animate-bounce');
+        setTimeout(() => countEl.parentElement.parentElement.classList.remove('animate-bounce'), 1000);
+    }
+}
+
+window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable) => {
+    const qtyInput = document.getElementById(`qty-${colorId}`);
+    const qty = parseInt(qtyInput.value);
+
+    if (qty > maxAvailable) {
+        return showToast('الكمية المطلوبة تتجاوز المتاح في المخزن!', 'error');
+    }
+
+    // البحث هل هذا الموديل بنفس اللون موجود مسبقاً في السلة؟
+    const existingIndex = localCart.findIndex(i => i.modelId === modelId && i.colorId === colorId);
+    
+    if (existingIndex > -1) {
+        // التأكد أن الإجمالي لا يتعدى المخزون
+        if (localCart[existingIndex].qty + qty > maxAvailable) {
+            return showToast('إجمالي الكمية المطلوبة في السلة تتجاوز المتاح!', 'error');
+        }
+        localCart[existingIndex].qty += qty;
+    } else {
+        localCart.push({
+            modelId,
+            colorId,
+            modelName,
+            colorName,
+            price,
+            image,
+            qty
+        });
+    }
+
+    saveLocalCart();
+    
+    // 🌟 التحديث السحري: تحديث واجهة السلة في نفس الصفحة فوراً 🌟
+    if (window.refreshCartView) {
+        window.refreshCartView();
+    }
+    
+    // تأثير بصري للزر (بشكل آمن)
+    const btn = event.currentTarget || event.target;
+    if (btn) {
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="ph ph-check text-lg"></i> تمت الإضافة`;
+        btn.classList.replace('bg-devo-orange', 'bg-devo-success');
+        btn.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-green-600');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.replace('bg-devo-success', 'bg-devo-orange');
+            btn.classList.replace('hover:bg-green-600', 'hover:bg-devo-orangeHover');
+        }, 2000);
+    }
+
+    showToast(`تم إضافة ${qty} سيريه من ${modelName} (${colorName}) للسلة`, 'success');
+};
