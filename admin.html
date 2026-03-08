@@ -49,10 +49,7 @@
                 <i class="ph ph-squares-four text-xl"></i>
                 <span>الإحصائيات الرئيسية</span>
             </a>
-            <a href="#" data-target="view-users" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-users text-xl"></i>
-                <span>إدارة الحسابات</span>
-            </a>
+
             <a href="#" data-target="view-definitions" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
                 <i class="ph ph-list-dashes text-xl"></i>
                 <span>التعريفات الأساسية</span>
@@ -60,6 +57,14 @@
             <a href="#" data-target="view-models" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
                 <i class="ph ph-t-shirt text-xl"></i>
                 <span>إدارة الموديلات</span>
+            </a>
+            <a href="#" data-target="view-home-settings" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
+                <i class="ph ph-browser text-xl"></i>
+                <span>واجهة الموقع</span>
+            </a>
+            <a href="#" data-target="view-users" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
+                <i class="ph ph-users text-xl"></i>
+                <span>إدارة الحسابات</span>
             </a>
         </nav>
 
@@ -93,123 +98,248 @@
                 <div class="flex items-center justify-center h-full text-devo-muted">قسم الإحصائيات (قريباً)</div>
             </div>
 
-            <div id="view-users" class="view-section hidden h-full">
-                <div class="flex items-center justify-center h-full text-devo-muted">قسم إدارة الحسابات (قريباً)</div>
-            </div>
 
             <div id="view-definitions" class="view-section hidden h-full">
 
-<div class="h-full flex flex-col space-y-6 animate-fade-in">
-    
-    <div class="bg-devo-dark border border-devo-gray rounded-2xl p-2 shadow-sm">
-        <div class="flex flex-wrap gap-2" id="def-tabs-nav">
-            <button onclick="switchDefTab('categories')" data-def-tab="categories" class="def-tab-btn active-tab">
-                <i class="ph ph-tag"></i> التصنيفات
-            </button>
-            <button onclick="switchDefTab('classes')" data-def-tab="classes" class="def-tab-btn">
-                <i class="ph ph-users-three"></i> الفئات العمرية
-            </button>
-            <button onclick="switchDefTab('sizes')" data-def-tab="sizes" class="def-tab-btn">
-                <i class="ph ph-ruler"></i> المقاسات
-            </button>
-            <button onclick="switchDefTab('colors')" data-def-tab="colors" class="def-tab-btn">
-                <i class="ph ph-palette"></i> الألوان
-            </button>
-        </div>
-    </div>
+                <div class="h-full flex flex-col space-y-6 animate-fade-in">
+                    
+                    <div class="bg-devo-dark border border-devo-gray rounded-2xl p-2 shadow-sm">
+                        <div class="flex flex-wrap gap-2" id="def-tabs-nav">
+                            <button onclick="switchDefTab('categories')" data-def-tab="categories" class="def-tab-btn active-tab">
+                                <i class="ph ph-tag"></i> التصنيفات
+                            </button>
+                            <button onclick="switchDefTab('classes')" data-def-tab="classes" class="def-tab-btn">
+                                <i class="ph ph-users-three"></i> الفئات العمرية
+                            </button>
+                            <button onclick="switchDefTab('sizes')" data-def-tab="sizes" class="def-tab-btn">
+                                <i class="ph ph-ruler"></i> المقاسات
+                            </button>
+                            <button onclick="switchDefTab('colors')" data-def-tab="colors" class="def-tab-btn">
+                                <i class="ph ph-palette"></i> الألوان
+                            </button>
+                        </div>
+                    </div>
 
-    <div class="flex flex-col md:flex-row gap-4 justify-between items-center bg-devo-dark border border-devo-gray p-4 rounded-2xl">
-        <div class="relative w-full md:w-96">
-            <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-devo-muted text-xl"></i>
-            <input type="text" id="def-search-input" oninput="handleDefSearch()" 
-                class="w-full bg-devo-black border border-devo-gray rounded-xl pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-muted"
-                placeholder="بحث سريع في العناصر...">
-        </div>
-        <button onclick="openDefinitionModalFromCurrent()" class="w-full md:w-auto bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20">
-            <i class="ph ph-plus-circle text-2xl"></i>
-            <span>إضافة عنصر جديد</span>
-        </button>
-    </div>
+                    <div class="flex flex-col md:flex-row gap-4 justify-between items-center bg-devo-dark border border-devo-gray p-4 rounded-2xl">
+                        <div class="relative w-full md:w-96">
+                            <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-devo-muted text-xl"></i>
+                            <input type="text" id="def-search-input" oninput="handleDefSearch()" 
+                                class="w-full bg-devo-black border border-devo-gray rounded-xl pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-muted"
+                                placeholder="بحث سريع في العناصر...">
+                        </div>
+                        <button onclick="openDefinitionModalFromCurrent()" class="w-full md:w-auto bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20">
+                            <i class="ph ph-plus-circle text-2xl"></i>
+                            <span>إضافة عنصر جديد</span>
+                        </button>
+                    </div>
 
-    <div class="flex-1 bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative min-h-[400px]">
-        <div class="overflow-x-auto">
-            <table class="w-full text-right border-collapse">
-                <thead>
-                    <tr class="bg-devo-black border-b border-devo-gray text-devo-muted text-sm">
-                        <th class="p-4 font-medium w-20 text-center">#</th>
-                        <th class="p-4 font-medium">الاسم</th>
-                        <th class="p-4 font-medium">تاريخ الإضافة</th>
-                        <th class="p-4 font-medium text-center">الإجراءات</th>
-                    </tr>
-                </thead>
-                <tbody id="def-table-body" class="divide-y divide-devo-gray text-white">
-                    </tbody>
-            </table>
-        </div>
+                    <div class="flex-1 bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative min-h-[400px]">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-right border-collapse">
+                                <thead>
+                                    <tr class="bg-devo-black border-b border-devo-gray text-devo-muted text-sm">
+                                        <th class="p-4 font-medium w-20 text-center">#</th>
+                                        <th class="p-4 font-medium">الاسم</th>
+                                        <th class="p-4 font-medium">تاريخ الإضافة</th>
+                                        <th class="p-4 font-medium text-center">الإجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="def-table-body" class="divide-y divide-devo-gray text-white">
+                                    </tbody>
+                            </table>
+                        </div>
+                        
+                        <div id="def-empty-state" class="hidden flex-1 flex flex-col items-center justify-center p-10 text-devo-muted">
+                            <i class="ph ph-folder-open text-6xl mb-4 opacity-20"></i>
+                            <p>لا توجد بيانات متاحة لهذا القسم</p>
+                        </div>
+                    </div>
+
+                    <div id="def-action-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+                        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-8 transform scale-95 transition-transform duration-300 shadow-devo-float" id="def-modal-content">
+                            
+                            <div class="flex justify-between items-center mb-8">
+                                <h3 class="text-xl font-bold text-white flex items-center gap-3">
+                                    <span id="def-modal-icon-container" class="w-10 h-10 rounded-lg bg-devo-orange/10 flex items-center justify-center text-devo-orange">
+                                        <i class="ph ph-plus-circle text-2xl"></i>
+                                    </span>
+                                    <span id="def-modal-title">إضافة عنصر جديد</span>
+                                </h3>
+                                <button onclick="closeDefinitionModal()" class="text-devo-muted hover:text-white transition-colors">
+                                    <i class="ph ph-x text-2xl"></i>
+                                </button>
+                            </div>
+
+                            <form id="def-action-form" class="space-y-6">
+                                <input type="hidden" id="def-target-table">
+                                <input type="hidden" id="def-item-id">
+
+                                <div class="space-y-2">
+                                    <label class="block text-sm font-medium text-devo-muted">اسم العنصر</label>
+                                    <input type="text" id="def-item-name" required autocomplete="off"
+                                        class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-grayHover"
+                                        placeholder="أدخل الاسم هنا...">
+                                </div>
+
+                                <div class="flex gap-3 pt-4">
+                                    <button type="button" onclick="closeDefinitionModal()" 
+                                        class="flex-1 px-6 py-3.5 rounded-xl border border-devo-gray text-white hover:bg-devo-gray transition-all font-bold text-sm">
+                                        إلغاء
+                                    </button>
+                                    <button type="submit" id="def-save-btn" 
+                                        class="flex-[2] px-6 py-3.5 rounded-xl bg-devo-orange text-white hover:bg-devo-orangeHover transition-all font-bold text-sm shadow-lg shadow-devo-orange/20 flex items-center justify-center gap-2">
+                                        <span>حفظ البيانات</span>
+                                        <i class="ph ph-check-circle text-lg"></i>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <style>
+                    .def-tab-btn {
+                        display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; border-radius: 0.75rem;
+                        color: #a3a3a3; font-weight: 700; transition: all 0.3s;
+                    }
+                    .def-tab-btn:hover { color: white; }
+                    .active-tab {
+                        background-color: #f97316; color: white;
+                        box-shadow: 0 10px 15px -3px rgba(249, 115, 22, 0.2);
+                    }
+                </style>
+
+
+            </div>
+<div id="view-users" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-4">
         
-        <div id="def-empty-state" class="hidden flex-1 flex flex-col items-center justify-center p-10 text-devo-muted">
-            <i class="ph ph-folder-open text-6xl mb-4 opacity-20"></i>
-            <p>لا توجد بيانات متاحة لهذا القسم</p>
+        <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <div>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-users text-devo-orange"></i> إدارة الحسابات
+                </h2>
+            </div>
+            <button onclick="openUserModal()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 text-sm w-full md:w-auto justify-center">
+                <i class="ph ph-user-plus text-xl"></i> إضافة مستخدم جديد
+            </button>
         </div>
-    </div>
 
-    <div id="def-action-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-8 transform scale-95 transition-transform duration-300 shadow-devo-float" id="def-modal-content">
-            
-            <div class="flex justify-between items-center mb-8">
-                <h3 class="text-xl font-bold text-white flex items-center gap-3">
-                    <span id="def-modal-icon-container" class="w-10 h-10 rounded-lg bg-devo-orange/10 flex items-center justify-center text-devo-orange">
-                        <i class="ph ph-plus-circle text-2xl"></i>
-                    </span>
-                    <span id="def-modal-title">إضافة عنصر جديد</span>
-                </h3>
-                <button onclick="closeDefinitionModal()" class="text-devo-muted hover:text-white transition-colors">
-                    <i class="ph ph-x text-2xl"></i>
-                </button>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-devo-dark border border-devo-gray py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-muted text-xs font-bold">إجمالي الحسابات</span>
+                <span class="text-lg text-white font-bold" id="u-stat-total">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-orange/30 py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-orange text-xs font-bold">الملاك (Owners)</span>
+                <span class="text-lg text-devo-orange font-bold" id="u-stat-owners">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-info/30 py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-info text-xs font-bold">الإدارة (Admins)</span>
+                <span class="text-lg text-devo-info font-bold" id="u-stat-admins">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-success/30 py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                <span class="text-devo-success text-xs font-bold">العمال (Workers)</span>
+                <span class="text-lg text-devo-success font-bold" id="u-stat-workers">0</span>
+            </div>
+        </div>
+
+        <div class="sticky top-[-32px] z-40 bg-devo-black/95 backdrop-blur-md border-b border-devo-gray py-3">
+            <div class="flex flex-wrap gap-2 items-center">
+                <div class="relative flex-[2] min-w-[200px]">
+                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                    <input type="text" id="user-search" placeholder="بحث بالاسم أو اسم المستخدم..." 
+                        class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                </div>
+                <select id="user-filter-role" class="flex-1 min-w-[120px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
+                    <option value="">جميع الصلاحيات</option>
+                    <option value="owner">مالك (Owner)</option>
+                    <option value="admin">مشرف (Admin)</option>
+                    <option value="worker">عامل (Worker)</option>
+                </select>
+                <select id="user-filter-status" class="flex-1 min-w-[120px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
+                    <option value="">جميع الحالات</option>
+                    <option value="active">نشط</option>
+                    <option value="inactive">معطل</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="users-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pt-2">
             </div>
 
-            <form id="def-action-form" class="space-y-6">
-                <input type="hidden" id="def-target-table">
-                <input type="hidden" id="def-item-id">
-
-                <div class="space-y-2">
-                    <label class="block text-sm font-medium text-devo-muted">اسم العنصر</label>
-                    <input type="text" id="def-item-name" required autocomplete="off"
-                        class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-grayHover"
-                        placeholder="أدخل الاسم هنا...">
+        <div id="user-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-lg flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2" id="user-modal-title">
+                        <i class="ph ph-user-plus text-devo-orange text-xl"></i> إضافة مستخدم
+                    </h3>
+                    <button onclick="closeUserModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-xl"></i></button>
                 </div>
 
-                <div class="flex gap-3 pt-4">
-                    <button type="button" onclick="closeDefinitionModal()" 
-                        class="flex-1 px-6 py-3.5 rounded-xl border border-devo-gray text-white hover:bg-devo-gray transition-all font-bold text-sm">
-                        إلغاء
-                    </button>
-                    <button type="submit" id="def-save-btn" 
-                        class="flex-[2] px-6 py-3.5 rounded-xl bg-devo-orange text-white hover:bg-devo-orangeHover transition-all font-bold text-sm shadow-lg shadow-devo-orange/20 flex items-center justify-center gap-2">
-                        <span>حفظ البيانات</span>
-                        <i class="ph ph-check-circle text-lg"></i>
-                    </button>
+                <form id="user-form" class="p-6 space-y-5">
+                    <input type="hidden" id="u-id">
+                    
+                    <div class="flex items-center justify-between mb-2 border-b border-devo-gray pb-4">
+                        <span class="text-sm font-bold text-devo-muted">حالة الحساب:</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="u-status" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-devo-gray rounded-full peer peer-checked:bg-devo-success after:content-[''] after:absolute after:top-0.5 after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:-translate-x-full shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">الاسم بالكامل <span class="text-devo-error">*</span></label>
+                        <input type="text" id="u-name" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">اسم المستخدم (للدخول) <span class="text-devo-error">*</span></label>
+                            <input type="text" id="u-username" required autocomplete="off" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">الصلاحية <span class="text-devo-error">*</span></label>
+                            <select id="u-role" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none cursor-pointer text-sm">
+                                <option value="worker">عامل (مبيعات فقط)</option>
+                                <option value="admin">مشرف (إدارة جزئية)</option>
+                                <option value="owner">مالك (صلاحيات كاملة)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">كلمة المرور <span class="text-devo-error" id="u-pass-req">*</span></label>
+                        <input type="password" id="u-password" autocomplete="new-password" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr" placeholder="أدخل كلمة المرور...">
+                        <p class="text-[10px] text-devo-info mt-1 hidden" id="u-pass-hint">اترك الحقل فارغاً إذا كنت لا تريد تغيير كلمة المرور الحالية.</p>
+                    </div>
+
+                    <div class="flex gap-3 pt-2">
+                        <button type="button" onclick="closeUserModal()" class="flex-1 py-2.5 rounded-lg border border-devo-gray text-white text-sm hover:bg-devo-gray transition-all">إلغاء</button>
+                        <button type="submit" class="flex-[2] py-2.5 rounded-lg bg-devo-orange text-white text-sm font-bold hover:bg-devo-orangeHover shadow-lg transition-all">حفظ البيانات</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div id="view-user-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-identification-card text-devo-orange text-xl"></i> تفاصيل وإحصائيات الحساب
+                    </h3>
+                    <button onclick="closeUserDetailsModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-xl"></i></button>
                 </div>
-            </form>
+                
+                <div class="p-6 space-y-6" id="user-details-content">
+                    </div>
+
+                <div class="p-5 border-t border-devo-gray bg-devo-black/30 rounded-b-2xl flex justify-end">
+                    <button onclick="closeUserDetailsModal()" class="px-6 py-2.5 rounded-lg border border-devo-gray text-white text-sm font-bold hover:bg-devo-gray transition-all">إغلاق</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-
-<style>
-    .def-tab-btn {
-        display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; border-radius: 0.75rem;
-        color: #a3a3a3; font-weight: 700; transition: all 0.3s;
-    }
-    .def-tab-btn:hover { color: white; }
-    .active-tab {
-        background-color: #f97316; color: white;
-        box-shadow: 0 10px 15px -3px rgba(249, 115, 22, 0.2);
-    }
-</style>
-
-
-            </div>
-
 <div id="view-models" class="view-section hidden h-full">
     <div class="animate-fade-in relative pb-10 space-y-4">
         
@@ -468,14 +598,156 @@
 
     </div>
 </div>
-
-            </div>
-
+<div id="view-home-settings" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-6">
+        
+        <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                <i class="ph ph-browser text-devo-orange"></i> إدارة واجهة الموقع
+            </h2>
+            <p class="text-devo-muted text-sm mt-1">تعديل النصوص، الصور، الروابط، وإدارة الكروت الإعلانية المعروضة للزوار.</p>
         </div>
-    </main>
 
-    <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+        <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 shadow-sm">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-lg font-bold text-devo-orange flex items-center gap-2"><i class="ph ph-sliders-horizontal"></i> الإعدادات العامة للموقع</h3>
+                <button onclick="saveHeroSettings()" id="btn-save-hero" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                    <i class="ph ph-floppy-disk"></i> حفظ الإعدادات
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <h4 class="text-sm font-bold text-white border-b border-devo-gray pb-2"><i class="ph ph-text-t"></i> نصوص الغلاف</h4>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">العنوان الرئيسي</label>
+                        <input type="text" id="hs-hero-title" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">النص الفرعي (الوصف)</label>
+                        <textarea id="hs-hero-subtitle" rows="3" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm custom-scrollbar resize-none"></textarea>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <h4 class="text-sm font-bold text-white border-b border-devo-gray pb-2"><i class="ph ph-image"></i> صور الغلاف (يمكن وضع روابط درايف)</h4>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">خلفية الشاشات الكبيرة </label>
+                        <input type="url" id="hs-bg-desktop" placeholder="https://..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">خلفية الهواتف </label>
+                        <input type="url" id="hs-bg-mobile" placeholder="https://..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                    </div>
+                </div>
+
+                <div class="md:col-span-2 space-y-4 mt-2">
+                    <h4 class="text-sm font-bold text-white border-b border-devo-gray pb-2"><i class="ph ph-share-network"></i> روابط التواصل الاجتماعي</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">رابط فيسبوك</label>
+                            <input type="url" id="hs-social-fb" placeholder="https://facebook.com/..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">رابط واتساب</label>
+                            <input type="url" id="hs-social-wa" placeholder="https://wa.link/..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">رابط خرائط جوجل</label>
+                            <input type="url" id="hs-social-maps" placeholder="https://maps.google.com/..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 shadow-sm">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-devo-info flex items-center gap-2"><i class="ph ph-cards"></i> العروض والإعلانات</h3>
+                <button onclick="openPromoModal()" class="bg-devo-info hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                    <i class="ph ph-plus-circle"></i> إضافة عرض جديد
+                </button>
+            </div>
+            
+            <div id="promo-cards-container" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                </div>
+        </div>
+
+        <div id="promo-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl">
+                    <h3 class="text-lg font-bold text-white" id="promo-modal-title">إضافة عرض جديد</h3>
+                    <button onclick="closePromoModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-xl"></i></button>
+                </div>
+<form id="promo-form" class="p-6 space-y-4">
+                    <input type="hidden" id="pm-id">
+                    
+                    <div class="flex items-center justify-between mb-2 border-b border-devo-gray pb-4">
+                        <span class="text-sm font-bold text-devo-muted">حالة العرض:</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="pm-status" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-devo-gray rounded-full peer peer-checked:bg-devo-success after:content-[''] after:absolute after:top-0.5 after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:-translate-x-full shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">عنوان الكارت <span class="text-devo-error">*</span></label>
+                        <input type="text" id="pm-title" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">الوصف المكتوب <span class="text-devo-error">*</span></label>
+                        <textarea id="pm-desc" required rows="2" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm resize-none"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">صورة العرض (رابط درايف - اختياري)</label>
+                        <input type="url" id="pm-image" placeholder="https://..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">شارة الكارت (اختياري)</label>
+                            <input type="text" id="pm-badge" placeholder="مثال: خصم 20%" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">لون الشارة</label>
+                            <select id="pm-color" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none cursor-pointer text-sm">
+                                <option value="bg-devo-orange">برتقالي (افتراضي)</option>
+                                <option value="bg-devo-error">أحمر (حصري/مهم)</option>
+                                <option value="bg-devo-success">أخضر (متاح/جديد)</option>
+                                <option value="bg-devo-info">أزرق (معلومة)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 pt-4 mt-2 border-t border-devo-gray">
+                        <button type="button" onclick="closePromoModal()" class="flex-1 py-2.5 rounded-lg border border-devo-gray text-white text-sm hover:bg-devo-gray transition-all">إلغاء</button>
+                        <button type="submit" class="flex-[2] py-2.5 rounded-lg bg-devo-info text-white text-sm font-bold hover:bg-blue-600 shadow-lg transition-all">حفظ الكارت</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+            </div>
+</div> <footer class="bg-devo-black border-t border-devo-gray py-3 px-6 shrink-0 flex flex-col md:flex-row items-center justify-between text-[11px] z-10">
+                <div class="text-devo-muted font-medium mb-2 md:mb-0">
+                    &copy; <span id="current-year"></span> DEVO Collection. جميع الحقوق محفوظة للمصنع.
+                </div>
+                <script>document.getElementById('current-year').textContent = new Date().getFullYear();</script>
+                
+                <div class="flex flex-wrap items-center justify-center gap-1.5 text-devo-muted bg-devo-dark py-1 px-3 rounded-full border border-devo-gray/50 shadow-sm">
+                    <i class="ph-fill ph-code text-devo-orange text-sm"></i>
+                    <a href="https://ahmed-attia-portfolio-ahm3d0xs-projects.vercel.app/" target="_blank" class="text-white font-bold hover:text-devo-orange transition-colors tracking-wide">Ahmed M. Attia</a>
+                    <span class="font-medium text-[9px] uppercase tracking-wider text-devo-info">Developer</span>
+                    <span class="text-devo-gray mx-0.5">|</span>
+                    <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-sm"></i></a>
+                </div>
+            </footer>
+
+        </main> <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="module" src="./src/js/pages/admin/router.js"></script>
     <script type="module" src="./src/js/pages/admin/definitions.js"></script>
 

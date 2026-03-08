@@ -15,15 +15,10 @@
                 extend: {
                     colors: {
                         devo: {
-                            black: '#0a0a0a',
-                            dark: '#171717',
-                            gray: '#262626',
-                            orange: '#f97316',
-                            orangeHover: '#ea580c',
-                            text: '#f5f5f5',
-                            muted: '#a3a3a3',
-                            success: '#10b981',
-                            error: '#ef4444'
+                            black: '#0a0a0a', dark: '#171717', gray: '#262626',
+                            orange: '#f97316', orangeHover: '#ea580c',
+                            text: '#f5f5f5', muted: '#a3a3a3',
+                            success: '#10b981', error: '#ef4444'
                         }
                     },
                     fontFamily: { sans: ['Tajawal', 'sans-serif'] },
@@ -33,9 +28,7 @@
         }
     </script>
     
-    <style>
-        body { font-family: 'Tajawal', sans-serif; }
-    </style>
+    <style> body { font-family: 'Tajawal', sans-serif; } </style>
 </head>
 <body class="bg-devo-black min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
 
@@ -47,17 +40,17 @@
             <h1 class="text-5xl font-bold tracking-wider text-white mb-2">
                 D<span class="text-devo-orange">E</span>VO
             </h1>
-            <p class="text-devo-muted text-sm font-medium">نظام إدارة المبيعات والمعارض</p>
+            <p class="text-devo-muted text-sm font-medium">نظام إدارة المبيعات والمخازن</p>
         </div>
 
         <form id="auth-form" class="space-y-6">
             <div>
-                <label class="block text-sm font-medium text-devo-muted mb-2">البريد الإلكتروني</label>
+                <label class="block text-sm font-medium text-devo-muted mb-2">اسم المستخدم</label>
                 <div class="relative">
-                    <i class="ph ph-envelope-simple absolute right-4 top-1/2 -translate-y-1/2 text-xl text-devo-muted"></i>
-                    <input type="email" id="email" required autocomplete="email"
+                    <i class="ph ph-user absolute right-4 top-1/2 -translate-y-1/2 text-xl text-devo-muted"></i>
+                    <input type="text" id="username" required autocomplete="off"
                         class="w-full bg-devo-black border border-devo-gray rounded-lg pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-colors"
-                        placeholder="أدخل بريدك الإلكتروني" >
+                        placeholder="أدخل اسم المستخدم" dir="ltr" style="text-align: right;">
                 </div>
             </div>
 
@@ -67,7 +60,7 @@
                     <i class="ph ph-lock-key absolute right-4 top-1/2 -translate-y-1/2 text-xl text-devo-muted"></i>
                     <input type="password" id="password" required autocomplete="current-password"
                         class="w-full bg-devo-black border border-devo-gray rounded-lg pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-colors"
-                        placeholder="أدخل كلمة المرور">
+                        placeholder="أدخل كلمة المرور" dir="ltr" style="text-align: right;">
                 </div>
             </div>
 
@@ -81,7 +74,7 @@
     <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
 
     <script type="module">
-        import { loginUser, getCurrentSession, getUserProfile } from './src/js/services/auth.js';
+        import { loginUser, getCurrentSession } from './src/js/services/auth.js';
         import { showToast } from './src/js/components/toast.js';
 
         const form = document.getElementById('auth-form');
@@ -90,16 +83,11 @@
         const btnIcon = document.getElementById('btn-icon');
 
         // Check if already logged in
-        document.addEventListener('DOMContentLoaded', async () => {
-            const { session } = await getCurrentSession();
-            if (session) {
-                // If session exists, fetch role and redirect accordingly
-                const { profile } = await getUserProfile(session.user.id);
-                if (profile && (profile.role === 'admin' || profile.role === 'owner')) {
-                    window.location.href = 'admin.html';
-                } else {
-                    window.location.href = 'index.html';
-                }
+        document.addEventListener('DOMContentLoaded', () => {
+            const { session } = getCurrentSession();
+            if (session && session.user) {
+                const role = session.user.role;
+                window.location.href = (role === 'admin' || role === 'owner') ? 'admin.html' : 'index.html';
             }
         });
 
@@ -107,7 +95,7 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const email = document.getElementById('email').value.trim();
+            const username = document.getElementById('username').value.trim().toLowerCase();
             const password = document.getElementById('password').value;
 
             // Set Loading State
@@ -117,36 +105,23 @@
             btnIcon.className = 'ph ph-spinner animate-spin text-xl';
 
             // Attempt Login
-            const { user, error } = await loginUser(email, password);
+            const { user, error } = await loginUser(username, password);
 
             if (error) {
                 // Reset UI on error
-                showToast('بيانات الدخول غير صحيحة. يرجى المحاولة مرة أخرى.', 'error');
+                showToast(error.message || 'بيانات الدخول غير صحيحة.', 'error');
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
                 btnText.textContent = 'تسجيل الدخول';
                 btnIcon.className = 'ph ph-sign-in text-xl';
             } else {
                 // Success route
-// نجاح الدخول
-showToast('تم تسجيل الدخول بنجاح، جاري التوجيه...', 'success');
-
-// جلب بيانات الملف الشخصي
-const { profile, error: profileError } = await getUserProfile(user.id);
-
-// --- الكود الجديد لاكتشاف الخطأ ---
-console.log("User ID from Auth:", user.id);
-console.log("Profile Data from DB:", profile);
-console.log("Any Errors?:", profileError);
-// ---------------------------------
-
-setTimeout(() => {
-    if (profile && (profile.role === 'admin' || profile.role === 'owner')) {
-        window.location.href = 'admin.html';
-    } else {
-        window.location.href = 'index.html';
-    }
-}, 3000); // جعلنا الوقت 3 ثواني لتلحق تقرأ الكونسول
+                showToast('تم تسجيل الدخول بنجاح، جاري التوجيه...', 'success');
+                
+                setTimeout(() => {
+                    const role = user.role;
+                    window.location.href = (role === 'admin' || role === 'owner') ? 'admin.html' : 'index.html';
+                }, 1000);
             }
         });
     </script>

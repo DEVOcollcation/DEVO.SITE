@@ -1,23 +1,42 @@
 import { supabase } from '../config/supabase.js';
 
 /**
- * Logs in a user (staff or admin) with email and password.
- * @param {string} email 
- * @param {string} password 
- * @returns {Promise<{user: object|null, error: object|null}>}
+ * تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور من جدول system_users
  */
-export async function loginUser(email, password) {
+export async function loginUser(username, password) {
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        // البحث عن المستخدم
+        const { data: user, error } = await supabase
+            .from('system_users')
+            .select('*')
+            .eq('username', username)
+            .eq('password', password)
+            .single();
 
-        if (error) throw error;
-        if (data.user) {
-            supabase.rpc('increment_login_count', { user_id: data.user.id });
+        if (error || !user) {
+            throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
         }
-        return { user: data.user, error: null };
+
+        if (!user.is_active) {
+            throw new Error('هذا الحساب معطل، يرجى مراجعة الإدارة.');
+        }
+
+        // زيادة عداد تسجيل الدخول بمقدار 1
+        await supabase
+            .from('system_users')
+            .update({ login_count: (user.login_count || 0) + 1 })
+            .eq('id', user.id);
+
+        // حفظ بيانات الجلسة الأساسية في LocalStorage
+        const sessionData = {
+            id: user.id,
+            username: user.username,
+            full_name: user.full_name,
+            role: user.role
+        };
+        localStorage.setItem('devo_session', JSON.stringify(sessionData));
+
+        return { user: sessionData, error: null };
     } catch (error) {
         console.error('Login error:', error.message);
         return { user: null, error };
@@ -25,56 +44,47 @@ export async function loginUser(email, password) {
 }
 
 /**
- * Logs out the current user and clears the session.
- * @returns {Promise<{error: object|null}>}
+ * تسجيل الخروج ومسح الجلسة
  */
-export async function logoutUser() {
+export function logoutUser() {
+    localStorage.removeItem('devo_session');
+    window.location.href = 'auth.html';
+}
+
+/**
+ * جلب بيانات المستخدم الحالي من المتصفح
+ */
+export function getCurrentSession() {
+    const sessionStr = localStorage.getItem('devo_session');
+    if (!sessionStr) return { session: null };
+    
     try {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        
-        // Optional: Redirect to login page after successful logout
-        window.location.href = '/index.html'; 
-        
-        return { error: null };
-    } catch (error) {
-        console.error('Logout error:', error.message);
-        return { error };
+        const session = JSON.parse(sessionStr);
+        // نعيدها بنفس الهيكل القديم حتى لا تتعطل باقي ملفاتك
+        return { session: { user: session } }; 
+    } catch (e) {
+        return { session: null };
     }
 }
 
 /**
- * Retrieves the currently logged-in user's session data.
- * @returns {Promise<{session: object|null, error: object|null}>}
+ * حماية الصفحات وتأكيد الصلاحية (بديل لـ getUserProfile)
  */
-export async function getCurrentSession() {
-    try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        return { session, error: null };
-    } catch (error) {
-        console.error('Get session error:', error.message);
-        return { session: null, error };
+export function requireAuth(allowedRoles = []) {
+    const { session } = getCurrentSession();
+    
+    if (!session) {
+        window.location.href = 'auth.html';
+        return null;
     }
-}
 
-/**
- * Fetches the custom profile data (role, full_name) for the logged-in user.
- * @param {string} userId 
- * @returns {Promise<{profile: object|null, error: object|null}>}
- */
-export async function getUserProfile(userId) {
-    try {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('full_name, role, is_active, email, login_count, invoice_count') // أضفنا الحقول الجديدة هنا
-            .eq('id', userId)
-            .single();
+    const user = session.user;
 
-        if (error) throw error;
-        return { profile: data, error: null };
-    } catch (error) {
-        console.error('Fetch profile error:', error.message);
-        return { profile: null, error };
+    if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+        if (user.role === 'worker') window.location.href = 'index.html';
+        else window.location.href = 'admin.html';
+        return null;
     }
+
+    return user;
 }

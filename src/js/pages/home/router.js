@@ -1,19 +1,18 @@
 import { requireAuth, logoutUser } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
-import { initHomeSettingsView } from './home_settings.js';
-// استيراد صفحة المستخدمين (كما كانت في كودك)
+
+// استيراد دوال التهيئة للصفحات
 import { initUsersView } from './users.js';
 
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
 
 async function authenticateAdmin() {
-    // استخدام دالة الحماية الجديدة بدلاً من القديمة
+    // 1. الدالة الجديدة requireAuth تقوم بكل شيء:
+    // تتأكد من تسجيل الدخول، وتتأكد أن الصلاحية (owner أو admin)، وتطرد من لا يملك الصلاحية.
     const user = requireAuth(['owner', 'admin']); 
     
-    if (!user) {
-        return false;
-    }
+    if (!user) return false; // إذا كان null يعني تم طرده لصفحة أخرى
 
     currentUserContext = user;
     updateUserProfileUI(user);
@@ -28,7 +27,7 @@ function updateUserProfileUI(profile) {
     const roleColor = profile.role === 'owner' ? 'text-red-500' : 'text-devo-orange';
     
     const roleEl = document.getElementById('current-user-role');
-    if (roleEl) {
+    if(roleEl) {
         roleEl.textContent = roleText;
         roleEl.className = `text-xs font-bold ${roleColor}`;
     }
@@ -40,33 +39,34 @@ const navLinks = document.querySelectorAll('.nav-link');
 const pageTitle = document.getElementById('page-title');
 
 function switchView(targetId, titleElement) {
-    // 1. Hide all views
+    // 1. إخفاء جميع الصفحات
     views.forEach(view => {
         view.classList.add('hidden');
         view.classList.remove('animate-fade-in'); 
     });
 
-    // 2. Remove active state from all links
+    // 2. إزالة حالة "النشط" من جميع الروابط
     navLinks.forEach(link => {
         link.classList.remove('bg-devo-orange/10', 'text-devo-orange');
         link.classList.add('text-devo-muted');
     });
 
-    // 3. Show the target view
+    // 3. إظهار الصفحة المطلوبة
     const targetView = document.getElementById(targetId);
     if (targetView) {
         targetView.classList.remove('hidden');
-        // targetView.classList.add('animate-fade-in'); 
     }
 
-    // 4. Highlight active link and update Topbar title
+    // 4. تفعيل الرابط وتحديث العنوان
     if (titleElement) {
         titleElement.classList.remove('text-devo-muted');
         titleElement.classList.add('bg-devo-orange/10', 'text-devo-orange');
-        pageTitle.textContent = titleElement.querySelector('span').textContent;
+        if(pageTitle) {
+            pageTitle.textContent = titleElement.querySelector('span').textContent;
+        }
     }
 
-    // 5. Initialize View Logic (Lazy Loading)
+    // 5. تشغيل منطق الصفحة (Lazy Loading)
     loadViewLogic(targetId);
 }
 
@@ -80,28 +80,23 @@ async function loadViewLogic(targetId) {
             await initUsersView();
             break;
         case 'view-definitions':
-            // رجعنا للاستيراد الديناميكي بتاعك اللي كان شغال تمام!
             const { initDefinitionsView } = await import('./definitions.js');
             initDefinitionsView();
             break;
         case 'view-models':
-            // رجعنا للاستيراد الديناميكي بتاعك اللي كان شغال تمام!
             const { initModelsView } = await import('./models.js'); 
             await initModelsView(); 
-            break;
-        case 'view-home-settings':
-            await initHomeSettingsView();
             break;
     }
 }
 
 // --- Event Listeners Initialization ---
 async function initRouter() {
-    // Wait for authentication before rendering anything
+    // 1. انتظار المصادقة قبل رسم أي شيء
     const isAuth = await authenticateAdmin();
     if (!isAuth) return;
 
-    // Attach click events to Sidebar Links
+    // 2. ربط الروابط في القائمة الجانبية
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
@@ -110,12 +105,15 @@ async function initRouter() {
         });
     });
 
-    // Handle Logout (تم تحديثه ليعمل مع النظام الجديد بدون أخطاء)
-    document.getElementById('logout-btn').addEventListener('click', () => {
-        logoutUser(); // الدالة الجديدة لا ترجع Error بل تخرج فوراً
-    });
+    // 3. ربط زر تسجيل الخروج
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            logoutUser();
+        });
+    }
 
-    // Activate Default View (Dashboard)
+    // 4. تشغيل الصفحة الافتراضية (الداشبورد)
     const defaultLink = document.querySelector('[data-target="view-dashboard"]');
     if (defaultLink) switchView('view-dashboard', defaultLink);
 }

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEVO | المعرض</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        devo: {
+                            black: '#0a0a0a', dark: '#171717', gray: '#262626',
+                            orange: '#f97316', orangeHover: '#ea580c',
+                            text: '#f5f5f5', muted: '#a3a3a3',
+                            success: '#10b981', error: '#ef4444', info: '#3b82f6'
+                        }
+                    },
+                    fontFamily: { sans: ['Tajawal', 'sans-serif'] },
+                    boxShadow: { 'devo-float': '0 10px 40px -10px rgba(0,0,0,0.8)' }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Tajawal', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f97316; }
+        .hero-bg {
+            background-image: linear-gradient(to bottom, rgba(10,10,10,0.4), rgba(10,10,10,1)), url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        .card-hover:hover {
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.15);
+            border-color: rgba(249, 115, 22, 0.4);
+        }
+    </style>
+</head>
+<body class="bg-devo-black text-devo-text overflow-x-hidden flex flex-col min-h-screen">
+
+    <nav class="fixed w-full z-50 bg-devo-black/90 backdrop-blur-md border-b border-devo-gray transition-all">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <div class="flex-shrink-0 cursor-pointer" onclick="switchSiteView('view-home')">
+                    <h1 class="text-3xl font-black tracking-wider text-white">
+                        D<span class="text-devo-orange">E</span>VO
+                    </h1>
+                </div>
+
+                <div class="hidden md:block">
+                    <div class="flex items-baseline space-x-4 space-x-reverse" id="desktop-nav-links">
+                        </div>
+                </div>
+
+                <div class="hidden md:flex items-center gap-4" id="desktop-user-area">
+                    </div>
+
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-btn" class="text-devo-muted hover:text-white focus:outline-none">
+                        <i class="ph ph-list text-3xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div id="mobile-menu" class="fixed inset-0 bg-devo-black z-40 transform translate-x-full transition-transform duration-300 md:hidden flex flex-col pt-24 px-6">
+        <div class="flex flex-col space-y-4 text-lg font-bold" id="mobile-nav-links">
+            </div>
+    </div>
+
+    <main class="flex-1 pt-20">
+        
+        <div id="view-home" class="site-view-section animate-fade-in block">
+            <section class="hero-bg h-[80vh] min-h-[500px] flex items-center justify-center relative">
+                <div class="text-center z-10 px-4">
+                    <span class="text-devo-orange font-bold tracking-widest text-sm md:text-base uppercase mb-4 block">DEVO Collection</span>
+                    <h1 id="display-hero-title" class="text-4xl md:text-6xl font-black text-white leading-tight mb-6">
+                        <i class="ph ph-spinner animate-spin"></i>
+                    </h1>
+                    <p id="display-hero-subtitle" class="text-devo-muted md:text-lg mb-10 max-w-2xl mx-auto">
+                        ...
+                    </p>
+                    <button onclick="switchSiteView('view-gallery')" class="inline-flex items-center justify-center gap-2 bg-devo-orange hover:bg-devo-orangeHover text-white font-bold py-4 px-8 rounded-xl shadow-[0_0_20px_rgba(249,115,22,0.3)] transition-all transform hover:scale-105">
+                        <span>تصفح الموديلات</span>
+                        <i class="ph ph-arrow-left text-xl"></i>
+                    </button>
+                </div>
+            </section>
+
+            <section class="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto -mt-16 relative z-20">
+                <div id="display-promo-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="col-span-full text-center text-devo-muted py-10"><i class="ph ph-spinner animate-spin text-3xl"></i></div>
+                </div>
+            </section>
+        </div>
+
+        <div id="view-gallery" class="site-view-section hidden animate-fade-in">
+            <section class="py-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[70vh]">
+                <div class="flex flex-col md:flex-row justify-between items-end md:items-center mb-10 gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-white flex items-center gap-3 mb-2">
+                            <i class="ph ph-squares-four text-devo-orange"></i> المعرض
+                        </h2>
+                        <p class="text-devo-muted text-sm">تصفح أحدث الموديلات وابحث بالكود أو الاسم.</p>
+                    </div>
+                    
+                    <div class="relative w-full md:w-96">
+                        <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-devo-muted text-xl"></i>
+                        <input type="text" id="gallery-search" placeholder="بحث بكود المصنع، الاسم، أو التصنيف..." 
+                            class="w-full bg-devo-dark border border-devo-gray rounded-xl pr-12 pl-4 py-3.5 text-white focus:outline-none focus:border-devo-orange transition-all shadow-sm">
+                    </div>
+                </div>
+
+                <div id="gallery-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    </div>
+            </section>
+        </div>
+
+    </main>
+
+<footer class="bg-devo-dark border-t border-devo-gray py-8 mt-auto relative overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-right relative z-10">
+            <div>
+                <h1 class="text-2xl font-black tracking-wider text-white mb-2">D<span class="text-devo-orange">E</span>VO</h1>
+                <p class="text-devo-muted text-xs leading-relaxed max-w-xs mx-auto md:mx-0">للملابس الجاهزة.<br> نلتزم بتقديم أفضل الخامات وأحدث التصاميم لعملائنا في كل مكان.</p>
+            </div>
+            <div>
+                <h4 class="text-white font-bold text-sm mb-3">روابط سريعة</h4>
+                <ul class="space-y-2 text-devo-muted text-xs font-medium">
+                    <li><button onclick="switchSiteView('view-home')" class="hover:text-devo-orange transition-colors">الرئيسية</button></li>
+                    <li><button onclick="switchSiteView('view-gallery')" class="hover:text-devo-orange transition-colors">المعرض</button></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-white font-bold text-sm mb-3">تواصل معنا</h4>
+                <div class="flex justify-center md:justify-start gap-3">
+                    <a href="#" id="link-facebook" target="_blank" class="w-10 h-10 rounded-full bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-blue-500 hover:border-blue-500 hover:shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all"><i class="ph ph-facebook-logo text-xl"></i></a>
+                    <a href="#" id="link-whatsapp" target="_blank" class="w-10 h-10 rounded-full bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-green-500 hover:border-green-500 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all"><i class="ph ph-whatsapp-logo text-xl"></i></a>
+                    <a href="#" id="link-maps" target="_blank" class="w-10 h-10 rounded-full bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-red-500 hover:border-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all"><i class="ph ph-map-pin text-xl"></i></a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="border-t border-devo-gray/50 mt-6 pt-4 flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-[11px] relative z-10">
+            <div class="text-devo-muted mb-3 md:mb-0 font-medium">
+                &copy; <span id="current-year"></span> DEVO Collection. جميع الحقوق محفوظة للمصنع.
+            </div>
+            <script>
+               document.getElementById('current-year').textContent = new Date().getFullYear();
+            </script>
+            <div class="flex flex-wrap items-center justify-center gap-1.5 text-devo-muted bg-devo-black py-1.5 px-3 rounded-full border border-devo-gray/50 shadow-sm">
+                <i class="ph-fill ph-code text-devo-orange text-base"></i>
+                <a href="https://ahmed-attia-portfolio-ahm3d0xs-projects.vercel.app/" target="_blank" class="text-white font-bold hover:text-devo-orange transition-colors tracking-wide">Ahmed M. Attia</a>
+                <span class="font-medium">Developer</span>
+                
+                <span class="text-devo-gray mx-0.5">|</span>
+                <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-base"></i></a>
+            </div>
+        </div>
+    </footer>
+    <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
+    <script type="module" src="./src/js/pages/home/index.js"></script>
+</body>
+</html>
