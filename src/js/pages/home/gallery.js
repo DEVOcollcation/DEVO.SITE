@@ -8,7 +8,6 @@ let currentUser = null;
 let isWorker = false;
 let localCart = []; // سلة المشتريات في المتصفح
 
-// --- تهيئة الصفحة ---
 export async function initGallery() {
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
@@ -26,6 +25,44 @@ export async function initGallery() {
     document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
 
     await fetchGalleryModels();
+
+    // 🌟 🌟 🌟 الإضافة السحرية: الاستماع اللحظي للتغييرات من أي جهاز آخر 🌟 🌟 🌟
+    supabase
+        .channel('public:model_inventory')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
+            console.log('🔄 تم رصد تغيير في المخزون من جهاز آخر، جاري التحديث...');
+            // جلب الموديلات من جديد لتعكس الأرقام الحديثة
+            fetchGalleryModelsSilent(); 
+        })
+        .subscribe();
+}
+
+async function fetchGalleryModelsSilent() {
+    const { data, error } = await supabase
+        .from('models')
+        .select(`
+            *,
+            categories(name),
+            model_sizes(sizes(name)),
+            model_inventory(color_id, available_series, colors(name)),
+            model_images(image_url)
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+    if (!error && data) {
+        allModels = data; // تحديث الذاكرة المحلية
+        applyGalleryFilters(); // إعادة رسم الكروت والأرقام الجديدة
+        
+        // إذا كان الموظف فاتح نافذة التفاصيل حالياً، قم بتحديثها أيضاً!
+        const modal = document.getElementById('model-viewer-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+            const currentModelId = modal.getAttribute('data-current-model-id');
+            if (currentModelId) {
+                window.openModelViewer(currentModelId);
+            }
+        }
+    }
 }
 
 window.clearGalleryFilters = () => {
@@ -156,67 +193,54 @@ function renderGallery(models) {
     }).join('');
 }
 
-// --- نافذة تفاصيل الموديل (الـ Modal) ---
+
 window.openModelViewer = (id) => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
 
+    const sizesCount = model.model_sizes?.length || 1;
+
+    const modal = document.getElementById('model-viewer-modal');
+    if (modal) modal.setAttribute('data-current-model-id', id);
+
     const content = document.getElementById('model-viewer-content');
     
-    // 1. تجهيز معرض الصور
     const imgs = model.model_images?.length > 0 ? model.model_images : [{image_url: null}];
     const mainImg = resolveImageUrl(imgs[0].image_url);
     let imagesGalleryHtml = `
         <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-80 md:h-[400px] mb-3">
             <img src="${mainImg}" id="viewer-main-img" class="w-full h-full object-cover" onerror="this.src='./src/assets/icons/devo.jpeg'">
         </div>
-        ${imgs.length > 1 ? `
-        <div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-            ${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src" class="w-20 h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}
-        </div>` : ''}
+        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src" class="w-20 h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}</div>` : ''}
     `;
 
-    // 2. تجهيز المقاسات
     const sizesHtml = model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('') || '<span class="text-devo-muted text-xs">غير محدد</span>';
 
-    // 3. تجهيز صفوف الألوان والكميات (حسب الصلاحية)
     let colorsHtml = '';
-    
     if (model.model_inventory && model.model_inventory.length > 0) {
         colorsHtml = model.model_inventory.map(inv => {
             const available = inv.available_series || 0;
             const isOut = available === 0;
             
             if (!isWorker) {
-                // عرض للزوار
-                return `
-                <div class="flex justify-between items-center p-3 bg-devo-black border border-devo-gray rounded-xl mb-2">
-                    <span class="text-white font-bold">${inv.colors?.name}</span>
-                    <span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span>
-                </div>`;
+                return `<div class="flex justify-between items-center p-3 bg-devo-black border border-devo-gray rounded-xl mb-2"><span class="text-white font-bold">${inv.colors?.name}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
             }
 
-            // عرض للعمال (شراء)
+            // 🌟 تمرير sizesCount إلى زر الإضافة للسلة 🌟
             return `
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-devo-black border ${isOut ? 'border-devo-error/30' : 'border-devo-gray'} rounded-xl mb-2 gap-3">
                 <div class="flex justify-between w-full sm:w-auto flex-1">
-                    <span class="text-white font-bold flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full ${isOut ? 'bg-devo-error' : 'bg-devo-success'}"></span>
-                        ${inv.colors?.name}
-                    </span>
+                    <span class="text-white font-bold flex items-center gap-2"><span class="w-3 h-3 rounded-full ${isOut ? 'bg-devo-error' : 'bg-devo-success'}"></span>${inv.colors?.name}</span>
                     <span class="text-xs text-devo-muted font-mono mt-1">متبقي: ${available}</span>
                 </div>
-                
-                ${isOut ? `
-                    <button disabled class="w-full sm:w-auto px-4 py-2 bg-devo-gray/20 text-devo-muted rounded-lg text-sm font-bold cursor-not-allowed">نفذت الكمية</button>
-                ` : `
+                ${isOut ? `<button disabled class="w-full sm:w-auto px-4 py-2 bg-devo-gray/20 text-devo-muted rounded-lg text-sm font-bold cursor-not-allowed">نفذت الكمية</button>` : `
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <div class="flex items-center bg-devo-dark border border-devo-gray rounded-lg overflow-hidden h-9">
                             <button onclick="decrementQty('qty-${inv.color_id}')" class="px-3 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus"></i></button>
                             <input type="number" id="qty-${inv.color_id}" value="1" min="1" max="${available}" readonly class="w-10 bg-transparent text-center text-white text-sm font-bold outline-none border-x border-devo-gray">
                             <button onclick="incrementQty('qty-${inv.color_id}', ${available})" class="px-3 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus"></i></button>
                         </div>
-                        <button onclick="addToCart(event, '${model.id}', '${inv.color_id}', '${model.name.replace(/'/g, "\\'")}', '${inv.colors?.name}', ${model.price}, '${mainImg}', ${available})" class="flex-1 sm:flex-none px-4 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-sm font-bold transition-all shadow-md flex justify-center items-center gap-2">
+                        <button onclick="addToCart(event, '${model.id}', '${inv.color_id}', '${model.name.replace(/'/g, "\\'")}', '${inv.colors?.name}', ${model.price}, '${mainImg}', ${available}, ${sizesCount}, '${model.factory_code || model.system_code}')" class="flex-1 sm:flex-none px-4 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-sm font-bold transition-all shadow-md flex justify-center items-center gap-2">
                             <i class="ph ph-shopping-cart-simple text-lg"></i> إضافة
                         </button>
                     </div>
@@ -224,50 +248,69 @@ window.openModelViewer = (id) => {
             </div>`;
         }).join('');
     } else {
-        colorsHtml = `<div class="text-center p-4 text-devo-error bg-devo-error/10 rounded-xl text-sm border border-devo-error/20">لا توجد ألوان مسجلة أو متوفرة لهذا الموديل.</div>`;
+        colorsHtml = `<div class="text-center p-4 text-devo-error bg-devo-error/10 rounded-xl text-sm border border-devo-error/20">لا توجد ألوان مسجلة.</div>`;
     }
 
-    // حقن الهيكل النهائي في النافذة
-    content.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 md:p-0">
-            <div>
-                ${imagesGalleryHtml}
-            </div>
-            
-            <div class="flex flex-col">
-                <div class="mb-4 pb-4 border-b border-devo-gray">
-                    <p class="text-devo-muted text-xs font-mono mb-1">كود: ${model.factory_code || model.system_code}</p>
-                    <h2 class="text-2xl font-black text-white mb-2 leading-tight">${model.name}</h2>
-                    <p class="text-3xl text-devo-orange font-black">${model.price} <span class="text-base font-normal">ج.م للسيريه</span></p>
-                </div>
-
-                <div class="mb-6">
-                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات داخل السيريه</h4>
-                    <div class="flex flex-wrap gap-2">${sizesHtml}</div>
-                </div>
-
-                <div class="flex-1">
-                    <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i class="ph ph-palette"></i> الألوان المتاحة للطلب</h4>
-                    <div class="space-y-1">
-                        ${colorsHtml}
+    if (content) {
+        content.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 md:p-0">
+                <div>${imagesGalleryHtml}</div>
+                <div class="flex flex-col">
+                    <div class="mb-4 pb-4 border-b border-devo-gray">
+                        <p class="text-devo-muted text-xs font-mono mb-1">كود: ${model.factory_code || model.system_code}</p>
+                        <h2 class="text-2xl font-black text-white mb-2 leading-tight">${model.name}</h2>
+                        <p class="text-3xl text-devo-orange font-black">${model.price} <span class="text-base font-normal">ج.م للقطعة</span></p>
+                    </div>
+                    <div class="mb-6">
+                        <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
+                        <div class="flex flex-wrap gap-2">${sizesHtml}</div>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i class="ph ph-palette"></i> الألوان المتاحة للطلب</h4>
+                        <div class="space-y-1">${colorsHtml}</div>
                     </div>
                 </div>
-                
-                ${!isWorker ? `
-                    <div class="mt-6 p-4 bg-devo-info/10 border border-devo-info/20 rounded-xl flex items-start gap-3">
-                        <i class="ph ph-info text-devo-info text-2xl mt-0.5"></i>
-                        <p class="text-xs text-devo-muted leading-relaxed">أنت تتصفح الموقع كزائر. لمعرفة الكميات الدقيقة وإضافة المنتجات للفاتورة، يرجى تسجيل الدخول بحساب الموظف الخاص بك من الإدارة.</p>
-                    </div>
-                ` : ''}
             </div>
-        </div>
-    `;
+        `;
+    }
 
-    const modal = document.getElementById('model-viewer-modal');
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.remove('opacity-0'), 10); }
 };
 
+// استبدل دالة addToCart بهذا الكود لتستقبل factoryCode
+window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable, sizesCount, factoryCode) => {
+    const qtyInput = document.getElementById(`qty-${colorId}`);
+    const qty = parseInt(qtyInput.value);
+
+    if (qty > maxAvailable) return showToast('الكمية المطلوبة تتجاوز المتاح في المخزن!', 'error');
+
+    const existingIndex = localCart.findIndex(i => i.modelId === modelId && i.colorId === colorId);
+    
+    if (existingIndex > -1) {
+        if (localCart[existingIndex].qty + qty > maxAvailable) return showToast('إجمالي الكمية المطلوبة في السلة تتجاوز المتاح!', 'error');
+        localCart[existingIndex].qty += qty;
+    } else {
+        // 🌟 حفظ الكود في السلة 🌟
+        localCart.push({ modelId, colorId, modelName, colorName, price, image, qty, sizesCount, factoryCode });
+    }
+
+    saveLocalCart();
+    if (window.refreshCartView) window.refreshCartView();
+    
+    const btn = event.currentTarget || event.target;
+    if (btn) {
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="ph ph-check text-lg"></i> تمت الإضافة`;
+        btn.classList.replace('bg-devo-orange', 'bg-devo-success');
+        btn.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-green-600');
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.replace('bg-devo-success', 'bg-devo-orange');
+            btn.classList.replace('hover:bg-green-600', 'hover:bg-devo-orangeHover');
+        }, 2000);
+    }
+    showToast(`تم إضافة الموديل للسلة`, 'success');
+};
 window.closeModelViewer = () => {
     const modal = document.getElementById('model-viewer-modal');
     modal.classList.add('opacity-0');
@@ -314,56 +357,6 @@ function updateFloatingCart() {
     }
 }
 
-window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable) => {
-    const qtyInput = document.getElementById(`qty-${colorId}`);
-    const qty = parseInt(qtyInput.value);
 
-    if (qty > maxAvailable) {
-        return showToast('الكمية المطلوبة تتجاوز المتاح في المخزن!', 'error');
-    }
-
-    // البحث هل هذا الموديل بنفس اللون موجود مسبقاً في السلة؟
-    const existingIndex = localCart.findIndex(i => i.modelId === modelId && i.colorId === colorId);
-    
-    if (existingIndex > -1) {
-        // التأكد أن الإجمالي لا يتعدى المخزون
-        if (localCart[existingIndex].qty + qty > maxAvailable) {
-            return showToast('إجمالي الكمية المطلوبة في السلة تتجاوز المتاح!', 'error');
-        }
-        localCart[existingIndex].qty += qty;
-    } else {
-        localCart.push({
-            modelId,
-            colorId,
-            modelName,
-            colorName,
-            price,
-            image,
-            qty
-        });
-    }
-
-    saveLocalCart();
-    
-    // 🌟 التحديث السحري: تحديث واجهة السلة في نفس الصفحة فوراً 🌟
-    if (window.refreshCartView) {
-        window.refreshCartView();
-    }
-    
-    // تأثير بصري للزر (بشكل آمن)
-    const btn = event.currentTarget || event.target;
-    if (btn) {
-        const originalHtml = btn.innerHTML;
-        btn.innerHTML = `<i class="ph ph-check text-lg"></i> تمت الإضافة`;
-        btn.classList.replace('bg-devo-orange', 'bg-devo-success');
-        btn.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-green-600');
-        
-        setTimeout(() => {
-            btn.innerHTML = originalHtml;
-            btn.classList.replace('bg-devo-success', 'bg-devo-orange');
-            btn.classList.replace('hover:bg-green-600', 'hover:bg-devo-orangeHover');
-        }, 2000);
-    }
-
-    showToast(`تم إضافة ${qty} سيريه من ${modelName} (${colorName}) للسلة`, 'success');
-};
+// تعريض الدالة للاستخدام العالمي لتحديث المعرض بعد الطلب
+window.refreshGallery = fetchGalleryModels;

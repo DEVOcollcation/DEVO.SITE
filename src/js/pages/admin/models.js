@@ -6,6 +6,21 @@ let isInitialized = false;
 let allModels = [];
 let defCache = { cats: [], clss: [], szs: [], clrs: [] };
 
+// 🌟 النظام الجديد لمنع تداخل التحديثات والتعامل مع خمول المتصفح 🌟
+let isSyncing = false;
+
+async function syncAdminData() {
+    // إذا كانت الصفحة مخفية، لا تفعل شيئاً (سيتم التحديث عند عودة المستخدم لها)
+    if (isSyncing || document.hidden) return; 
+    isSyncing = true;
+    
+    setTimeout(async () => {
+        console.log('🔄 رصد تغيير في قاعدة البيانات! جاري تحديث الإدارة...');
+        await fetchModelsSilent();
+        isSyncing = false;
+    }, 500); // ننتظر نصف ثانية حتى تستقر كل السجلات
+}
+
 function resolveImageUrl(url) {
     if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.jpeg';
     try {
@@ -23,24 +38,39 @@ function resolveImageUrl(url) {
 
 export async function initModelsView() {
     if (isInitialized) return;
-['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-date-from', 'filter-date-to'].forEach(id => {
+
+    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-date-from', 'filter-date-to'].forEach(id => {
         document.getElementById(id)?.addEventListener('input', applyFilters);
     });
+    
     document.getElementById('model-form')?.addEventListener('submit', handleSaveModel);
     document.getElementById('add-stock-form')?.addEventListener('submit', handleAddStockSubmit);
     
-    ['model-search', 'filter-category', 'filter-class', 'filter-stock'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', applyFilters);
-    });
-
     document.getElementById('m-status')?.addEventListener('change', (e) => {
         document.getElementById('m-status-text').textContent = e.target.checked ? 'نشط' : 'معطل';
     });
 
     await loadDefinitionsCache();
     await loadModels();
+
+    // 🌟 🌟 🌟 تفعيل الاستماع اللحظي (Realtime) القوي والآمن 🌟 🌟 🌟
+    supabase.channel('admin_realtime_sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'model_inventory' }, syncAdminData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements' }, syncAdminData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, syncAdminData)
+        .subscribe((status) => {
+            console.log('📡 حالة اتصال الإدارة بالرادار اللحظي:', status);
+        });
+// 🌟 تحديث البيانات فوراً بمجرد عودة المستخدم لصفحة الإدارة (قهر خمول المتصفح) 🌟
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && isInitialized) {
+            console.log('👁️ عودة لصفحة الإدارة، جاري جلب أحدث البيانات لتفادي خمول المتصفح...');
+            fetchModelsSilent();
+        }
+    });
     isInitialized = true;
 }
+
 window.clearModelFilters = () => {
     document.getElementById('model-search').value = '';
     document.getElementById('filter-category').value = '';
@@ -48,8 +78,9 @@ window.clearModelFilters = () => {
     document.getElementById('filter-stock').value = '';
     document.getElementById('filter-date-from').value = '';
     document.getElementById('filter-date-to').value = '';
-    applyFilters(); // إعادة تحميل الكروت
+    applyFilters(); 
 };
+
 // --- Data Fetching ---
 async function loadDefinitionsCache() {
     const [cats, clss, szs, clrs] = await Promise.all([
@@ -67,7 +98,11 @@ async function loadDefinitionsCache() {
 async function loadModels() {
     const container = document.getElementById('models-container');
     container.innerHTML = `<div class="col-span-full py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i></div>`;
+    await fetchModelsSilent(false); 
+}
 
+// 🌟 دالة الجلب الصامتة 🌟
+async function fetchModelsSilent(isSilent = true) {
     const { data, error } = await supabase
         .from('models')
         .select(`
@@ -80,11 +115,23 @@ async function loadModels() {
         `)
         .order('created_at', { ascending: false });
 
-    if (error) return showToast('خطأ في تحميل الموديلات', 'error');
+    if (error) {
+        if (!isSilent) showToast('خطأ في تحميل الموديلات', 'error');
+        return;
+    }
 
     allModels = data;
     updateStatistics(data);
     applyFilters();
+
+    // تحديث النافذة المفتوحة بصمت
+    const detailsModal = document.getElementById('view-details-modal');
+    if (detailsModal && !detailsModal.classList.contains('hidden')) {
+        const activeModelId = detailsModal.getAttribute('data-current-view-id');
+        if (activeModelId) {
+            viewDetails(activeModelId, true); 
+        }
+    }
 }
 
 function updateStatistics(data) {
@@ -109,7 +156,6 @@ function applyFilters() {
     const classId = document.getElementById('filter-class').value;
     const stockStatus = document.getElementById('filter-stock').value;
     
-    // جلب قيم التواريخ
     const dateFrom = document.getElementById('filter-date-from')?.value;
     const dateTo = document.getElementById('filter-date-to')?.value;
 
@@ -123,7 +169,6 @@ function applyFilters() {
         if (stockStatus === 'in_stock' && totalQty === 0) isMatch = false;
         if (stockStatus === 'out_stock' && totalQty > 0) isMatch = false;
 
-        // فلترة الفترات الزمنية (إن وجدت)
         if (dateFrom || dateTo) {
             const modelDate = new Date(m.created_at);
             modelDate.setHours(0, 0, 0, 0);
@@ -145,6 +190,7 @@ function applyFilters() {
     });
     renderModelsGrid(filtered);
 }
+
 function renderModelsGrid(models) {
     const container = document.getElementById('models-container');
     if (models.length === 0) {
@@ -194,7 +240,6 @@ function renderModelsGrid(models) {
     }).join('');
 }
 
-// --- Create & Edit Modal Logic (المنطق المعدل والمحمي) ---
 window.openModelModal = async (id = null) => {
     const form = document.getElementById('model-form');
     form.reset();
@@ -239,7 +284,6 @@ window.openModelModal = async (id = null) => {
         modal.classList.remove('hidden');
         setTimeout(() => modal.classList.remove('opacity-0'), 10);
 
-        // جلب مسحوبات الألوان لحساب الكمية الكلية بشكل دقيق
         const { data: outMovements } = await supabase
             .from('stock_movements')
             .select('color_id, quantity')
@@ -254,7 +298,7 @@ window.openModelModal = async (id = null) => {
         invContainer.innerHTML = '';
         model.model_inventory.forEach(inv => {
             const sold = soldMap[inv.color_id] || 0;
-            const total = inv.available_series + sold; // الإجمالي = المتاح + المباع
+            const total = inv.available_series + sold; 
             addInventoryRow(inv.color_id, total, sold);
         });
 
@@ -292,7 +336,6 @@ window.addInventoryRow = (colorId = '', totalQty = '', soldQty = 0) => {
     
     const isExisting = colorId !== '';
     
-    // تم إزالة required لكي يتمكن الموظف من تجاهل هذا القسم عند إنشاء الهيكل المبدئي
     row.innerHTML = `
         <select name="inv-color" ${isExisting ? 'disabled' : ''} class="flex-[2] bg-devo-black border border-devo-gray rounded px-3 py-2 text-white text-xs outline-none focus:border-devo-orange ${isExisting ? 'opacity-70 cursor-not-allowed' : ''}">
             <option value="" disabled ${!isExisting ? 'selected' : ''}>اختر اللون</option>
@@ -341,7 +384,6 @@ async function handleSaveModel(e) {
         const colorSelect = row.querySelector('[name="inv-color"]');
         const colorId = hiddenColor ? hiddenColor.value : (colorSelect ? colorSelect.value : null);
         
-        // تجاهل الصفوف الفارغة بالكامل
         if (!colorId) continue;
 
         const qtyInput = row.querySelector('[name="inv-qty"]');
@@ -368,10 +410,9 @@ async function handleSaveModel(e) {
         .map(inputId => document.getElementById(inputId).value.trim())
         .filter(url => url !== '');
 
-    // --- المنطق الذكي الجديد (Smart Disabling) ---
     let statusMessage = '';
     if (selectedSizes.length === 0 || inventoryData.length === 0) {
-        modelData.is_active = false; // إجبار الموديل على أن يكون غير نشط
+        modelData.is_active = false;
         statusMessage = ' (تم الحفظ كـ "معطل" لعدم اكتمال المقاسات والألوان)';
     }
 
@@ -393,7 +434,6 @@ async function handleSaveModel(e) {
             modelId = data.id;
         }
 
-        // الحفظ فقط في حالة وجود بيانات
         if (selectedSizes.length > 0) {
             await supabase.from('model_sizes').insert(selectedSizes.map(sId => ({ model_id: modelId, size_id: sId })));
         }
@@ -406,7 +446,6 @@ async function handleSaveModel(e) {
 
         showToast((id ? 'تم حفظ التعديلات بنجاح' : 'تم إضافة الموديل بنجاح') + statusMessage, 'success');
         closeModelModal();
-        loadModels();
     } catch (err) {
         if (err.code === '23505') { 
             showToast('كود السيستم هذا مستخدم بالفعل في موديل آخر، يرجى تغييره!', 'error');
@@ -419,19 +458,23 @@ async function handleSaveModel(e) {
     }
 }
 
-// --- View Details & Movements ---
-window.viewDetails = async (id) => {
+// 🌟 تعديل العرض ليدعم التحديث الصامت 🌟
+window.viewDetails = async (id, isSilent = false) => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
 
     const modal = document.getElementById('view-details-modal');
     const content = document.getElementById('details-content');
+    
+    modal.setAttribute('data-current-view-id', id);
 
     const sizesCount = model.model_sizes?.length || 1; 
 
-    content.innerHTML = `<div class="py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i><p class="mt-2 text-devo-muted">جاري تحميل بيانات السجل...</p></div>`;
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    if (!isSilent) {
+        content.innerHTML = `<div class="py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i><p class="mt-2 text-devo-muted">جاري تحميل بيانات السجل...</p></div>`;
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    }
 
     const { data: movements } = await supabase
         .from('stock_movements')
@@ -439,7 +482,6 @@ window.viewDetails = async (id) => {
         .eq('model_id', id)
         .order('created_at', { ascending: false });
 
-// إصلاح الصور لتظهر بنفس السلوك في الخارج والداخل
     let imagesHtml = '';
     if (model.model_images && model.model_images.length > 0) {
         imagesHtml = `
@@ -450,7 +492,6 @@ window.viewDetails = async (id) => {
             </div>
         `;
     } else {
-        // عرض الصورة الافتراضية إذا لم يتم رفع أي صورة (مطابق لسلوك الكارت الخارجي)
         imagesHtml = `
             <div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm">
                 <img src="./src/assets/icons/devo.jpeg" class="w-full h-full object-cover ">
@@ -541,6 +582,7 @@ window.viewDetails = async (id) => {
 
 window.closeDetailsModal = () => {
     document.getElementById('view-details-modal').classList.add('opacity-0');
+    document.getElementById('view-details-modal').removeAttribute('data-current-view-id');
     setTimeout(() => document.getElementById('view-details-modal').classList.add('hidden'), 300);
 };
 
@@ -549,11 +591,9 @@ window.handleDeleteModel = async (id) => {
     if (confirmed) {
         await supabase.from('models').delete().eq('id', id);
         showToast('تم حذف الموديل بنجاح');
-        loadModels();
     }
 };
 
-// --- Add Stock Logic ---
 window.openAddStockModal = (modelId) => {
     const model = allModels.find(m => m.id === modelId);
     if (!model) return;
@@ -605,9 +645,6 @@ async function handleAddStockSubmit(e) {
 
         showToast('تمت إضافة الشحنة للمخزون بنجاح', 'success');
         closeAddStockModal();
-        
-        await loadModels(); 
-        viewDetails(modelId); 
 
     } catch (err) {
         showToast('حدث خطأ أثناء حفظ الشحنة', 'error');
@@ -617,33 +654,13 @@ async function handleAddStockSubmit(e) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ==========================================
-// --- Excel Import Logic (نظام الاستيراد الذكي والمحمي) ---
+// --- Excel Import Logic ---
 // ==========================================
 
-// متغيرات لتخزين البيانات بين خطوة المعاينة وخطوة الحفظ
 let pendingExcelModels = [];
 let pendingExcelCategories = new Set();
 
-// دالة تصفير النافذة لإعادتها لحالتها الأصلية
 window.resetExcelModal = () => {
     document.getElementById('excel-step-1').classList.remove('hidden');
     document.getElementById('excel-step-2').classList.add('hidden');
@@ -667,13 +684,11 @@ window.closeExcelImportModal = () => {
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
-// تغيير اسم الملف عند الاختيار
 document.getElementById('excel-file-input')?.addEventListener('change', function(e) {
     const fileName = e.target.files[0]?.name || 'اسحب الملف هنا أو اضغط للاختيار';
     document.getElementById('excel-file-name').textContent = fileName;
 });
 
-// الخطوة الأولى: المعاينة وفصل التكرار
 window.processExcelPreview = async () => {
     const fileInput = document.getElementById('excel-file-input');
     const file = fileInput.files[0];
@@ -688,9 +703,7 @@ window.processExcelPreview = async () => {
         const data = await readExcelFile(file);
         if (data.length === 0) throw new Error("الملف فارغ");
 
-        // استخراج جميع أكواد السيستم الموجودة حالياً بقاعدة البيانات لسرعة المقارنة
         const existingCodes = new Set(allModels.map(m => String(m.system_code)));
-
         const newModels = [];
         const duplicates = [];
         const uniqueCategories = new Set();
@@ -712,7 +725,6 @@ window.processExcelPreview = async () => {
                 factoryCode = match[2];
             }
 
-            // فحص التكرار: إذا كان الكود مسجلاً مسبقاً، ضعه في قائمة المكرر وتجاهله
             if (existingCodes.has(sysCode)) {
                 duplicates.push({ sysCode, modelName });
             } else {
@@ -722,9 +734,9 @@ window.processExcelPreview = async () => {
                     factory_code: factoryCode,
                     name: modelName,
                     price: price,
-                    category_name: catName, // مؤقت للربط لاحقاً
+                    category_name: catName,
                     class_id: null,
-                    is_active: false // مسودة
+                    is_active: false
                 });
             }
         });
@@ -732,7 +744,6 @@ window.processExcelPreview = async () => {
         pendingExcelModels = newModels;
         pendingExcelCategories = uniqueCategories;
 
-        // تحديث واجهة العرض (الشاشات والأرقام)
         document.getElementById('excel-new-count').textContent = newModels.length;
         document.getElementById('excel-dup-count').textContent = duplicates.length;
 
@@ -746,7 +757,6 @@ window.processExcelPreview = async () => {
             dupWarning.classList.add('hidden');
         }
 
-        // الانتقال للخطوة الثانية
         document.getElementById('excel-step-1').classList.add('hidden');
         document.getElementById('excel-step-2').classList.remove('hidden');
         document.getElementById('excel-step-2').classList.add('flex');
@@ -760,7 +770,6 @@ window.processExcelPreview = async () => {
     }
 };
 
-// الخطوة الثانية: تأكيد الحفظ الفعلي للموديلات الجديدة فقط
 window.executeExcelImport = async () => {
     if (pendingExcelModels.length === 0) {
         showToast('لا توجد موديلات جديدة صالحة للإضافة!', 'warning');
@@ -772,7 +781,6 @@ window.executeExcelImport = async () => {
     btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> جاري الحفظ والتأكيد...`;
 
     try {
-        // 1. إنشاء التصنيفات المفقودة (إن وجدت)
         for (const catName of pendingExcelCategories) {
             let existingCat = defCache.cats.find(c => c.name === catName);
             if (!existingCat) {
@@ -781,7 +789,6 @@ window.executeExcelImport = async () => {
             }
         }
 
-        // 2. تجهيز الموديلات النهائية بربط الأيديهات
         const modelsToInsert = pendingExcelModels.map(m => {
             const catId = m.category_name ? defCache.cats.find(c => c.name === m.category_name)?.id : null;
             return {
@@ -795,14 +802,11 @@ window.executeExcelImport = async () => {
             };
         });
 
-        // 3. إرسال أمر الـ Insert (لا نستخدم Upsert لأننا عزلنا المكرر بالفعل)
         const { error } = await supabase.from('models').insert(modelsToInsert);
-        
         if (error) throw error;
 
         showToast(`تم استيراد وحفظ ${modelsToInsert.length} موديل بنجاح!`, 'success');
         closeExcelImportModal();
-        loadModels(); // تحديث الواجهة
 
     } catch (err) {
         console.error(err);
@@ -813,7 +817,6 @@ window.executeExcelImport = async () => {
     }
 };
 
-// دالة مساعدة لقراءة الإكسيل
 function readExcelFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
