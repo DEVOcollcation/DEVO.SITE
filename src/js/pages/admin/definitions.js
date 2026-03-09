@@ -28,14 +28,18 @@ window.switchDefTab = async (tabId) => {
     const searchInput = document.getElementById('def-search-input');
     if (searchInput) searchInput.value = '';
     
-    // إظهار/إخفاء زر استيراد الإكسيل للألوان فقط
-    const headerActions = document.querySelector('#view-definitions .flex.justify-between.items-center');
+    // 🌟 إزالة الزر القديم لمنع التكرار
     const oldBtn = document.getElementById('btn-import-colors');
     if (oldBtn) oldBtn.remove();
 
-    if (tabId === 'colors' && headerActions) {
-        const btnHtml = `<button id="btn-import-colors" onclick="openColorExcelModal()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 border border-devo-success/20 ml-2"><i class="ph ph-file-xls text-xl"></i> استيراد (Excel)</button>`;
-        headerActions.children[1].insertAdjacentHTML('afterbegin', btnHtml);
+    // 🌟 البحث عن زر "إضافة عنصر جديد" لتحديد المكان الصحيح
+    const addNewBtn = document.querySelector('button[onclick="openDefinitionModalFromCurrent()"]');
+
+    if (tabId === 'colors' && addNewBtn) {
+        const btnHtml = `<button id="btn-import-colors" onclick="openColorExcelModal()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-4 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 border border-devo-success/20"><i class="ph ph-file-xls text-xl"></i> استيراد (Excel)</button>`;
+        
+        // 🌟 إضافته "قبل" زر الإضافة (بجانبه وليس بداخله) 🌟
+        addNewBtn.insertAdjacentHTML('beforebegin', btnHtml);
     }
     
     await loadCurrentTabData();
