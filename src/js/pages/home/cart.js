@@ -284,3 +284,28 @@ window.finishOrderAndRedirect = () => {
         window.switchSiteView('view-gallery');
     }, 300);
 };
+
+
+
+// 🌟 دالة الطباعة المخصصة لتغيير اسم ملف الـ PDF 🌟
+window.executeInvoicePrint = () => {
+    const custName = document.getElementById('inv-cust-name').innerText.trim() || 'Client';
+    const custPhone = document.getElementById('inv-cust-phone').innerText.trim() || 'Phone';
+    
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    // حفظ اسم الموقع الأصلي
+    const originalTitle = document.title;
+    
+    // تغيير اسم الموقع مؤقتاً ليكون هو اسم ملف الـ PDF
+    document.title = `${custName}_${custPhone}_${dateStr}`;
+
+    // أمر الطباعة
+    window.print();
+
+    // إرجاع اسم الموقع الأصلي بعد ثانية لكي لا يلاحظ المستخدم التغيير
+    setTimeout(() => {
+        document.title = originalTitle;
+    }, 1500);
+};

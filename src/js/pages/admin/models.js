@@ -101,7 +101,6 @@ async function loadModels() {
     await fetchModelsSilent(false); 
 }
 
-// 🌟 دالة الجلب الصامتة 🌟
 async function fetchModelsSilent(isSilent = true) {
     const { data, error } = await supabase
         .from('models')
@@ -110,12 +109,13 @@ async function fetchModelsSilent(isSilent = true) {
             categories(id, name),
             classes(id, name),
             model_sizes(sizes(id, name)),
-            model_inventory(color_id, available_series, colors(id, name)),
+            model_inventory(color_id, available_series, colors(id, name, color_code)),
             model_images(image_url)
         `)
         .order('created_at', { ascending: false });
 
     if (error) {
+        console.error("Fetch Models Error:", error);
         if (!isSilent) showToast('خطأ في تحميل الموديلات', 'error');
         return;
     }
@@ -446,6 +446,10 @@ async function handleSaveModel(e) {
 
         showToast((id ? 'تم حفظ التعديلات بنجاح' : 'تم إضافة الموديل بنجاح') + statusMessage, 'success');
         closeModelModal();
+
+        // 🌟 🌟 السطر السحري تم وضعه في مكانه الصحيح 🌟 🌟
+        await fetchModelsSilent(false);
+
     } catch (err) {
         if (err.code === '23505') { 
             showToast('كود السيستم هذا مستخدم بالفعل في موديل آخر، يرجى تغييره!', 'error');
@@ -807,6 +811,9 @@ window.executeExcelImport = async () => {
 
         showToast(`تم استيراد وحفظ ${modelsToInsert.length} موديل بنجاح!`, 'success');
         closeExcelImportModal();
+
+        // 🌟 السطر السحري: لتحديث الجدول فوراً بعد رفع الإكسيل 🌟
+        await fetchModelsSilent(false);
 
     } catch (err) {
         console.error(err);

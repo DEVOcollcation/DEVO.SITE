@@ -49,7 +49,10 @@
                 <i class="ph ph-squares-four text-xl"></i>
                 <span>الإحصائيات الرئيسية</span>
             </a>
-
+            <a href="#" data-target="view-admin-orders" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
+                <i class="ph ph-receipt text-xl"></i>
+                <span>إدارة الأوردرات</span>
+            </a>
             <a href="#" data-target="view-definitions" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
                 <i class="ph ph-list-dashes text-xl"></i>
                 <span>التعريفات الأساسية</span>
@@ -98,7 +101,108 @@
                 <div class="flex items-center justify-center h-full text-devo-muted">قسم الإحصائيات (قريباً)</div>
             </div>
 
+<div id="view-admin-orders" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-4">
+        
+        <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <div>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-receipt text-devo-orange"></i> لوحة إدارة الأوردرات
+                </h2>
+            </div>
+            <button onclick="exportOrdersToExcel()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg border border-devo-success/20 text-sm">
+                <i class="ph ph-file-xls text-xl"></i> تصدير البيانات (Excel)
+            </button>
+        </div>
 
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div class="bg-devo-dark border border-devo-gray py-3 px-4 rounded-xl shadow-sm text-center">
+                <span class="block text-devo-muted text-[10px] font-bold mb-1">إجمالي الأوردرات</span>
+                <span class="text-xl text-white font-black" id="ao-stat-total">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-info/30 py-3 px-4 rounded-xl shadow-sm text-center">
+                <span class="block text-devo-info text-[10px] font-bold mb-1">إجمالي السريات</span>
+                <span class="text-xl text-devo-info font-black" id="ao-stat-series">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-orange/30 py-3 px-4 rounded-xl shadow-sm text-center">
+                <span class="block text-devo-orange text-[10px] font-bold mb-1">إجمالي الإيرادات (ج.م)</span>
+                <span class="text-xl text-devo-orange font-black" id="ao-stat-rev">0</span>
+            </div>
+            <div class="bg-devo-dark border border-purple-500/30 py-3 px-4 rounded-xl shadow-sm text-center">
+                <span class="block text-purple-400 text-[10px] font-bold mb-1">قيد العمل والتجهيز</span>
+                <span class="text-xl text-purple-400 font-black" id="ao-stat-prog">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-success/30 py-3 px-4 rounded-xl shadow-sm text-center">
+                <span class="block text-devo-success text-[10px] font-bold mb-1">تم الشحن / التسليم</span>
+                <span class="text-xl text-devo-success font-black" id="ao-stat-done">0</span>
+            </div>
+        </div>
+
+        <div class="sticky top-[-32px] z-40 bg-devo-black/95 backdrop-blur-md border-b border-devo-gray py-3">
+            <div class="flex flex-wrap gap-2 items-center">
+                <div class="relative flex-[2] min-w-[200px]">
+                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                    <input type="text" id="ao-search" placeholder="بحث برقم الأوردر، العميل، الهاتف، الموظف..." 
+                        class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                </div>
+                <select id="ao-status" class="flex-1 min-w-[140px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
+                    <option value="">كل الحالات</option>
+                    <option value="created">تم إنشاء الأوردر</option>
+                    <option value="in_progress">جاري العمل</option>
+                    <option value="registered">تم التسجيل على السيستم</option>
+                    <option value="preparing">جاري تجهيز الأوردر</option>
+                    <option value="shipped">تم الشحن</option>
+                    <option value="delivered">تم التسليم</option>
+                </select>
+                <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[110px]">
+                    <span class="text-[10px] text-devo-muted font-bold">من:</span>
+                    <input type="date" id="ao-date-from" class="bg-transparent text-white outline-none text-[11px] py-2.5 cursor-pointer w-full">
+                </div>
+                <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[110px]">
+                    <span class="text-[10px] text-devo-muted font-bold">إلى:</span>
+                    <input type="date" id="ao-date-to" class="bg-transparent text-white outline-none text-[11px] py-2.5 cursor-pointer w-full">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto min-h-[400px]">
+                <table class="w-full text-right text-sm whitespace-nowrap">
+<thead class="bg-devo-black border-b border-devo-gray text-devo-muted">
+                        <tr>
+                            <th class="p-3 font-medium">رقم الأوردر</th>
+                            <th class="p-3 font-medium">التاريخ</th>
+                            <th class="p-3 font-medium">العميل / المحل</th>
+                            <th class="p-3 font-medium">البائع (المعرض)</th>
+                            <th class="p-3 font-medium text-center">الكمية</th>
+                            <th class="p-3 font-medium text-center">الإجمالي</th>
+                            <th class="p-3 font-medium text-center text-devo-info">مُسند إلى (الإدارة)</th>
+                            <th class="p-3 font-medium text-center">الحالة</th>
+                            <th class="p-3 font-medium text-center">الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ao-table-body" class="divide-y divide-devo-gray">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="ao-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300 no-print">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-4 border-b border-devo-gray flex justify-between items-center bg-devo-black/80">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-receipt text-devo-orange"></i> تفاصيل الأوردر</h3>
+                    <div class="flex gap-2">
+                        <button onclick="closeAdminOrderDetails()" class="text-devo-muted hover:text-white p-1 rounded-full border border-transparent hover:border-devo-gray ml-2"><i class="ph ph-x text-xl"></i></button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6" id="ao-details-content"></div>
+            </div>
+        </div>
+
+        <div id="admin-print-container" class="hidden no-print"></div>
+
+    </div>
+</div>
             <div id="view-definitions" class="view-section hidden h-full">
 
                 <div class="h-full flex flex-col space-y-6 animate-fade-in">
@@ -170,17 +274,23 @@
                                 </button>
                             </div>
 
-                            <form id="def-action-form" class="space-y-6">
-                                <input type="hidden" id="def-target-table">
-                                <input type="hidden" id="def-item-id">
+<form id="def-action-form" class="space-y-6">
+    <input type="hidden" id="def-target-table">
+    <input type="hidden" id="def-item-id">
+    
+    <div id="def-code-wrapper" class="space-y-2 mb-4 hidden">
+        <label class="block text-sm font-medium text-devo-muted">كود اللون (رقم)</label>
+        <input type="text" id="def-item-code" autocomplete="off"
+            class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-grayHover"
+            placeholder="مثال: 12">
+    </div>
 
-                                <div class="space-y-2">
-                                    <label class="block text-sm font-medium text-devo-muted">اسم العنصر</label>
-                                    <input type="text" id="def-item-name" required autocomplete="off"
-                                        class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-grayHover"
-                                        placeholder="أدخل الاسم هنا...">
-                                </div>
-
+    <div class="space-y-2 mb-6">
+        <label class="block text-sm font-medium text-devo-muted">اسم العنصر</label>
+        <input type="text" id="def-item-name" required autocomplete="off"
+            class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-grayHover"
+            placeholder="أدخل الاسم هنا...">
+    </div>
                                 <div class="flex gap-3 pt-4">
                                     <button type="button" onclick="closeDefinitionModal()" 
                                         class="flex-1 px-6 py-3.5 rounded-xl border border-devo-gray text-white hover:bg-devo-gray transition-all font-bold text-sm">
@@ -745,7 +855,53 @@
                     <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-sm"></i></a>
                 </div>
             </footer>
+<div id="color-excel-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex justify-center items-center p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-devo-dark border border-devo-gray w-full max-w-2xl rounded-2xl shadow-devo-float transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]">
+            <div class="p-5 border-b border-devo-gray flex justify-between items-center">
+                <h3 class="text-xl font-bold text-white flex items-center gap-2"><i class="ph ph-file-xls text-devo-success text-2xl"></i> استيراد الألوان (Excel)</h3>
+                <button onclick="closeColorExcelModal()" class="text-devo-muted hover:text-white transition-colors"><i class="ph ph-x text-2xl"></i></button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
+                <div id="color-excel-step-1" class="space-y-4">
+                    <div class="bg-devo-info/10 border border-devo-info/20 p-4 rounded-xl text-sm text-devo-info leading-relaxed">
+                        <i class="ph ph-info text-xl mb-2 block"></i>
+                        يجب أن يحتوي ملف الإكسيل على عمودين رئيسيين: <b>"كود اللون"</b> و <b>"اسم اللون"</b>. النظام سيتخطى الأكواد المسجلة مسبقاً لمنع التكرار.
+                    </div>
+                    <label class="border-2 border-dashed border-devo-gray hover:border-devo-orange bg-devo-black rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer transition-colors group">
+                        <i class="ph ph-upload-simple text-4xl text-devo-muted group-hover:text-devo-orange mb-3 transition-colors"></i>
+                        <span id="color-excel-file-name" class="text-white font-bold text-center">اسحب الملف هنا أو اضغط للاختيار</span>
+                        <input type="file" id="color-excel-file-input" accept=".xlsx, .xls" class="hidden">
+                    </label>
+                    <button id="color-excel-preview-btn" onclick="processColorExcelPreview()" class="w-full bg-devo-black border border-devo-gray hover:border-devo-orange text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2">
+                        <i class="ph ph-magnifying-glass text-xl"></i> تحليل ومعاينة الملف
+                    </button>
+                </div>
 
+                <div id="color-excel-step-2" class="hidden flex-col gap-6">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-devo-black border border-devo-success/30 p-4 rounded-xl text-center">
+                            <span class="block text-devo-muted text-xs mb-1">ألوان جديدة سيتم إضافتها</span>
+                            <span class="text-3xl font-black text-devo-success" id="color-excel-new-count">0</span>
+                        </div>
+                        <div class="bg-devo-black border border-devo-error/30 p-4 rounded-xl text-center">
+                            <span class="block text-devo-muted text-xs mb-1">ألوان مكررة (سيتم تخطيها)</span>
+                            <span class="text-3xl font-black text-devo-error" id="color-excel-dup-count">0</span>
+                        </div>
+                    </div>
+                    
+                    <div id="color-excel-dup-warning" class="hidden">
+                        <h4 class="text-devo-error font-bold mb-2 text-sm flex items-center gap-2"><i class="ph ph-warning"></i> أكواد مكررة موجودة بالسيستم بالفعل:</h4>
+                        <div id="color-excel-dup-list" class="bg-devo-black border border-devo-error/20 rounded-lg p-3 max-h-32 overflow-y-auto text-xs space-y-1 custom-scrollbar"></div>
+                    </div>
+
+                    <button id="color-excel-import-btn" onclick="executeColorExcelImport()" class="w-full bg-devo-success hover:bg-green-600 text-white py-3 rounded-xl font-bold transition-colors shadow-lg flex justify-center items-center gap-2">
+                        <i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الألوان الجديدة
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
         </main> <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="module" src="./src/js/pages/admin/router.js"></script>

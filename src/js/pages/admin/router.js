@@ -76,6 +76,10 @@ async function loadViewLogic(targetId) {
         case 'view-dashboard':
             // await initDashboard();
             break;
+        case 'view-admin-orders':
+            const { initAdminOrdersView } = await import('./admin_orders.js');
+            await initAdminOrdersView();
+            break;
         case 'view-users':
             await initUsersView();
             break;

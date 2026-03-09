@@ -301,7 +301,7 @@
                 <div class="p-3 bg-devo-dark border-b border-devo-gray flex justify-between items-center no-print">
                     <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="ph ph-printer text-devo-orange"></i> معاينة الطباعة</h3>
                     <div class="flex gap-2">
-                        <button onclick="window.print()" class="bg-devo-info hover:bg-blue-600 text-white px-4 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><i class="ph ph-printer"></i> طباعة</button>
+                        <button onclick="executeInvoicePrint()" class="bg-devo-info hover:bg-blue-600 text-white px-4 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><i class="ph ph-printer"></i> طباعة</button>
                         <button onclick="finishOrderAndRedirect()" class="bg-devo-success hover:bg-green-600 text-white px-4 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><i class="ph ph-check-circle"></i> أوردر جديد</button>
                     </div>
                 </div>
@@ -310,10 +310,9 @@
                     
                     <div class="flex justify-between items-end border-b-2 border-black pb-2 mb-2">
                         <div class="flex items-center gap-3">
-                            <h1 class="text-3xl font-black tracking-widest text-black leading-none">DEVO</h1>
+                            <h1 class="text-3xl font-black tracking-widest text-black leading-none">DEVO <span class="text-[10px] font-bold text-gray-800 bg-gray-200 px-1 rounded inline-block">Collection</span></h1>
                             <div>
-                                <p class="text-[10px] font-bold text-gray-800 bg-gray-200 px-1 rounded inline-block">Factory Collection - للملابس الجاهزة</p>
-                                <p class="text-[10px] text-gray-600 font-bold mt-0.5"><i class="ph-fill ph-phone"></i> 01000000000 - 01111111111</p>
+                                <p class="text-[10px] text-gray-600 font-bold mt-0.5"><i class="ph-fill ph-phone"></i> +20 12 12751111 </p>
                             </div>
                         </div>
                         <div class="text-left flex items-center gap-4 text-[10px]">

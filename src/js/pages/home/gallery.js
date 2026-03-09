@@ -13,26 +13,26 @@ export async function initGallery() {
     currentUser = session ? session.user : null;
     isWorker = currentUser && (currentUser.role === 'worker' || currentUser.role === 'admin' || currentUser.role === 'owner');
 
-    // تحميل السلة من المتصفح إذا كان مسجلاً للدخول
     if (isWorker) {
         loadLocalCart();
         document.getElementById('floating-cart-btn').classList.remove('hidden');
     }
 
-    // ربط الفلاتر
     document.getElementById('gal-search')?.addEventListener('input', applyGalleryFilters);
     document.getElementById('gal-category')?.addEventListener('change', applyGalleryFilters);
     document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
 
     await fetchGalleryModels();
 
-    // 🌟 🌟 🌟 الإضافة السحرية: الاستماع اللحظي للتغييرات من أي جهاز آخر 🌟 🌟 🌟
     supabase
-        .channel('public:model_inventory')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
-            console.log('🔄 تم رصد تغيير في المخزون من جهاز آخر، جاري التحديث...');
-            // جلب الموديلات من جديد لتعكس الأرقام الحديثة
-            fetchGalleryModelsSilent(); 
+        .channel('public_gallery_sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, () => {
+            console.log('🔄 تم رصد موديل جديد! جاري تحديث المعرض...');
+            fetchGalleryModels(); 
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'model_inventory' }, () => {
+            console.log('🔄 تم رصد تغير في المخزون! جاري تحديث المعرض...');
+            fetchGalleryModels(); 
         })
         .subscribe();
 }
