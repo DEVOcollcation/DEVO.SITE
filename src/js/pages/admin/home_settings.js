@@ -11,7 +11,7 @@ function resolveImageUrl(url) {
     try {
         if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
             const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-            if (idMatch && idMatch[1]) return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
+            if (idMatch && idMatch[1]) return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w400`;
         }
     } catch (e) {}
     return url; 
