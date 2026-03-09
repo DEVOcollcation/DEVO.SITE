@@ -8,7 +8,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-    
+    <link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="DEVO">
+<link rel="apple-touch-icon" href="./src/assets/icons/dv.png">
+
+<script>
+  // تسجيل الـ Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('DEVO PWA Ready!', reg))
+        .catch(err => console.log('PWA Error:', err));
+    });
+  }
+</script>
     <script>
         tailwind.config = {
             theme: {
@@ -97,9 +112,132 @@
 
         <div class="flex-1 overflow-y-auto p-8 relative" id="main-content">
             
-            <div id="view-dashboard" class="view-section hidden h-full">
-                <div class="flex items-center justify-center h-full text-devo-muted">قسم الإحصائيات (قريباً)</div>
+<div id="view-dashboard" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-4">
+        
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <div>
+                <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-squares-four text-devo-orange"></i> لوحة التحكم الرئيسية
+                </h2>
+                <p class="text-devo-info text-xs mt-1 font-mono" id="dash-current-date"></p>
             </div>
+            <div class="flex gap-2 mt-3 md:mt-0">
+                <button onclick="document.querySelector('[data-target=\'view-models\']').click()" class="bg-devo-gray hover:bg-devo-black text-white px-4 py-2 rounded-lg font-bold transition-colors text-sm border border-devo-gray"><i class="ph ph-t-shirt"></i> الموديلات</button>
+                <button onclick="document.querySelector('[data-target=\'view-admin-orders\']').click()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-4 py-2 rounded-lg font-bold transition-colors text-sm"><i class="ph ph-receipt"></i> الأوردرات</button>
+            </div>
+        </div>
+
+        <div class="bg-devo-black border border-devo-gray p-3 rounded-xl shadow-sm flex flex-col lg:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-2 w-full lg:w-auto">
+                <button onclick="setDashDatePreset('today')" class="flex-1 lg:flex-none bg-devo-dark hover:bg-devo-gray text-devo-muted hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors border border-devo-gray">اليوم</button>
+                <button onclick="setDashDatePreset('week')" class="flex-1 lg:flex-none bg-devo-dark hover:bg-devo-gray text-devo-muted hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors border border-devo-gray">الأسبوع</button>
+                <button onclick="setDashDatePreset('month')" class="flex-1 lg:flex-none bg-devo-dark hover:bg-devo-gray text-devo-muted hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors border border-devo-gray">الشهر</button>
+                <button onclick="setDashDatePreset('all')" class="flex-1 lg:flex-none bg-devo-dark hover:bg-devo-gray text-devo-orange px-3 py-1.5 rounded text-xs font-bold transition-colors border border-devo-gray">الكل</button>
+            </div>
+            <div class="flex items-center gap-2 w-full lg:w-auto">
+                <div class="flex items-center gap-2 bg-devo-dark border border-devo-gray rounded-lg px-3 py-1 w-full lg:w-auto">
+                    <span class="text-xs text-devo-muted font-bold">من:</span>
+                    <input type="date" id="dash-date-from" onchange="applyDashboardFilters()" class="bg-transparent text-white outline-none text-xs cursor-pointer w-full">
+                </div>
+                <div class="flex items-center gap-2 bg-devo-dark border border-devo-gray rounded-lg px-3 py-1 w-full lg:w-auto">
+                    <span class="text-xs text-devo-muted font-bold">إلى:</span>
+                    <input type="date" id="dash-date-to" onchange="applyDashboardFilters()" class="bg-transparent text-white outline-none text-xs cursor-pointer w-full">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-devo-info/10 transition-colors"><i class="ph-fill ph-receipt text-7xl"></i></div>
+                <span class="block text-devo-muted text-[10px] font-bold mb-1">إجمالي الأوردرات</span>
+                <span class="text-2xl text-white font-bold" id="dash-total-orders">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-orange/30 p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-devo-orange/10 transition-colors"><i class="ph-fill ph-coins text-7xl"></i></div>
+                <span class="block text-devo-orange text-[10px] font-bold mb-1">إجمالي المبيعات (ج.م)</span>
+                <span class="text-2xl text-devo-orange font-black" id="dash-total-rev">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-success/30 p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-devo-success/10 transition-colors"><i class="ph-fill ph-wallet text-7xl"></i></div>
+                <span class="block text-devo-success text-[10px] font-bold mb-1">التحصيل (العربون) (ج.م)</span>
+                <span class="text-2xl text-devo-success font-bold" id="dash-total-collected">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-error/30 p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-devo-error/10 transition-colors"><i class="ph-fill ph-hand-coins text-7xl"></i></div>
+                <span class="block text-devo-error text-[10px] font-bold mb-1">المتبقي بالخارج (مديونيات)</span>
+                <span class="text-2xl text-devo-error font-bold" id="dash-total-debts">0</span>
+            </div>
+            
+            <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-blue-500/10 transition-colors"><i class="ph-fill ph-stack text-7xl"></i></div>
+                <span class="block text-blue-400 text-[10px] font-bold mb-1">إجمالي السريات المباعة</span>
+                <span class="text-2xl text-blue-400 font-bold" id="dash-total-series">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-white/10 transition-colors"><i class="ph-fill ph-t-shirt text-7xl"></i></div>
+                <span class="block text-devo-muted text-[10px] font-bold mb-1">إجمالي القطع المباعة</span>
+                <span class="text-2xl text-white font-bold" id="dash-total-pieces">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-purple-500/10 transition-colors"><i class="ph-fill ph-chart-bar text-7xl"></i></div>
+                <span class="block text-purple-400 text-[10px] font-bold mb-1">متوسط قيمة الأوردر (ج.م)</span>
+                <span class="text-2xl text-purple-400 font-bold" id="dash-avg-order">0</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 text-devo-gray/20 group-hover:text-yellow-500/10 transition-colors"><i class="ph-fill ph-hourglass-high text-7xl"></i></div>
+                <span class="block text-yellow-500 text-[10px] font-bold mb-1">أوردرات قيد العمل والتجهيز</span>
+                <span class="text-2xl text-yellow-500 font-bold" id="dash-in-progress">0</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            
+            <div class="bg-devo-dark border border-devo-gray rounded-xl shadow-sm overflow-hidden flex flex-col h-[400px]">
+                <div class="p-3 border-b border-devo-gray bg-devo-black flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-devo-muted"><i class="ph ph-receipt text-devo-success"></i> أحدث الأوردرات (حسب الفلتر)</h3>
+                </div>
+                <div class="overflow-y-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-right text-sm whitespace-nowrap">
+                        <thead class="bg-devo-black/50 text-devo-muted text-xs sticky top-0 backdrop-blur-md">
+                            <tr>
+                                <th class="p-3">الرقم</th>
+                                <th class="p-3">العميل / التاريخ</th>
+                                <th class="p-3 text-center">الكمية</th>
+                                <th class="p-3 text-center">الإجمالي</th>
+                                <th class="p-3 text-center">الحالة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dash-recent-orders" class="divide-y divide-devo-gray text-xs">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="bg-devo-dark border border-devo-gray rounded-xl shadow-sm overflow-hidden flex flex-col h-[400px]">
+                <div class="p-3 border-b border-devo-gray bg-devo-black flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-devo-error"><i class="ph ph-warning-circle text-devo-error"></i> نواقص المخزون (أقل من 5 سريات)</h3>
+                </div>
+                <div class="overflow-y-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-right text-sm whitespace-nowrap">
+                        <thead class="bg-devo-black/50 text-devo-muted text-xs sticky top-0 backdrop-blur-md">
+                            <tr>
+                                <th class="p-3">الموديل</th>
+                                <th class="p-3">اللون</th>
+                                <th class="p-3 text-center">المتاح (سيريه)</th>
+                                <th class="p-3 text-center">الحالة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dash-low-stock" class="divide-y divide-devo-gray text-xs">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
 
 <div id="view-admin-orders" class="view-section hidden h-full">
     <div class="animate-fade-in relative pb-10 space-y-4">

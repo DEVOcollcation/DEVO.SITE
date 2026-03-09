@@ -9,7 +9,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-    
+    <link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="DEVO">
+<link rel="apple-touch-icon" href="./src/assets/icons/dv.png">
+
+<script>
+  // تسجيل الـ Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('DEVO PWA Ready!', reg))
+        .catch(err => console.log('PWA Error:', err));
+    });
+  }
+</script>
     <script>
         tailwind.config = {
             theme: {

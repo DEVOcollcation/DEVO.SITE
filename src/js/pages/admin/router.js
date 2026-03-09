@@ -90,8 +90,9 @@ async function loadViewLogic(targetId) {
     }
 
     switch (targetId) {
-        case 'view-dashboard':
-            // await initDashboard();
+            case 'view-dashboard':
+            const { initDashboard } = await import('./dashboard.js');
+            await initDashboard();
             break;
         case 'view-users':
             await initUsersView();
