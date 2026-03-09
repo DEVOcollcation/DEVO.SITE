@@ -14,7 +14,7 @@ export function initNavbar() {
     if (!desktopLinks || !mobileLinks || !desktopUserArea) return;
 
     window.alertVisitor = () => {
-        showToast('يجب تسجيل الدخول للوصول لهذه الميزة', 'warning');
+        showToast('يجب ان تكون من ضمن فريق العمل  للوصول لهذه الميزة', 'warning');
     };
 
     // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
@@ -85,14 +85,9 @@ export function initNavbar() {
         mobileLinks.innerHTML = `
             <button onclick="switchSiteView('view-home')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">الرئيسية</button>
             <button onclick="switchSiteView('view-gallery')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">المعرض</button>
-            <a href="auth.html" class="py-3 text-devo-orange mt-4 flex items-center gap-2"><i class="ph ph-sign-in"></i> تسجيل الدخول</a>
         `;
 
-        desktopUserArea.innerHTML = `
-            <a href="auth.html" class="bg-devo-gray hover:bg-devo-orange text-white text-sm font-bold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
-                تسجيل الدخول <i class="ph ph-sign-in text-lg"></i>
-            </a>
-        `;
+        desktopUserArea.innerHTML = ``;
     }
 
     // زر القائمة الجانبية للموبايل
