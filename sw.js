@@ -1,11 +1,10 @@
-const CACHE_NAME = 'devo-v1';
+const CACHE_NAME = 'devo-v2';
 const assets = [
   './',
   './index.html',
   './admin.html',
   './auth.html',
   './src/assets/icons/dv.png',
-  './src/assets/icons/devo.jpeg'
 
 ];
 
