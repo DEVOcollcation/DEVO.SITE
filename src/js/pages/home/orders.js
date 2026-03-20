@@ -37,8 +37,7 @@ async function fetchMyOrders() {
     const tBody = document.getElementById('orders-table-body');
     if(tBody) tBody.innerHTML = `<tr><td colspan="6" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري التحميل...</td></tr>`;
 
-    // استبدل قسم الـ select داخل fetchMyOrders بهذا:
-    const { data, error } = await supabase
+const { data, error } = await supabase
         .from('orders')
         .select(`
             *,
@@ -49,7 +48,8 @@ async function fetchMyOrders() {
                     factory_code,
                     system_code,
                     model_images(image_url),
-                    model_sizes(size_id)
+                    model_sizes(size_id),
+                    classes(class_sizes(size_id))
                 ),
                 colors (name)
             )
@@ -174,7 +174,8 @@ window.viewOrderDetails = (id) => {
         const qty = item.quantity;
         
         // استخراج عدد المقاسات من الاستعلام الرئيسي
-        const sizesCount = item.models?.model_sizes?.length || 1; 
+const classSizes = item.models?.classes?.class_sizes || [];
+const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
         const pieces = qty * sizesCount;
 
         const colorWithQty = `${qty} ${colorName}`;
@@ -266,7 +267,8 @@ window.reprintOrder = (id) => {
     showToast('جاري تجهيز الفاتورة للطباعة...', 'info');
 
     const mappedItems = o.order_items.map(i => {
-        const sizesCount = i.models?.model_sizes?.length || 1;
+        const classSizes = i.models?.classes?.class_sizes || [];
+const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1);
         return {
             model_id: i.model_id, // 🌟 هذا السطر هو الذي سيمنع تداخل الموديلات!
             factory_code: i.models?.factory_code || i.models?.system_code || '', // 🌟 جلب الكود
@@ -327,7 +329,8 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', () => {
             imgUrl = item.models.model_images[0].image_url;
         }
         
-        const sizesCount = item.models?.model_sizes?.length || 1;
+        const classSizes = item.models?.classes?.class_sizes || [];
+const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
 
         return {
             modelId: item.model_id, 

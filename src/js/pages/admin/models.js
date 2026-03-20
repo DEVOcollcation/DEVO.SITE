@@ -5,7 +5,9 @@ import { confirmDialog } from '../../components/modal.js';
 let isInitialized = false;
 let allModels = [];
 let defCache = { cats: [], clss: [], szs: [], clrs: [] };
-
+let currentPage = 1;
+const itemsPerPage = 50; 
+let currentFilteredModels = [];
 // 🌟 النظام الجديد لمنع تداخل التحديثات والتعامل مع خمول المتصفح 🌟
 let isSyncing = false;
 
@@ -81,11 +83,11 @@ window.clearModelFilters = () => {
     applyFilters(); 
 };
 
-// --- Data Fetching ---
 async function loadDefinitionsCache() {
     const [cats, clss, szs, clrs] = await Promise.all([
         supabase.from('categories').select('id, name'),
-        supabase.from('classes').select('id, name'),
+        // 🌟 جلب الفئات مع مقاساتها المرتبطة بها في خطوة واحدة 🌟
+        supabase.from('classes').select('id, name, class_sizes(size_id, sizes(id, name))'),
         supabase.from('sizes').select('id, name'),
         supabase.from('colors').select('id, name')
     ]);
@@ -101,36 +103,66 @@ async function loadModels() {
     await fetchModelsSilent(false); 
 }
 
-async function fetchModelsSilent(isSilent = true) {
-    const { data, error } = await supabase
-        .from('models')
-        .select(`
-            *,
-            categories(id, name),
-            classes(id, name),
-            model_sizes(sizes(id, name)),
-            model_inventory(color_id, available_series, colors(id, name, color_code)),
-            model_images(image_url)
-        `)
-        .order('created_at', { ascending: false });
+window.refreshModelsData = async () => {
+    const icon = document.getElementById('refresh-icon');
+    if (icon) icon.classList.add('animate-spin');
+    await fetchModelsSilent(false);
+    if (icon) icon.classList.remove('animate-spin');
+    showToast('تم تحديث البيانات بنجاح', 'success');
+};
 
-    if (error) {
+// 🌟 دالة الجلب المحدثة لتخطي حاجز الـ 1000 سجل 🌟
+async function fetchModelsSilent(isSilent = true) {
+    let allFetchedData = [];
+    let from = 0;
+    const step = 999; // جلب 1000 سجل في كل دفعة
+    let hasMore = true;
+
+    try {
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('models')
+                .select(`
+                    *,
+                    categories(id, name),
+                    classes(id, name, class_sizes(sizes(id, name))),
+                    model_sizes(sizes(id, name)),
+                    model_inventory(color_id, available_series, colors(id, name, color_code)),
+                    model_images(image_url)
+                `)
+                .order('created_at', { ascending: false })
+                .range(from, from + step);
+
+            if (error) throw error;
+
+            if (data.length > 0) {
+                allFetchedData = [...allFetchedData, ...data];
+                from += step + 1;
+            }
+            
+            // إذا كانت البيانات الراجعة أقل من الحد الأقصى، فهذا يعني أننا وصلنا للنهاية
+            if (data.length <= step) {
+                hasMore = false;
+            }
+        }
+
+        allModels = allFetchedData;
+        updateStatistics(allFetchedData);
+        
+        // إعادة تعيين الصفحة للأولى عند جلب بيانات جديدة
+        currentPage = 1;
+        applyFilters();
+
+        const detailsModal = document.getElementById('view-details-modal');
+        if (detailsModal && !detailsModal.classList.contains('hidden')) {
+            const activeModelId = detailsModal.getAttribute('data-current-view-id');
+            if (activeModelId) {
+                viewDetails(activeModelId, true); 
+            }
+        }
+    } catch (error) {
         console.error("Fetch Models Error:", error);
         if (!isSilent) showToast('خطأ في تحميل الموديلات', 'error');
-        return;
-    }
-
-    allModels = data;
-    updateStatistics(data);
-    applyFilters();
-
-    // تحديث النافذة المفتوحة بصمت
-    const detailsModal = document.getElementById('view-details-modal');
-    if (detailsModal && !detailsModal.classList.contains('hidden')) {
-        const activeModelId = detailsModal.getAttribute('data-current-view-id');
-        if (activeModelId) {
-            viewDetails(activeModelId, true); 
-        }
     }
 }
 
@@ -188,7 +220,11 @@ function applyFilters() {
 
         return isMatch;
     });
-    renderModelsGrid(filtered);
+    
+    // حفظ النتيجة وتوجيهها لنظام الصفحات
+    currentFilteredModels = filtered;
+    currentPage = 1; 
+    renderModelsPage();
 }
 
 function renderModelsGrid(models) {
@@ -200,7 +236,10 @@ function renderModelsGrid(models) {
 
     container.innerHTML = models.map(m => {
         const totalSeries = m.model_inventory?.reduce((sum, inv) => sum + inv.available_series, 0) || 0;
-        const sizesCount = m.model_sizes?.length || 1; 
+        
+        // 🌟 استنتاج عدد المقاسات من الفئة العمرية 🌟
+        const classSizes = m.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (m.model_sizes?.length || 1); 
         const totalPieces = totalSeries * sizesCount; 
         
         const isOut = totalSeries === 0;
@@ -239,12 +278,78 @@ function renderModelsGrid(models) {
         </div>`;
     }).join('');
 }
+// 🌟 دالة رسم أزرار الصفحات في الأعلى والأسفل 🌟
+function renderPaginationControls(totalPages) {
+    // جلب الحاويتين (العلويّة والسفليّة) بالـ IDs الجديدة
+    const topContainer = document.getElementById('models-pagination-top');
+    const bottomContainer = document.getElementById('models-pagination-bottom');
+    
+    // التأكد من وجود الحاويات في الصفحة
+    if (!topContainer || !bottomContainer) return;
+
+    // إذا كانت الصفحات صفحة واحدة أو أقل، نفرغ الحاويات ونخرج
+    if (totalPages <= 1) {
+        topContainer.innerHTML = '';
+        bottomContainer.innerHTML = '';
+        return;
+    }
+
+    // 1. بناء كود HTML للأزرار (مرة واحدة فقط لضمان التطابق)
+    let html = '';
+    
+    // زر السابق
+    html += `<button onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"><i class="ph ph-caret-right"></i> السابق</button>`;
+
+    // عداد الصفحات
+    html += `<span class="px-6 py-2 rounded-lg bg-devo-dark text-devo-orange font-bold border border-devo-gray">صفحة ${currentPage} من ${totalPages}</span>`;
+
+    // زر التالي
+    html += `<button onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-4 py-2 rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">التالي <i class="ph ph-caret-left"></i></button>`;
+
+    // 2. حقن نفس كود الـ HTML في الحاويتين العلويّة والسفليّة
+    topContainer.innerHTML = html;
+    bottomContainer.innerHTML = html;
+}
+
+// 🌟 الانتقال بين الصفحات 🌟
+window.changePage = (newPage) => {
+    currentPage = newPage;
+    renderModelsPage();
+    // عمل سكرول ناعم لأعلى الموديلات
+    const searchInput = document.getElementById('model-search');
+    if (searchInput) searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+function renderModelsPage() {
+    const container = document.getElementById('models-container');
+    const paginationContainer = document.getElementById('models-pagination');
+    
+    if (currentFilteredModels.length === 0) {
+        container.innerHTML = `<div class="col-span-full py-10 text-center text-devo-muted">لا توجد موديلات مسجلة حالياً تطابق بحثك</div>`;
+        if (paginationContainer) paginationContainer.innerHTML = '';
+        return;
+    }
+
+    const totalItems = currentFilteredModels.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    // اقتطاع 50 موديل فقط للصفحة الحالية
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageData = currentFilteredModels.slice(startIndex, endIndex);
+
+    renderModelsGrid(pageData);
+    renderPaginationControls(totalPages);
+}
 
 window.openModelModal = async (id = null) => {
     const form = document.getElementById('model-form');
     form.reset();
     document.getElementById('m-id').value = id || '';
     
+    // تفريغ وملء القوائم المنسدلة
     document.getElementById('m-category').innerHTML = defCache.cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     document.getElementById('m-class').innerHTML = defCache.clss.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     window.allAvailableColors = defCache.clrs;
@@ -254,7 +359,12 @@ window.openModelModal = async (id = null) => {
     const modalTitle = document.getElementById('model-modal-title');
     const submitBtn = form.querySelector('button[type="submit"]');
 
+    // 🌟 تفعيل الاستماع لتغيير الفئة العمرية 🌟
+    const classSelect = document.getElementById('m-class');
+    classSelect.onchange = (e) => renderAutoSizes(e.target.value);
+
     if (id) {
+        // حالة التعديل
         const model = allModels.find(m => m.id === id);
         if (!model) return;
 
@@ -271,12 +381,8 @@ window.openModelModal = async (id = null) => {
         document.getElementById('m-status').checked = model.is_active;
         document.getElementById('m-status-text').textContent = model.is_active ? 'نشط' : 'معطل';
 
-        const modelSizeIds = model.model_sizes.map(s => s.sizes?.id);
-        sizesContainer.innerHTML = defCache.szs.map(s => `
-            <label class="flex items-center gap-2 bg-devo-black border border-devo-gray px-3 py-1.5 rounded cursor-pointer hover:border-devo-orange has-[:checked]:border-devo-orange text-xs">
-                <input type="checkbox" name="sizes" value="${s.id}" class="accent-devo-orange" ${modelSizeIds.includes(s.id) ? 'checked' : ''}> <span class="text-white">${s.name}</span>
-            </label>
-        `).join('');
+        // 🌟 رسم المقاسات للفئة الحالية فوراً بدلاً من الكود اليدوي القديم 🌟
+        renderAutoSizes(model.class_id);
 
         invContainer.innerHTML = `<div class="py-4 text-center text-devo-muted"><i class="ph ph-spinner animate-spin text-2xl"></i></div>`;
         
@@ -308,17 +414,15 @@ window.openModelModal = async (id = null) => {
         document.getElementById('m-img-3').value = imgs[2]?.image_url || '';
 
     } else {
+        // حالة الإضافة الجديدة
         modalTitle.innerHTML = `<i class="ph ph-plus-circle text-devo-orange text-2xl"></i> إنشاء موديل جديد`;
         submitBtn.innerHTML = `حفظ الموديل`;
         
         document.getElementById('m-status').checked = true;
         document.getElementById('m-status-text').textContent = 'نشط';
 
-        sizesContainer.innerHTML = defCache.szs.map(s => `
-            <label class="flex items-center gap-2 bg-devo-black border border-devo-gray px-3 py-1.5 rounded cursor-pointer hover:border-devo-orange has-[:checked]:border-devo-orange text-xs">
-                <input type="checkbox" name="sizes" value="${s.id}" class="accent-devo-orange"> <span class="text-white">${s.name}</span>
-            </label>
-        `).join('');
+        // 🌟 رسم المقاسات بناءً على أول فئة عمرية محددة افتراضياً 🌟
+        renderAutoSizes(classSelect.value);
 
         invContainer.innerHTML = '';
         addInventoryRow();
@@ -328,7 +432,28 @@ window.openModelModal = async (id = null) => {
         setTimeout(() => modal.classList.remove('opacity-0'), 10);
     }
 };
+// 🌟 دالة مساعدة لرسم المقاسات بناءً على الفئة المختارة 🌟
+function renderAutoSizes(classId) {
+    const sizesContainer = document.getElementById('m-sizes-container');
+    if (!classId) {
+        sizesContainer.innerHTML = '<span class="text-devo-muted text-xs">يرجى اختيار الفئة العمرية أولاً لتحديد المقاسات تلقائياً...</span>';
+        return;
+    }
 
+    const selectedClass = defCache.clss.find(c => c.id === classId);
+    
+    if (!selectedClass || !selectedClass.class_sizes || selectedClass.class_sizes.length === 0) {
+        sizesContainer.innerHTML = '<span class="text-devo-error text-xs p-2 bg-devo-error/10 rounded flex items-center gap-2 border border-devo-error/20"><i class="ph ph-warning-circle text-lg"></i> هذه الفئة لا تحتوي على مقاسات، يرجى إضافتها من صفحة التعريفات الأساسية.</span>';
+        return;
+    }
+
+    // رسم المقاسات كـ بطاقات مقفولة (لا يمكن للمستخدم تعديلها هنا)
+    sizesContainer.innerHTML = selectedClass.class_sizes.map(cs => `
+        <span class="bg-devo-black border border-devo-gray px-3 py-1.5 rounded text-white text-xs shadow-sm flex items-center gap-1 cursor-not-allowed opacity-80" title="مستنتج تلقائياً من الفئة العمرية">
+            <i class="ph ph-lock-key text-devo-muted"></i> ${cs.sizes.name}
+        </span>
+    `).join('');
+}
 window.addInventoryRow = (colorId = '', totalQty = '', soldQty = 0) => {
     const container = document.getElementById('m-inventory-container');
     const row = document.createElement('div');
@@ -364,18 +489,22 @@ async function handleSaveModel(e) {
     const originalBtnText = btn.innerHTML;
     
     const id = document.getElementById('m-id').value;
+    const classId = document.getElementById('m-class').value;
+
+    // 🌟 التحقق من أن الفئة العمرية تحتوي على مقاسات بالفعل 🌟
+    const selectedClass = defCache.clss.find(c => c.id === classId);
+    const hasSizes = selectedClass && selectedClass.class_sizes && selectedClass.class_sizes.length > 0;
+
     const modelData = {
         system_code: document.getElementById('m-system-code').value,
         factory_code: document.getElementById('m-factory-code').value,
         name: document.getElementById('m-name').value,
         price: document.getElementById('m-price').value,
         category_id: document.getElementById('m-category').value,
-        class_id: document.getElementById('m-class').value,
+        class_id: classId,
         is_active: document.getElementById('m-status').checked
     };
 
-    const selectedSizes = Array.from(document.querySelectorAll('input[name="sizes"]:checked')).map(cb => cb.value);
-    
     const invRows = document.querySelectorAll('#m-inventory-container > div');
     const inventoryData = [];
     
@@ -389,7 +518,6 @@ async function handleSaveModel(e) {
         const qtyInput = row.querySelector('[name="inv-qty"]');
         const totalQty = parseInt(qtyInput.value) || 0;
         const soldQty = parseInt(qtyInput.dataset.sold || "0");
-        
         const available_series = totalQty - soldQty;
         
         if (available_series < 0) {
@@ -406,14 +534,13 @@ async function handleSaveModel(e) {
         return showToast('لا يمكن تكرار اللون في نفس الموديل. يرجى دمج الكميات في صف واحد.', 'warning');
     }
 
-    const images = ['m-img-1', 'm-img-2', 'm-img-3']
-        .map(inputId => document.getElementById(inputId).value.trim())
-        .filter(url => url !== '');
+    const images = ['m-img-1', 'm-img-2', 'm-img-3'].map(inputId => document.getElementById(inputId).value.trim()).filter(url => url !== '');
 
     let statusMessage = '';
-    if (selectedSizes.length === 0 || inventoryData.length === 0) {
+    if (!hasSizes || inventoryData.length === 0) {
         modelData.is_active = false;
         statusMessage = ' (تم الحفظ كـ "معطل" لعدم اكتمال المقاسات والألوان)';
+        if (!hasSizes) showToast('تنبيه: الفئة العمرية المختارة لا تحتوي على مقاسات!', 'warning');
     }
 
     btn.disabled = true;
@@ -425,7 +552,6 @@ async function handleSaveModel(e) {
             const { error: updateError } = await supabase.from('models').update(modelData).eq('id', id);
             if (updateError) throw updateError;
             
-            await supabase.from('model_sizes').delete().eq('model_id', id);
             await supabase.from('model_inventory').delete().eq('model_id', id);
             await supabase.from('model_images').delete().eq('model_id', id);
         } else {
@@ -434,9 +560,6 @@ async function handleSaveModel(e) {
             modelId = data.id;
         }
 
-        if (selectedSizes.length > 0) {
-            await supabase.from('model_sizes').insert(selectedSizes.map(sId => ({ model_id: modelId, size_id: sId })));
-        }
         if (inventoryData.length > 0) {
             await supabase.from('model_inventory').insert(inventoryData.map(inv => ({ ...inv, model_id: modelId })));
         }
@@ -446,23 +569,17 @@ async function handleSaveModel(e) {
 
         showToast((id ? 'تم حفظ التعديلات بنجاح' : 'تم إضافة الموديل بنجاح') + statusMessage, 'success');
         closeModelModal();
-
-        // 🌟 🌟 السطر السحري تم وضعه في مكانه الصحيح 🌟 🌟
         await fetchModelsSilent(false);
 
     } catch (err) {
-        if (err.code === '23505') { 
-            showToast('كود السيستم هذا مستخدم بالفعل في موديل آخر، يرجى تغييره!', 'error');
-        } else {
-            showToast(err.message, 'error');
-        }
+        if (err.code === '23505') showToast('كود السيستم هذا مستخدم بالفعل في موديل آخر!', 'error');
+        else showToast(err.message, 'error');
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalBtnText;
     }
 }
 
-// 🌟 تعديل العرض ليدعم التحديث الصامت 🌟
 window.viewDetails = async (id, isSilent = false) => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
@@ -472,7 +589,9 @@ window.viewDetails = async (id, isSilent = false) => {
     
     modal.setAttribute('data-current-view-id', id);
 
-    const sizesCount = model.model_sizes?.length || 1; 
+    // 🌟 استنتاج المقاسات وعددها من الفئة العمرية 🌟
+    const classSizes = model.classes?.class_sizes || [];
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1); 
 
     if (!isSilent) {
         content.innerHTML = `<div class="py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i><p class="mt-2 text-devo-muted">جاري تحميل بيانات السجل...</p></div>`;
@@ -488,20 +607,13 @@ window.viewDetails = async (id, isSilent = false) => {
 
     let imagesHtml = '';
     if (model.model_images && model.model_images.length > 0) {
-        imagesHtml = `
-            <div class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                ${model.model_images.map(img => `
-                    <img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.jpeg'">
-                `).join('')}
-            </div>
-        `;
+        imagesHtml = `<div class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}
+        </div>`;
     } else {
-        imagesHtml = `
-            <div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm">
-                <img src="./src/assets/icons/devo.jpeg" class="w-full h-full object-cover ">
-            </div>
-        `;
+        imagesHtml = `<div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.jpeg" class="w-full h-full object-cover"></div>`;
     }
+
     const colorsHtml = model.model_inventory?.map(inv => `
         <div class="flex justify-between p-3 bg-devo-black rounded-lg border border-devo-gray items-center">
             <span class="text-white">${inv.colors?.name}</span>
@@ -515,15 +627,13 @@ window.viewDetails = async (id, isSilent = false) => {
     const movementsHtml = movements?.length ? `
         <div class="overflow-x-auto border border-devo-gray rounded-lg">
             <table class="w-full text-right text-sm">
-                <thead class="bg-devo-black">
-                    <tr class="text-devo-muted">
-                        <th class="p-3 font-medium border-b border-devo-gray">النوع</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">اللون</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">الكمية</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">الوصف</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">التاريخ</th>
-                    </tr>
-                </thead>
+                <thead class="bg-devo-black"><tr class="text-devo-muted">
+                    <th class="p-3 font-medium border-b border-devo-gray">النوع</th>
+                    <th class="p-3 font-medium border-b border-devo-gray">اللون</th>
+                    <th class="p-3 font-medium border-b border-devo-gray">الكمية</th>
+                    <th class="p-3 font-medium border-b border-devo-gray">الوصف</th>
+                    <th class="p-3 font-medium border-b border-devo-gray">التاريخ</th>
+                </tr></thead>
                 <tbody class="divide-y divide-devo-gray bg-devo-black/30">
                     ${movements.map(mov => `
                         <tr class="hover:bg-devo-black transition-colors">
@@ -542,10 +652,12 @@ window.viewDetails = async (id, isSilent = false) => {
                 </tbody>
             </table>
         </div>
-    ` : `<div class="bg-devo-black p-8 rounded-xl border border-devo-gray text-center text-devo-muted flex flex-col items-center">
-            <i class="ph ph-clock text-4xl opacity-50 mb-2"></i>
-            <p class="text-sm">لا توجد حركات مسجلة لهذا الموديل حتى الآن.</p>
-         </div>`;
+    ` : `<div class="bg-devo-black p-8 rounded-xl border border-devo-gray text-center text-devo-muted flex flex-col items-center"><p class="text-sm">لا توجد حركات مسجلة.</p></div>`;
+
+    // 🌟 رسم مقاسات الفئة العمرية 🌟
+    const renderSizesTags = classSizes.length > 0 
+        ? classSizes.map(cs => `<span class="bg-devo-black border border-devo-gray px-3 py-1 rounded text-white text-xs shadow-sm" title="مستنتج من الفئة العمرية"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
+        : model.model_sizes?.map(s => `<span class="bg-devo-black border border-devo-gray px-3 py-1 rounded text-white text-xs shadow-sm">${s.sizes?.name}</span>`).join('');
 
     content.innerHTML = `
         <div class="mb-6">${imagesHtml}</div>
@@ -563,9 +675,7 @@ window.viewDetails = async (id, isSilent = false) => {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
                 <h4 class="text-devo-orange font-bold mb-3 text-sm flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات المتاحة (${sizesCount} مقاسات)</h4>
-                <div class="flex flex-wrap gap-2">
-                    ${model.model_sizes?.map(s => `<span class="bg-devo-black border border-devo-gray px-3 py-1 rounded text-white text-xs shadow-sm">${s.sizes?.name}</span>`).join('')}
-                </div>
+                <div class="flex flex-wrap gap-2">${renderSizesTags || '<span class="text-devo-muted text-xs">لا توجد مقاسات</span>'}</div>
             </div>
             <div>
                 <div class="flex justify-between items-center mb-3">
@@ -707,13 +817,18 @@ window.processExcelPreview = async () => {
         const data = await readExcelFile(file);
         if (data.length === 0) throw new Error("الملف فارغ");
 
+        // 🌟 1. استخراج الأكواد الحالية من النظام 🌟
         const existingCodes = new Set(allModels.map(m => String(m.system_code)));
+        
         const newModels = [];
         const duplicates = [];
         const uniqueCategories = new Set();
 
         data.forEach(row => {
-            const sysCode = String(row['كود']);
+            // 🌟 2. تنظيف كود السيستم لمنع أي مسافات أو أصفار زائدة 🌟
+            let sysCode = String(row['كود'] || '').trim();
+            if (sysCode.endsWith('.0')) sysCode = sysCode.replace('.0', ''); // معالجة الأرقام من إكسيل
+            
             if (!sysCode || sysCode === 'undefined') return;
 
             const price = parseFloat(row['بيع 1']) || 0;
@@ -729,6 +844,7 @@ window.processExcelPreview = async () => {
                 factoryCode = match[2];
             }
 
+            // 🌟 3. الفحص الدقيق والمنع اللحظي للتكرار 🌟
             if (existingCodes.has(sysCode)) {
                 duplicates.push({ sysCode, modelName });
             } else {
@@ -742,6 +858,8 @@ window.processExcelPreview = async () => {
                     class_id: null,
                     is_active: false
                 });
+                // 🌟 الحل الجذري: إضافة الكود فوراً للمجموعة لمنع التكرار الداخلي في نفس الملف 🌟
+                existingCodes.add(sysCode); 
             }
         });
 
@@ -782,9 +900,10 @@ window.executeExcelImport = async () => {
 
     const btn = document.getElementById('excel-import-btn');
     btn.disabled = true;
-    btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> جاري الحفظ والتأكيد...`;
+    btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> تجهيز البيانات...`;
 
     try {
+        // 1. إنشاء التصنيفات الجديدة إن وجدت
         for (const catName of pendingExcelCategories) {
             let existingCat = defCache.cats.find(c => c.name === catName);
             if (!existingCat) {
@@ -793,6 +912,7 @@ window.executeExcelImport = async () => {
             }
         }
 
+        // 2. تجهيز البيانات
         const modelsToInsert = pendingExcelModels.map(m => {
             const catId = m.category_name ? defCache.cats.find(c => c.name === m.category_name)?.id : null;
             return {
@@ -806,18 +926,37 @@ window.executeExcelImport = async () => {
             };
         });
 
-        const { error } = await supabase.from('models').insert(modelsToInsert);
-        if (error) throw error;
+        const CHUNK_SIZE = 300; 
+        const totalModels = modelsToInsert.length;
+        let successCount = 0;
 
-        showToast(`تم استيراد وحفظ ${modelsToInsert.length} موديل بنجاح!`, 'success');
+        // 3. الإرسال على دفعات مع تجاوز التكرار
+        for (let i = 0; i < totalModels; i += CHUNK_SIZE) {
+            const chunk = modelsToInsert.slice(i, i + CHUNK_SIZE);
+            const currentEnd = Math.min(i + CHUNK_SIZE, totalModels);
+            
+            btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> جاري حفظ ${currentEnd} من ${totalModels}...`;
+
+            // 🌟 الحل الجذري: استخدام upsert وتجاهل التكرار بصمت 🌟
+            const { error } = await supabase.from('models').upsert(chunk, { 
+                onConflict: 'system_code', 
+                ignoreDuplicates: true 
+            });
+
+            if (error) {
+                throw new Error(`حدث خطأ عند حفظ الدفعة (${i} إلى ${currentEnd}): ${error.message}`);
+            }
+
+            successCount += chunk.length;
+        }
+
+        showToast(`تمت معالجة بيانات الإكسيل بنجاح!`, 'success');
         closeExcelImportModal();
-
-        // 🌟 السطر السحري: لتحديث الجدول فوراً بعد رفع الإكسيل 🌟
         await fetchModelsSilent(false);
 
     } catch (err) {
         console.error(err);
-        showToast('حدث خطأ أثناء حفظ البيانات المجمعة', 'error');
+        showToast(err.message || 'حدث خطأ أثناء حفظ البيانات المجمعة', 'error');
     } finally {
         btn.disabled = false;
         btn.innerHTML = `<i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الموديلات الجديدة`;

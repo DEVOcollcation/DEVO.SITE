@@ -109,25 +109,55 @@ function renderTable(data) {
     `).join('');
 }
 
-window.openDefinitionModal = (table, id = null, name = '', code = '') => {
+// --- دالة الفتح المحدثة ---
+window.openDefinitionModal = async (table, id = null, name = '', code = '') => {
     const modal = document.getElementById('def-action-modal');
     const modalContent = document.getElementById('def-modal-content');
     const titleEl = document.getElementById('def-modal-title');
     const inputName = document.getElementById('def-item-name');
     const inputCode = document.getElementById('def-item-code');
     const codeWrapper = document.getElementById('def-code-wrapper');
+    const sizesWrapper = document.getElementById('def-sizes-wrapper'); // العنصر الجديد
+    const sizesContainer = document.getElementById('def-sizes-container'); // حاوية المقاسات
     
     document.getElementById('def-target-table').value = table;
     document.getElementById('def-item-id').value = id || '';
     inputName.value = name;
     
-    // إظهار حقل الكود لو التابة ألوان
     if (table === 'colors') {
         codeWrapper.classList.remove('hidden');
         inputCode.value = code;
     } else {
         codeWrapper.classList.add('hidden');
         inputCode.value = '';
+    }
+
+    // 🌟 معالجة إظهار المقاسات إذا كانت التابة هي الفئات العمرية 🌟
+    if (table === 'classes') {
+        sizesWrapper.classList.remove('hidden');
+        sizesContainer.innerHTML = '<div class="text-devo-muted text-xs p-2"><i class="ph ph-spinner animate-spin"></i> جاري جلب المقاسات...</div>';
+        
+        // جلب كل المقاسات الموجودة في النظام
+        const { data: allSizes } = await supabase.from('sizes').select('id, name');
+        let selectedSizeIds = [];
+
+        // إذا كنا نعدل فئة موجودة، نجلب مقاساتها المرتبطة
+        if (id) {
+            const { data: classSizes } = await supabase.from('class_sizes').select('size_id').eq('class_id', id);
+            selectedSizeIds = classSizes?.map(cs => cs.size_id) || [];
+        }
+
+        // رسم المقاسات كـ Checkboxes
+        sizesContainer.innerHTML = allSizes.map(s => `
+            <label class="flex items-center gap-2 bg-devo-dark border border-devo-gray px-3 py-1.5 rounded cursor-pointer hover:border-devo-orange has-[:checked]:border-devo-orange text-xs transition-colors">
+                <input type="checkbox" name="class-size-cb" value="${s.id}" class="accent-devo-orange" ${selectedSizeIds.includes(s.id) ? 'checked' : ''}> 
+                <span class="text-white">${s.name}</span>
+            </label>
+        `).join('');
+
+    } else {
+        sizesWrapper.classList.add('hidden');
+        sizesContainer.innerHTML = '';
     }
     
     titleEl.textContent = id ? `تعديل البيانات` : `إضافة جديد إلى ${getTabNameAr(table)}`;
@@ -138,22 +168,6 @@ window.openDefinitionModal = (table, id = null, name = '', code = '') => {
         modalContent.classList.remove('scale-95');
         inputName.focus();
     });
-};
-
-window.openDefinitionModalFromCurrent = () => {
-    window.openDefinitionModal(currentTab);
-};
-
-window.closeDefinitionModal = () => {
-    const modal = document.getElementById('def-action-modal');
-    const modalContent = document.getElementById('def-modal-content');
-    
-    modal.classList.add('opacity-0');
-    modalContent.classList.add('scale-95');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        document.getElementById('def-action-form').reset();
-    }, 300);
 };
 
 async function handleSaveDefinition(e) {
@@ -175,24 +189,63 @@ async function handleSaveDefinition(e) {
         payload.color_code = code || null;
     }
 
-    let result;
-    if (id) {
-        result = await supabase.from(table).update(payload).eq('id', id);
-    } else {
-        result = await supabase.from(table).insert([payload]);
-    }
+    try {
+        let savedId = id;
+        
+        // 1. حفظ الاسم (والكود إن وجد)
+        if (id) {
+            const { error } = await supabase.from(table).update(payload).eq('id', id);
+            if (error) throw error;
+        } else {
+            const { data, error } = await supabase.from(table).insert([payload]).select().single();
+            if (error) throw error;
+            savedId = data.id;
+        }
 
-    if (result.error) {
-        showToast('خطأ: قد يكون هذا الاسم أو الكود مسجلاً بالفعل', 'error');
-    } else {
+        // 🌟 2. حفظ المقاسات في الجدول الوسيط إذا كنا في تاب الفئات العمرية 🌟
+        if (table === 'classes') {
+            // نقرأ المقاسات من مربعات الاختيار (Checkboxes) الموجودة في الشاشة مباشرة
+            const selectedSizes = Array.from(document.querySelectorAll('input[name="class-size-cb"]:checked')).map(cb => cb.value);
+            
+            // حذف القديم أولاً لمنع التكرار (في حالة التعديل)
+            await supabase.from('class_sizes').delete().eq('class_id', savedId);
+            
+            // إدخال المقاسات الجديدة
+            if (selectedSizes.length > 0) {
+                const classSizesPayload = selectedSizes.map(sizeId => ({ class_id: savedId, size_id: sizeId }));
+                await supabase.from('class_sizes').insert(classSizesPayload);
+            }
+        }
+
         showToast(id ? 'تم تحديث البيانات بنجاح' : 'تمت الإضافة بنجاح', 'success');
         closeDefinitionModal();
         await loadCurrentTabData();
-    }
 
-    btn.disabled = false;
-    btn.innerHTML = `<span>حفظ البيانات</span> <i class="ph ph-check-circle text-lg"></i>`;
+    } catch (error) {
+        showToast('خطأ: قد يكون هذا الاسم أو الكود مسجلاً بالفعل', 'error');
+        console.error(error);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>حفظ البيانات</span> <i class="ph ph-check-circle text-lg"></i>`;
+    }
 }
+
+window.openDefinitionModalFromCurrent = () => {
+    window.openDefinitionModal(currentTab);
+};
+
+window.closeDefinitionModal = () => {
+    const modal = document.getElementById('def-action-modal');
+    const modalContent = document.getElementById('def-modal-content');
+    
+    modal.classList.add('opacity-0');
+    modalContent.classList.add('scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        document.getElementById('def-action-form').reset();
+    }, 300);
+};
+
 
 window.handleDeleteDefinition = async (table, id) => {
     const confirmed = await confirmDialog({
@@ -320,35 +373,65 @@ window.processColorExcelPreview = async () => {
         btn.innerHTML = `<i class="ph ph-magnifying-glass text-xl"></i> تحليل ومعاينة الملف`;
     }
 };
+
 window.executeColorExcelImport = async () => {
-    if (pendingExcelColors.length === 0) {
-        showToast('لا توجد ألوان جديدة صالحة للإضافة!', 'warning');
+    // 🌟 1. تصحيح اسم المصفوفة ليطابق دالة الفحص 🌟
+    if (!pendingExcelColors || pendingExcelColors.length === 0) {
+        showToast('لا توجد ألوان جديدة صالحة للإضافة!', 'info');
         return;
     }
 
     const btn = document.getElementById('color-excel-import-btn');
     btn.disabled = true;
-    btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> جاري الحفظ...`;
 
     try {
-        const { error } = await supabase.from('colors').insert(pendingExcelColors);
-        if (error) throw error;
+        const CHUNK_SIZE = 500; // الألوان خفيفة، 500 سجل في الدفعة رقم ممتاز وآمن
+        const totalColors = pendingExcelColors.length;
+        let successCount = 0;
 
-        showToast(`تم استيراد وحفظ ${pendingExcelColors.length} لون بنجاح!`, 'success');
-        closeColorExcelModal();
-        
-        if (currentTab === 'colors') {
-            await loadCurrentTabData();
+        for (let i = 0; i < totalColors; i += CHUNK_SIZE) {
+            const chunk = pendingExcelColors.slice(i, i + CHUNK_SIZE);
+            const currentEnd = Math.min(i + CHUNK_SIZE, totalColors);
+
+            btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> جاري حفظ ${currentEnd} من ${totalColors}...`;
+
+            // 🌟 2. الحل الجذري: استخدام upsert لتخطي الأكواد المكررة في السيرفر بصمت 🌟
+            const { error } = await supabase.from('colors').upsert(chunk, {
+                onConflict: 'color_code', // تحديد العمود الذي يمنع التكرار
+                ignoreDuplicates: true    // تجاهل المكرر وعدم إحداث خطأ
+            });
+
+            if (error) {
+                throw new Error(`خطأ أثناء حفظ الدفعة (${i} إلى ${currentEnd}): ${error.message}`);
+            }
+
+            successCount += chunk.length;
         }
 
-    } catch (err) {
-        console.error(err);
-        showToast('حدث خطأ أثناء حفظ البيانات', 'error');
+        showToast(`تم استيراد وحفظ ${successCount} لون بنجاح!`, 'success');
+        
+        // إغلاق النافذة
+        if (typeof window.closeColorExcelModal === 'function') {
+            window.closeColorExcelModal();
+        }
+
+        // تحديث جدول الألوان بصمت
+        if (typeof window.switchDefTab === 'function') {
+            await window.switchDefTab('colors');
+        }
+
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'حدث خطأ أثناء الحفظ', 'error');
     } finally {
-        btn.disabled = false;
         btn.innerHTML = `<i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الألوان الجديدة`;
+        btn.disabled = false;
+        
+        // 🌟 3. تفريغ المصفوفة الصحيحة بعد الانتهاء 🌟
+        pendingExcelColors = []; 
     }
 };
+
 
 function readExcelFile(file) {
     return new Promise((resolve, reject) => {

@@ -7,7 +7,9 @@ let currentCategories = new Set();
 let currentUser = null;
 let isWorker = false;
 let localCart = []; // سلة المشتريات في المتصفح
-
+let currentPage = 1;
+const itemsPerPage = 25;
+let currentFilteredModels = [];
 export async function initGallery() {
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
@@ -43,6 +45,7 @@ async function fetchGalleryModelsSilent() {
         .select(`
             *,
             categories(name),
+            classes(name, class_sizes(sizes(name))),
             model_sizes(sizes(name)),
             model_inventory(color_id, available_series, colors(name)),
             model_images(image_url)
@@ -51,18 +54,49 @@ async function fetchGalleryModelsSilent() {
         .order('created_at', { ascending: false });
 
     if (!error && data) {
-        allModels = data; // تحديث الذاكرة المحلية
-        applyGalleryFilters(); // إعادة رسم الكروت والأرقام الجديدة
-        
-        // إذا كان الموظف فاتح نافذة التفاصيل حالياً، قم بتحديثها أيضاً!
+        allModels = data;
+        applyGalleryFilters();
         const modal = document.getElementById('model-viewer-modal');
         if (modal && !modal.classList.contains('hidden')) {
             const currentModelId = modal.getAttribute('data-current-model-id');
-            if (currentModelId) {
-                window.openModelViewer(currentModelId);
-            }
+            if (currentModelId) window.openModelViewer(currentModelId);
         }
     }
+}
+
+async function fetchGalleryModels() {
+    const container = document.getElementById('gallery-grid');
+    if(!container) return;
+    container.innerHTML = `<div class="col-span-full py-20 text-center"><i class="ph ph-spinner animate-spin text-5xl text-devo-orange"></i></div>`;
+
+    const { data, error } = await supabase
+        .from('models')
+        .select(`
+            *,
+            categories(name),
+            classes(name, class_sizes(sizes(name))),
+            model_sizes(sizes(name)),
+            model_inventory(color_id, available_series, colors(name)),
+            model_images(image_url)
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        container.innerHTML = `<div class="col-span-full text-center text-devo-error font-bold">حدث خطأ أثناء الاتصال بقاعدة البيانات.</div>`;
+        return;
+    }
+
+    allModels = data;
+    const catSelect = document.getElementById('gal-category');
+    currentCategories.clear();
+    allModels.forEach(m => { if(m.categories?.name) currentCategories.add(m.categories.name); });
+    
+    let catOptions = `<option value="">جميع التصنيفات</option>`;
+    currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
+    if(catSelect) catSelect.innerHTML = catOptions;
+
+    applyGalleryFilters();
 }
 
 window.clearGalleryFilters = () => {
@@ -84,44 +118,6 @@ function resolveImageUrl(url) {
     return url; 
 }
 
-async function fetchGalleryModels() {
-    const container = document.getElementById('gallery-grid');
-    if(!container) return;
-
-    container.innerHTML = `<div class="col-span-full py-20 text-center"><i class="ph ph-spinner animate-spin text-5xl text-devo-orange"></i></div>`;
-
-    const { data, error } = await supabase
-        .from('models')
-        .select(`
-            *,
-            categories(name),
-            model_sizes(sizes(name)),
-            model_inventory(color_id, available_series, colors(name)),
-            model_images(image_url)
-        `)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        container.innerHTML = `<div class="col-span-full text-center text-devo-error font-bold">حدث خطأ أثناء الاتصال بقاعدة البيانات.</div>`;
-        return;
-    }
-
-    allModels = data;
-    
-    // استخراج التصنيفات لملء الفلتر
-    const catSelect = document.getElementById('gal-category');
-    currentCategories.clear();
-    allModels.forEach(m => { if(m.categories?.name) currentCategories.add(m.categories.name); });
-    
-    let catOptions = `<option value="">جميع التصنيفات</option>`;
-    currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
-    if(catSelect) catSelect.innerHTML = catOptions;
-
-    applyGalleryFilters();
-}
-
-// --- محرك الفلترة والترتيب ---
 function applyGalleryFilters() {
     const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
     const cat = document.getElementById('gal-category')?.value || '';
@@ -129,7 +125,9 @@ function applyGalleryFilters() {
 
     let filtered = allModels.filter(m => {
         let isMatch = true;
-        const searchStr = `${m.name} ${m.factory_code} ${m.system_code} ${m.categories?.name}`.toLowerCase();
+        
+        // 🌟 البحث أصبح في أكواد المصنع أو السيستم فقط (أسرع وأدق) 🌟
+        const searchStr = `${m.factory_code || ''} ${m.system_code || ''}`.toLowerCase();
         
         if (term && !searchStr.includes(term)) isMatch = false;
         if (cat && m.categories?.name !== cat) isMatch = false;
@@ -142,9 +140,95 @@ function applyGalleryFilters() {
     else if (sort === 'price_desc') filtered.sort((a, b) => b.price - a.price);
     else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    renderGallery(filtered);
+    // 🌟 توجيه النتيجة لنظام الصفحات 🌟
+    currentFilteredModels = filtered;
+    currentPage = 1; // العودة للصفحة الأولى عند كل فلترة جديدة
+    renderGalleryPage();
+}
+// 🌟 دالة اقتطاع الموديلات للصفحة الحالية 🌟
+function renderGalleryPage() {
+    const container = document.getElementById('gallery-grid');
+    const topPagination = document.getElementById('gallery-pagination-top');
+    const bottomPagination = document.getElementById('gallery-pagination-bottom');
+    
+    if (!container) return;
+
+    if (currentFilteredModels.length === 0) {
+        container.innerHTML = `<div class="col-span-full py-20 text-center text-devo-muted flex flex-col items-center"><i class="ph ph-magnifying-glass text-6xl mb-4 opacity-50"></i><p>لا توجد موديلات تطابق بحثك حالياً.</p></div>`;
+        if (topPagination) topPagination.innerHTML = '';
+        if (bottomPagination) bottomPagination.innerHTML = '';
+        return;
+    }
+
+    const totalItems = currentFilteredModels.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    // اقتطاع 50 موديل فقط للصفحة
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageData = currentFilteredModels.slice(startIndex, endIndex);
+
+    // إرسال الموديلات المقتطعة لدالة الرسم القديمة
+    renderGallery(pageData);
+    
+    // رسم أزرار التنقل
+    renderGalleryPaginationControls(totalPages);
+}
+// 🌟 دالة إظهار/إخفاء الفلاتر الإضافية في الموبايل 🌟
+window.toggleGalleryFilters = () => {
+    const filtersDiv = document.getElementById('gallery-advanced-filters');
+    if (filtersDiv) {
+        if (filtersDiv.classList.contains('hidden')) {
+            filtersDiv.classList.remove('hidden');
+            filtersDiv.classList.add('flex');
+        } else {
+            filtersDiv.classList.add('hidden');
+            filtersDiv.classList.remove('flex');
+        }
+    }
+};
+// 🌟 رسم أزرار الصفحات بتصميم مضغوط للموبايل 🌟
+function renderGalleryPaginationControls(totalPages) {
+    const topContainer = document.getElementById('gallery-pagination-top');
+    const bottomContainer = document.getElementById('gallery-pagination-bottom');
+    
+    if (!topContainer || !bottomContainer) return;
+
+    if (totalPages <= 1) {
+        topContainer.innerHTML = '';
+        bottomContainer.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    
+    // زر السابق (تم تصغير الحجم وإخفاء النص في الموبايل)
+    html += `<button onclick="changeGalleryPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-2 md:px-4 py-1 md:py-2 rounded md:rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 md:gap-2 text-[11px] md:text-sm"><i class="ph ph-caret-right"></i> <span class="hidden sm:inline">السابق</span></button>`;
+
+    // العداد
+    html += `<span class="px-3 md:px-6 py-1 md:py-2 rounded md:rounded-lg bg-devo-dark text-devo-orange font-bold border border-devo-gray text-[11px] md:text-sm whitespace-nowrap">صفحة ${currentPage} / ${totalPages}</span>`;
+
+    // زر التالي
+    html += `<button onclick="changeGalleryPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-2 md:px-4 py-1 md:py-2 rounded md:rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 md:gap-2 text-[11px] md:text-sm"><span class="hidden sm:inline">التالي</span> <i class="ph ph-caret-left"></i></button>`;
+
+    topContainer.innerHTML = html;
+    bottomContainer.innerHTML = html;
 }
 
+// 🌟 دالة التنقل بين الصفحات وتحديث الشاشة 🌟
+window.changeGalleryPage = (newPage) => {
+    currentPage = newPage;
+    renderGalleryPage();
+    
+    // عمل سكرول ناعم لأعلى المعرض عند تغيير الصفحة
+    const searchBar = document.getElementById('gal-search');
+    if (searchBar) {
+        searchBar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+};
 // --- رسم الكروت في المعرض ---
 function renderGallery(models) {
     const container = document.getElementById('gallery-grid');
@@ -167,7 +251,6 @@ function renderGallery(models) {
             else if (totalSeries <= 5) stockBadge = `<span class="absolute top-3 right-3 bg-devo-orange text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
             else stockBadge = `<span class="absolute top-3 right-3 bg-devo-success text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
         } else {
-            // الزائر لا يرى الأرقام
             if (isOut) stockBadge = `<span class="absolute top-3 right-3 bg-devo-black/80 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold border border-devo-gray">نفذت الكمية</span>`;
             else stockBadge = `<span class="absolute top-3 right-3 bg-devo-success/20 text-devo-success backdrop-blur-sm border border-devo-success/50 text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متوفر</span>`;
         }
@@ -198,7 +281,9 @@ window.openModelViewer = (id) => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
 
-    const sizesCount = model.model_sizes?.length || 1;
+    // 🌟 استنتاج المقاسات وعددها من الفئة العمرية (مع دعم القديم كاحتياطي) 🌟
+    const classSizes = model.classes?.class_sizes || [];
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
 
     const modal = document.getElementById('model-viewer-modal');
     if (modal) modal.setAttribute('data-current-model-id', id);
@@ -214,7 +299,12 @@ window.openModelViewer = (id) => {
         ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src" class="w-20 h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}</div>` : ''}
     `;
 
-    const sizesHtml = model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('') || '<span class="text-devo-muted text-xs">غير محدد</span>';
+    // 🌟 رسم المقاسات بشكل احترافي 🌟
+    const renderSizesTags = classSizes.length > 0 
+        ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium" title="مستنتج من الفئة العمرية"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
+        : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('');
+    
+    const sizesHtml = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
 
     let colorsHtml = '';
     if (model.model_inventory && model.model_inventory.length > 0) {
@@ -226,7 +316,6 @@ window.openModelViewer = (id) => {
                 return `<div class="flex justify-between items-center p-3 bg-devo-black border border-devo-gray rounded-xl mb-2"><span class="text-white font-bold">${inv.colors?.name}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
             }
 
-            // 🌟 تمرير sizesCount إلى زر الإضافة للسلة 🌟
             return `
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-devo-black border ${isOut ? 'border-devo-error/30' : 'border-devo-gray'} rounded-xl mb-2 gap-3">
                 <div class="flex justify-between w-full sm:w-auto flex-1">
@@ -277,7 +366,6 @@ window.openModelViewer = (id) => {
     if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.remove('opacity-0'), 10); }
 };
 
-// استبدل دالة addToCart بهذا الكود لتستقبل factoryCode
 window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable, sizesCount, factoryCode) => {
     const qtyInput = document.getElementById(`qty-${colorId}`);
     const qty = parseInt(qtyInput.value);
@@ -311,6 +399,7 @@ window.addToCart = (event, modelId, colorId, modelName, colorName, price, image,
     }
     showToast(`تم إضافة الموديل للسلة`, 'success');
 };
+
 window.closeModelViewer = () => {
     const modal = document.getElementById('model-viewer-modal');
     modal.classList.add('opacity-0');
@@ -356,7 +445,6 @@ function updateFloatingCart() {
         setTimeout(() => countEl.parentElement.parentElement.classList.remove('animate-bounce'), 1000);
     }
 }
-
 
 // تعريض الدالة للاستخدام العالمي لتحديث المعرض بعد الطلب
 window.refreshGallery = fetchGalleryModels;

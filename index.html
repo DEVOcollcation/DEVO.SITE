@@ -146,37 +146,50 @@
             </section>
         </div>
 <div id="view-gallery" class="site-view-section hidden animate-fade-in pb-20">
-            <div class="bg-devo-black/95 backdrop-blur-md border-b border-devo-gray sticky top-20 z-30 py-4 mb-8 shadow-sm">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex flex-wrap md:flex-nowrap gap-3 items-center">
-                        <div class="relative flex-[2] min-w-[250px]">
-                            <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-devo-muted text-xl"></i>
-                            <input type="text" id="gal-search" placeholder="بحث بكود المصنع، الاسم، أو التصنيف..." 
-                                class="w-full bg-devo-dark border border-devo-gray rounded-xl pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-all text-sm">
-                        </div>
-                        
-                        <select id="gal-category" class="flex-1 min-w-[140px] bg-devo-dark border border-devo-gray rounded-xl px-3 py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-sm">
-                            <option value="">جميع التصنيفات</option>
-                            </select>
-                        
-                        <select id="gal-sort" class="flex-1 min-w-[140px] bg-devo-dark border border-devo-gray rounded-xl px-3 py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-sm">
-                            <option value="newest">الأحدث أولاً</option>
-                            <option value="price_asc">السعر: من الأقل للأعلى</option>
-                            <option value="price_desc">السعر: من الأعلى للأقل</option>
-                        </select>
-
-                        <button onclick="clearGalleryFilters()" class="bg-devo-dark border border-devo-gray text-devo-error hover:bg-devo-error hover:text-white px-4 py-3 rounded-xl transition-all text-sm flex items-center justify-center" title="مسح الفلاتر">
-                            <i class="ph ph-eraser text-xl"></i>
-                        </button>
+    <div class="bg-devo-black/95 backdrop-blur-md border-b border-devo-gray sticky top-20 z-30 py-2 md:py-4 mb-3 shadow-sm">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div class="flex flex-col md:flex-row gap-2 md:items-center">
+                
+                <div class="flex w-full md:flex-[2] gap-2 items-center">
+                    <div class="relative flex-1">
+                        <i class="ph ph-magnifying-glass absolute right-2 md:right-4 top-1/2 -translate-y-1/2 text-devo-muted text-sm md:text-xl"></i>
+                        <input type="number" id="gal-search" placeholder="بحث بالكود..." 
+                            class="w-full bg-devo-dark border border-devo-gray rounded-lg md:rounded-xl pr-8 md:pr-12 pl-2 md:pl-4 py-2 md:py-3 text-white focus:outline-none focus:border-devo-orange transition-all text-xs md:text-sm h-[38px] md:h-auto">
                     </div>
+                    <button onclick="toggleGalleryFilters()" class="md:hidden bg-devo-dark border border-devo-gray text-devo-muted hover:text-white px-3 py-2 rounded-lg transition-all h-[38px] flex items-center justify-center shrink-0">
+                        <i class="ph ph-faders text-lg"></i>
+                    </button>
                 </div>
-            </div>
-
-            <section class="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[50vh]">
-                <div id="gallery-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                
+                <div id="gallery-advanced-filters" class="hidden md:flex w-full md:flex-1 gap-2 flex-col md:flex-row mt-1 md:mt-0 transition-all">
+                    <div class="flex gap-2 w-full">
+                        <select id="gal-category" class="flex-1 bg-devo-dark border border-devo-gray rounded-lg md:rounded-xl px-1 md:px-3 py-1.5 md:py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-[11px] md:text-sm h-[34px] md:h-auto">
+                            <option value="">جميع التصنيفات</option>
+                        </select>
+                        <select id="gal-sort" class="flex-1 bg-devo-dark border border-devo-gray rounded-lg md:rounded-xl px-1 md:px-3 py-1.5 md:py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-[11px] md:text-sm h-[34px] md:h-auto">
+                            <option value="newest">الأحدث أولاً</option>
+                            <option value="price_asc">السعر (أقل)</option>
+                            <option value="price_desc">السعر (أعلى)</option>
+                        </select>
                     </div>
-            </section>
+                    <button onclick="clearGalleryFilters()" class="bg-devo-dark border border-devo-gray text-devo-error hover:bg-devo-error hover:text-white py-1.5 md:py-3 px-3 md:px-4 rounded-lg md:rounded-xl transition-all text-xs md:text-sm flex items-center justify-center shrink-0 h-[34px] md:h-auto w-full md:w-auto" title="مسح الفلاتر">
+                        <i class="ph ph-eraser text-sm md:text-xl ml-1 md:ml-0"></i> <span class="md:hidden">مسح الفلاتر</span>
+                    </button>
+                </div>
+
+            </div>
         </div>
+    </div>
+
+    <section class="px-2 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[50vh]">
+        <div id="gallery-pagination-top" class="hidden md:flex justify-center items-center gap-1.5 md:gap-3 mb-3 col-span-full"></div>
+        
+        <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        </div>
+
+        <div id="gallery-pagination-bottom" class="flex justify-center items-center gap-1.5 md:gap-3 mt-8 mb-4 col-span-full"></div>
+    </section>
+</div>
     </main> <button id="floating-cart-btn" onclick="switchSiteView('view-cart'); window.refreshCartView();" class="fixed bottom-8 right-8 z-[100] bg-devo-orange hover:bg-devo-orangeHover text-white rounded-full w-16 h-16 flex items-center justify-center shadow-[0_10px_25px_rgba(249,115,22,0.4)] transition-all transform hover:scale-110 hidden">
         <div class="relative">
             <i class="ph ph-shopping-cart text-3xl"></i>
