@@ -108,6 +108,10 @@ async function loadViewLogic(targetId) {
         case 'view-home-settings':
             await initHomeSettingsView();
             break;
+        case 'view-bulk-edits':
+            const { initBulkEditsView } = await import('./bulk_edits.js');
+            await initBulkEditsView();
+            break;
         case 'view-admin-orders':
             const { initAdminOrdersView } = await import('./admin_orders.js');
             await initAdminOrdersView();
