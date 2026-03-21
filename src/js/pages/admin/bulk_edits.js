@@ -14,14 +14,26 @@ const bulkItemsPerPage = 50;
 export async function initBulkEditsView() {
     if (isBulkInitialized) return;
     
-    // 🌟 جلب الخيارات (Selectors) من السيرفر مباشرة لضمان عملها 🌟
     await fetchBulkFilterOptions();
     await fetchBulkModels();
     
     isBulkInitialized = true;
 }
 
-// دالة مخصصة لجلب التصنيفات والفئات والألوان والمقاسات
+// 🌟 دالة فتح/غلق الفلاتر 🌟
+window.toggleBulkFilters = () => {
+    const container = document.getElementById('bulk-filters-container');
+    const icon = document.getElementById('bulk-filter-icon');
+    
+    if (container.classList.contains('hidden')) {
+        container.classList.remove('hidden');
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        container.classList.add('hidden');
+        icon.style.transform = 'rotate(180deg)';
+    }
+};
+
 async function fetchBulkFilterOptions() {
     try {
         const [cats, clss, colors, sizes] = await Promise.all([
@@ -43,16 +55,21 @@ async function fetchBulkFilterOptions() {
         populate('bulk-filter-color', colors.data, 'جميع الألوان');
         populate('bulk-filter-size', sizes.data, 'جميع المقاسات');
 
+        // تعبئة القوائم السفلية للتعديل المجمع
         const actionSelect = document.getElementById('bulk-action-select');
         if (actionSelect && cats.data) {
             actionSelect.innerHTML = `<option value="" disabled selected>-- اختر التصنيف الجديد --</option>` + cats.data.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        }
+
+        const actionClassSelect = document.getElementById('bulk-action-class-select');
+        if (actionClassSelect && clss.data) {
+            actionClassSelect.innerHTML = `<option value="" disabled selected>-- اختر الفئة العمرية الجديدة --</option>` + clss.data.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
         }
     } catch (err) {
         console.error("Error fetching filter options:", err);
     }
 }
 
-// جلب كل الموديلات مع تفاصيل الألوان والمقاسات
 async function fetchBulkModels() {
     const tbody = document.getElementById('bulk-table-body');
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري تحميل كل الموديلات...</td></tr>`;
@@ -102,8 +119,6 @@ window.applyBulkFilters = () => {
     const classId = document.getElementById('bulk-filter-class')?.value || '';
     const status = document.getElementById('bulk-filter-status')?.value || '';
     const stockStatus = document.getElementById('bulk-filter-stock')?.value || '';
-    
-    // 🌟 الفلاتر الجديدة 🌟
     const colorId = document.getElementById('bulk-filter-color')?.value || '';
     const sizeId = document.getElementById('bulk-filter-size')?.value || '';
 
@@ -124,22 +139,18 @@ window.applyBulkFilters = () => {
         if (catId && m.category_id !== catId) isMatch = false;
         if (classId && m.class_id !== classId) isMatch = false;
         if (status !== "" && String(m.is_active) !== status) isMatch = false;
-        
         if (!isNaN(minPrice) && m.price < minPrice) isMatch = false;
         if (!isNaN(maxPrice) && m.price > maxPrice) isMatch = false;
 
-        // فلتر المخزون
         const totalQty = m.model_inventory?.reduce((sum, inv) => sum + (inv.available_series || 0), 0) || 0;
         if (stockStatus === 'in_stock' && totalQty === 0) isMatch = false;
         if (stockStatus === 'out_stock' && totalQty > 0) isMatch = false;
 
-        // 🌟 فلتر اللون الدقيق 🌟
         if (colorId) {
             const hasColor = m.model_inventory?.some(inv => inv.color_id === colorId);
             if (!hasColor) isMatch = false;
         }
 
-        // 🌟 فلتر المقاس الدقيق (يقرأ من الفئة العمرية أولاً، ثم المقاسات الفردية كاحتياطي) 🌟
         if (sizeId) {
             const classSizes = m.classes?.class_sizes?.map(cs => cs.size_id) || [];
             const manualSizes = m.model_sizes?.map(ms => ms.size_id) || [];
@@ -147,7 +158,6 @@ window.applyBulkFilters = () => {
             if (!hasSize) isMatch = false;
         }
 
-        // فلتر التاريخ
         if (dateFrom || dateTo) {
             const modelDate = new Date(m.created_at);
             modelDate.setHours(0, 0, 0, 0);
@@ -162,7 +172,6 @@ window.applyBulkFilters = () => {
                 if (modelDate > tDate) isMatch = false;
             }
         }
-
         return isMatch;
     });
 
@@ -170,6 +179,15 @@ window.applyBulkFilters = () => {
     filteredBulkModels.forEach(m => selectedModelIds.add(m.id));
     
     bulkCurrentPage = 1; 
+    
+    // بعد الفلترة المبدئية نقوم بطي الفلاتر تلقائياً لنظهر الموديلات بوضوح
+    const container = document.getElementById('bulk-filters-container');
+    if (container && term === '' && catId === '') {
+        // لا نغلقها إذا كان المستخدم يبحث، نغلقها فقط لتوفير المساحة
+    } else {
+        window.toggleBulkFilters(); 
+    }
+
     renderBulkPage();
     updateBulkActionBar();
 };
@@ -179,7 +197,7 @@ window.clearBulkFilters = () => {
         'bulk-search', 'bulk-filter-cat', 'bulk-filter-class', 
         'bulk-filter-status', 'bulk-filter-stock', 'bulk-price-min', 
         'bulk-price-max', 'bulk-date-from', 'bulk-date-to',
-        'bulk-filter-color', 'bulk-filter-size' // الحقول الجديدة
+        'bulk-filter-color', 'bulk-filter-size'
     ];
     
     filterIds.forEach(id => {
@@ -235,7 +253,7 @@ function renderBulkPage() {
                 <td class="p-3 text-center font-black text-devo-orange text-sm">${m.price}</td>
                 <td class="p-3 text-center text-xs text-devo-muted">
                     <span class="block mb-1">${m.categories?.name || '-'} / ${m.classes?.name || '-'}</span>
-                    <span class="${totalQty === 0 ? 'text-devo-error' : 'text-devo-success'} font-bold text-[10px] bg-devo-black px-2 py-0.5 rounded border border-devo-gray">${totalQty === 0 ? 'نفذت الكمية' : `متبقي: ${totalQty} سيريه`}</span>
+                    <span class="${totalQty === 0 ? 'text-devo-error' : 'text-devo-success'} font-bold text-[10px] bg-devo-black px-2 py-0.5 rounded border border-devo-gray">${totalQty === 0 ? 'نفذت الكمية' : `متبقي: ${totalQty}`}</span>
                 </td>
                 <td class="p-3 text-center">
                     ${m.is_active ? `<span class="bg-devo-success/10 border border-devo-success/20 text-devo-success text-[10px] font-bold px-2 py-1 rounded">نشط</span>` : `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[10px] font-bold px-2 py-1 rounded">معطل</span>`}
@@ -290,10 +308,13 @@ window.toggleSingleBulkCheck = (cb) => {
 
 function updateBulkActionBar() {
     const bar = document.getElementById('bulk-action-bar');
+    // 🌟 استخدام hidden و flex بدلاً من الـ translate لضمان استقرار العرض 🌟
     if (selectedModelIds.size > 0) {
-        bar.classList.remove('translate-y-full');
+        bar.classList.remove('hidden');
+        bar.classList.add('block');
     } else {
-        bar.classList.add('translate-y-full');
+        bar.classList.add('hidden');
+        bar.classList.remove('block');
     }
 }
 
@@ -302,10 +323,12 @@ window.handleBulkActionChange = () => {
     const container = document.getElementById('bulk-action-value-container');
     const input = document.getElementById('bulk-action-input');
     const select = document.getElementById('bulk-action-select');
+    const classSelect = document.getElementById('bulk-action-class-select');
 
     container.classList.remove('hidden');
     input.classList.add('hidden');
     select.classList.add('hidden');
+    classSelect.classList.add('hidden');
 
     if (action.includes('price')) {
         input.classList.remove('hidden');
@@ -315,6 +338,9 @@ window.handleBulkActionChange = () => {
     } else if (action === 'change_category') {
         select.classList.remove('hidden');
         select.value = '';
+    } else if (action === 'change_class') {
+        classSelect.classList.remove('hidden');
+        classSelect.value = '';
     } else {
         container.classList.add('hidden');
     }
@@ -326,9 +352,11 @@ window.executeBulkEdit = async () => {
 
     const inputVal = document.getElementById('bulk-action-input').value;
     const selectVal = document.getElementById('bulk-action-select').value;
+    const classSelectVal = document.getElementById('bulk-action-class-select').value;
 
     if (action.includes('price') && (!inputVal || inputVal <= 0)) return showToast('الرجاء إدخال قيمة صحيحة', 'error');
     if (action === 'change_category' && !selectVal) return showToast('الرجاء اختيار التصنيف الجديد', 'error');
+    if (action === 'change_class' && !classSelectVal) return showToast('الرجاء اختيار الفئة العمرية الجديدة', 'error');
 
     const confirmed = await confirmDialog({ title: 'تأكيد التعديل المجمع', message: `سيتم تطبيق هذا التعديل على ${selectedModelIds.size} موديل. هل أنت متأكد؟` });
     if (!confirmed) return;
@@ -357,6 +385,7 @@ window.executeBulkEdit = async () => {
                 case 'price_increase': newModel.price += val; break;
                 case 'price_decrease': newModel.price = Math.max(0, newModel.price - val); break;
                 case 'change_category': newModel.category_id = selectVal; break;
+                case 'change_class': newModel.class_id = classSelectVal; break; // 🌟 تعديل الفئة العمرية
             }
             return newModel;
         });
