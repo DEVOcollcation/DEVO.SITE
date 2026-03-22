@@ -960,15 +960,19 @@
             <div class="flex flex-col lg:flex-row items-center gap-4">
                 
                 <div class="flex-1 w-full flex flex-col sm:flex-row items-center gap-3">
-                    <select id="bulk-action-type" onchange="handleBulkActionChange()" class="w-full sm:w-auto bg-devo-dark border border-devo-orange rounded-lg px-3 py-3 text-white outline-none focus:border-devo-orange font-bold text-sm min-w-[200px] cursor-pointer">
+<select id="bulk-action-type" onchange="handleBulkActionChange()" class="w-full sm:w-auto bg-devo-dark border border-devo-orange rounded-lg px-3 py-3 text-white outline-none focus:border-devo-orange font-bold text-sm min-w-[200px] cursor-pointer">
                         <option value="" disabled selected>-- اختر الإجراء المجمع --</option>
                         <option value="status_active">تفعيل الموديلات (نشط)</option>
                         <option value="status_inactive">تعطيل الموديلات (معطل)</option>
                         <option value="price_fixed">تغيير السعر (سعر ثابت جديد)</option>
                         <option value="price_increase">زيادة السعر (بمبلغ ثابت +)</option>
                         <option value="price_decrease">تخفيض السعر (بمبلغ ثابت -)</option>
+                        <option value="price_percent_increase" class="text-devo-info">زيادة السعر بنسبة مئوية (%)</option>
+                        <option value="price_percent_decrease" class="text-devo-info">تخفيض السعر بنسبة مئوية (%)</option>
                         <option value="change_category">تغيير التصنيف</option>
-                        <option value="change_class">تغيير الفئة العمرية (المقاسات)</option> </select>
+                        <option value="change_class">تغيير الفئة العمرية (المقاسات)</option>
+                        <option value="delete_models" class="text-devo-error font-bold">حذف الموديلات نهائياً 🗑️</option>
+                    </select>
                     
                     <div id="bulk-action-value-container" class="flex-1 w-full hidden relative">
                         <input type="number" id="bulk-action-input" placeholder="أدخل القيمة هنا..." class="w-full bg-devo-dark border border-devo-gray rounded-lg px-3 py-3 text-white outline-none focus:border-devo-orange text-sm hidden">

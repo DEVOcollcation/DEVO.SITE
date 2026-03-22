@@ -180,7 +180,6 @@ window.applyBulkFilters = () => {
     
     bulkCurrentPage = 1; 
     
-    // بعد الفلترة المبدئية نقوم بطي الفلاتر تلقائياً لنظهر الموديلات بوضوح
     const container = document.getElementById('bulk-filters-container');
     if (container && term === '' && catId === '') {
         // لا نغلقها إذا كان المستخدم يبحث، نغلقها فقط لتوفير المساحة
@@ -308,7 +307,6 @@ window.toggleSingleBulkCheck = (cb) => {
 
 function updateBulkActionBar() {
     const bar = document.getElementById('bulk-action-bar');
-    // 🌟 استخدام hidden و flex بدلاً من الـ translate لضمان استقرار العرض 🌟
     if (selectedModelIds.size > 0) {
         bar.classList.remove('hidden');
         bar.classList.add('block');
@@ -334,13 +332,16 @@ window.handleBulkActionChange = () => {
         input.classList.remove('hidden');
         input.type = 'number';
         input.value = '';
-        input.placeholder = 'أدخل المبلغ هنا...';
+        input.placeholder = action.includes('percent') ? 'أدخل النسبة المئوية (مثال: 10)...' : 'أدخل المبلغ هنا...';
     } else if (action === 'change_category') {
         select.classList.remove('hidden');
         select.value = '';
     } else if (action === 'change_class') {
         classSelect.classList.remove('hidden');
         classSelect.value = '';
+    } else if (action === 'delete_models') {
+        // في حالة الحذف لا نحتاج أي مدخلات، نخفي المربع
+        container.classList.add('hidden');
     } else {
         container.classList.add('hidden');
     }
@@ -358,7 +359,17 @@ window.executeBulkEdit = async () => {
     if (action === 'change_category' && !selectVal) return showToast('الرجاء اختيار التصنيف الجديد', 'error');
     if (action === 'change_class' && !classSelectVal) return showToast('الرجاء اختيار الفئة العمرية الجديدة', 'error');
 
-    const confirmed = await confirmDialog({ title: 'تأكيد التعديل المجمع', message: `سيتم تطبيق هذا التعديل على ${selectedModelIds.size} موديل. هل أنت متأكد؟` });
+    const isDelete = action === 'delete_models';
+    const confirmMsg = isDelete 
+        ? `تحذير خطير: سيتم حذف ${selectedModelIds.size} موديل نهائياً وبلا رجعة! هل أنت متأكد تماماً؟`
+        : `سيتم تطبيق هذا التعديل على ${selectedModelIds.size} موديل. هل أنت متأكد؟`;
+
+    const confirmed = await confirmDialog({ 
+        title: isDelete ? 'حذف مجمع للموديلات 🗑️' : 'تأكيد التعديل المجمع', 
+        message: confirmMsg, 
+        isDestructive: isDelete 
+    });
+    
     if (!confirmed) return;
 
     const btn = document.getElementById('btn-bulk-execute');
@@ -367,49 +378,72 @@ window.executeBulkEdit = async () => {
 
     try {
         const modelsToEdit = bulkAllModels.filter(m => selectedModelIds.has(m.id));
-        
-        lastSnapshot = modelsToEdit.map(m => ({
-            id: m.id, system_code: m.system_code, factory_code: m.factory_code,
-            name: m.name, price: m.price, category_id: m.category_id, 
-            class_id: m.class_id, is_active: m.is_active
-        }));
-
-        const updatedModels = lastSnapshot.map(m => {
-            let newModel = { ...m };
-            const val = parseFloat(inputVal);
-
-            switch (action) {
-                case 'status_active': newModel.is_active = true; break;
-                case 'status_inactive': newModel.is_active = false; break;
-                case 'price_fixed': newModel.price = val; break;
-                case 'price_increase': newModel.price += val; break;
-                case 'price_decrease': newModel.price = Math.max(0, newModel.price - val); break;
-                case 'change_category': newModel.category_id = selectVal; break;
-                case 'change_class': newModel.class_id = classSelectVal; break; // 🌟 تعديل الفئة العمرية
-            }
-            return newModel;
-        });
-
         const CHUNK_SIZE = 300;
-        for (let i = 0; i < updatedModels.length; i += CHUNK_SIZE) {
-            const chunk = updatedModels.slice(i, i + CHUNK_SIZE);
-            const { error } = await supabase.from('models').upsert(chunk);
-            if (error) throw error;
+
+        if (isDelete) {
+            // 🌟 خوارزمية الحذف المجمع 🌟
+            const idsToDelete = Array.from(selectedModelIds);
+            for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
+                const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
+                const { error } = await supabase.from('models').delete().in('id', chunk);
+                if (error) throw error;
+            }
+            
+            showToast(`تم حذف ${selectedModelIds.size} موديل بنجاح!`, 'success');
+            
+            // نخفي زر التراجع لأن الحذف لا يمكن التراجع فيه
+            document.getElementById('btn-bulk-undo').classList.add('hidden');
+            document.getElementById('btn-bulk-undo').classList.remove('flex');
+            selectedModelIds.clear();
+            lastSnapshot = null;
+            
+        } else {
+            // 🌟 خوارزميات التعديل (النسب المئوية والأسعار) 🌟
+            lastSnapshot = modelsToEdit.map(m => ({
+                id: m.id, system_code: m.system_code, factory_code: m.factory_code,
+                name: m.name, price: m.price, category_id: m.category_id, 
+                class_id: m.class_id, is_active: m.is_active
+            }));
+
+            const updatedModels = lastSnapshot.map(m => {
+                let newModel = { ...m };
+                const val = parseFloat(inputVal);
+
+                switch (action) {
+                    case 'status_active': newModel.is_active = true; break;
+                    case 'status_inactive': newModel.is_active = false; break;
+                    case 'price_fixed': newModel.price = val; break;
+                    case 'price_increase': newModel.price += val; break;
+                    case 'price_decrease': newModel.price = Math.max(0, newModel.price - val); break;
+                    case 'price_percent_increase': newModel.price = Math.round(newModel.price * (1 + val / 100)); break;
+                    case 'price_percent_decrease': newModel.price = Math.max(0, Math.round(newModel.price * (1 - val / 100))); break;
+                    case 'change_category': newModel.category_id = selectVal; break;
+                    case 'change_class': newModel.class_id = classSelectVal; break;
+                }
+                return newModel;
+            });
+
+            for (let i = 0; i < updatedModels.length; i += CHUNK_SIZE) {
+                const chunk = updatedModels.slice(i, i + CHUNK_SIZE);
+                const { error } = await supabase.from('models').upsert(chunk);
+                if (error) throw error;
+            }
+
+            showToast(`تم تعديل ${selectedModelIds.size} موديل بنجاح!`, 'success');
+            document.getElementById('btn-bulk-undo').classList.remove('hidden');
+            document.getElementById('btn-bulk-undo').classList.add('flex');
         }
 
-        showToast(`تم تعديل ${selectedModelIds.size} موديل بنجاح!`, 'success');
-        document.getElementById('btn-bulk-undo').classList.remove('hidden');
-        document.getElementById('btn-bulk-undo').classList.add('flex');
-        
         await fetchBulkModels();
         if (typeof window.refreshModelsData === 'function') window.refreshModelsData();
 
     } catch (err) {
         console.error(err);
-        showToast(`خطأ أثناء التعديل: ${err.message}`, 'error');
+        showToast(`خطأ أثناء التنفيذ: ${err.message}`, 'error');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i class="ph ph-lightning text-lg"></i> تنفيذ التعديلات`;
+        btn.innerHTML = `<i class="ph ph-lightning text-lg"></i> تنفيذ الإجراءات`;
+        updateBulkActionBar(); 
     }
 };
 
