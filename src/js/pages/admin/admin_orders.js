@@ -27,7 +27,7 @@ export async function initAdminOrdersView() {
     });
 
     await fetchAdminOrders();
-    setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي بدلاً من التحديث القديم
+    setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي 🌟
 
     isInitialized = true;
 }
@@ -105,10 +105,16 @@ function setupRealtimeAdminOrders() {
                 allAdminOrders[index] = { ...allAdminOrders[index], ...payload.new };
                 updateAdminStats();
                 
-                // تحديث الـ DOM للصف المستهدف فقط
+                // 🌟 تحديث الـ DOM للصف المستهدف وعمل وميض ملفت للانتباه لكي يعرف الأدمن أن هناك من يعمل عليه 🌟
                 const existingRow = document.getElementById(`admin-order-row-${payload.new.id}`);
                 if (existingRow) {
                     existingRow.outerHTML = generateOrderRowHTML(allAdminOrders[index]);
+                    
+                    const newRow = document.getElementById(`admin-order-row-${payload.new.id}`);
+                    if (newRow) {
+                        newRow.classList.add('bg-devo-info/30', 'transition-all', 'duration-500');
+                        setTimeout(() => newRow.classList.remove('bg-devo-info/30'), 2000);
+                    }
                 }
             }
         })
@@ -125,7 +131,6 @@ function setupRealtimeAdminOrders() {
             }
         })
         .subscribe((status, err) => {
-            // 🌟 هذه الأسطر ستخبرك بحالة الاتصال في الـ Console 🌟
             console.log('📡 حالة اتصال رادار الأوردرات:', status);
             if (err) console.error('⚠️ خطأ في اتصال الرادار:', err);
         });

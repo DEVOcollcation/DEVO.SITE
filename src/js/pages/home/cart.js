@@ -1,6 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { getCurrentSession } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
+import { confirmDialog } from '../../components/modal.js'; 
 
 let currentUser = null;
 let cartItems = [];
@@ -22,22 +23,6 @@ export function initCart() {
             document.getElementById('c-receiver').required = val > 0;
         });
 
-        const savedOrderData = localStorage.getItem('devo_edit_order_data');
-        if (savedOrderData) {
-            try {
-                const orderDataObj = JSON.parse(savedOrderData);
-                editingOrderId = orderDataObj.id;
-                document.getElementById('c-name').value = orderDataObj.customer_name || '';
-                document.getElementById('c-phone1').value = orderDataObj.phone_1 || '';
-                document.getElementById('c-phone2').value = orderDataObj.phone_2 || '';
-                document.getElementById('c-address').value = orderDataObj.address || '';
-                document.getElementById('c-notes').value = orderDataObj.notes || ''; 
-                document.getElementById('c-deposit').value = orderDataObj.deposit || 0;
-                document.getElementById('c-receiver').value = orderDataObj.deposit_receiver || '';
-                showToast('أنت الآن في وضع تعديل الأوردر رقم: ' + orderDataObj.invoice_number, 'info');
-            } catch(e) {}
-        }
-
         loadAndRenderCart();
         setupCartRealtime(); 
     }
@@ -54,7 +39,7 @@ function setupCartRealtime() {
             const { model_id, color_id, available_series } = payload.new;
             const itemInCart = cartItems.find(i => i.modelId === model_id && i.colorId === color_id);
             
-            if (itemInCart) {
+            if (itemInCart && !editingOrderId) { // لا نزعج المستخدم بالرادار أثناء التعديل المباشر
                 if (available_series === 0) {
                     showToast(`⚠️ الموديل (${itemInCart.modelName}) الموجود بسلتك قد نفذت كميته للتو!`, 'error');
                 } else if (itemInCart.qty > available_series) {
@@ -85,11 +70,31 @@ function setupCartRealtime() {
 }
 
 // ==========================================
-// 🌟 2. تحميل ورسم السلة مع المعادلات الصحيحة 🌟
+// 🌟 2. تحميل ورسم السلة (بمعادلة المتاح الحقيقي) 🌟
 // ==========================================
 async function loadAndRenderCart() {
     const saved = localStorage.getItem('devo_cart');
     if (saved) { try { cartItems = JSON.parse(saved); } catch(e) { cartItems = []; } }
+
+    // 🌟 نقلنا تعبئة البيانات هنا لتعمل في كل مرة يفتح فيها الموظف السلة 🌟
+    let originalOrderData = null;
+    const savedOrderData = localStorage.getItem('devo_edit_order_data');
+    if (savedOrderData) {
+        try {
+            originalOrderData = JSON.parse(savedOrderData);
+            editingOrderId = originalOrderData.id;
+            document.getElementById('c-name').value = originalOrderData.customer_name || '';
+            document.getElementById('c-phone1').value = originalOrderData.phone_1 || '';
+            document.getElementById('c-phone2').value = originalOrderData.phone_2 || '';
+            document.getElementById('c-address').value = originalOrderData.address || '';
+            document.getElementById('c-notes').value = originalOrderData.notes || ''; 
+            document.getElementById('c-deposit').value = originalOrderData.deposit || 0;
+            document.getElementById('c-receiver').value = originalOrderData.deposit_receiver || '';
+        } catch(e) {}
+    } else {
+        editingOrderId = null;
+        document.getElementById('checkout-form')?.reset();
+    }
 
     const container = document.getElementById('cart-items-container');
     const checkoutBtn = document.getElementById('btn-checkout');
@@ -118,13 +123,13 @@ async function loadAndRenderCart() {
         supabase.from('models').select('id, is_active').in('id', modelIds)
     ]);
 
-    renderCartItems(dbInventory || [], dbModels || []);
+    renderCartItems(dbInventory || [], dbModels || [], originalOrderData);
     updateFloatingCart();
     
     if(window.filterCartItems) window.filterCartItems();
 }
 
-function renderCartItems(dbInventory, dbModels) {
+function renderCartItems(dbInventory, dbModels, originalOrderData) {
     const container = document.getElementById('cart-items-container');
     const checkoutBtn = document.getElementById('btn-checkout');
     
@@ -138,31 +143,35 @@ function renderCartItems(dbInventory, dbModels) {
         const dbModel = dbModels.find(m => m.id === item.modelId);
 
         let errorMsg = null;
-        let available = 0;
+        let availableInDB = dbInv ? dbInv.available_series : 0;
+
+        // 🌟 السحر هنا: معادلة المتاح الحقيقي (True Available) 🌟
+        // نضيف الكمية التي يملكها الأوردر بالفعل إلى كمية المخزن
+        let ownedQty = 0;
+        if (editingOrderId && originalOrderData && originalOrderData.original_items) {
+            const oldItem = originalOrderData.original_items.find(oi => oi.model_id === item.modelId && oi.color_id === item.colorId);
+            if (oldItem) ownedQty = oldItem.quantity;
+        }
+        
+        const trueAvailable = availableInDB + ownedQty;
 
         if (!dbModel || !dbModel.is_active) {
-            errorMsg = "الموديل غير متاح (تم إيقافه أو حذفه من قبل الإدارة).";
+            errorMsg = "الموديل غير متاح (تم إيقافه أو حذفه من الإدارة).";
             hasErrors = true;
-        } else if (!dbInv) {
-            errorMsg = "هذا اللون لم يعد متاحاً في المخزن.";
+        } else if (trueAvailable === 0) {
+            errorMsg = "نفذت الكمية تماماً من المخزن.";
             hasErrors = true;
-        } else {
-            available = dbInv.available_series;
-            if (available === 0) {
-                errorMsg = "نفذت الكمية تماماً من المخزن.";
-                hasErrors = true;
-            } else if (item.qty > available) {
-                errorMsg = `المطلوب (${item.qty}) غير متاح. المتبقي: ${available} سيريه فقط.`;
-                hasErrors = true;
-            }
+        } else if (item.qty > trueAvailable) {
+            errorMsg = `المطلوب (${item.qty}) غير متاح. أقصى حد متاح لك: ${trueAvailable} سيريه.`;
+            hasErrors = true;
         }
 
-        // 🌟 المعادلة الصحيحة الجديدة 🌟
         const pricePerPiece = parseFloat(item.price) || 0;
-        const piecesPerSeries = parseInt(item.sizesCount) || 1;
-        const pricePerSeries = pricePerPiece * piecesPerSeries; // سعر السيريه الواحد
-        const itemTotalPrice = pricePerSeries * item.qty; // الإجمالي لهذا اللون
+        const piecesPerSeries = parseInt(item.sizesCount) || 1; 
+        const pricePerSeries = pricePerPiece * piecesPerSeries; 
+        const itemTotalPrice = pricePerSeries * item.qty; 
 
+        // حتى لو فيه خطأ، نعرض السعر للمنتجات السليمة لنرى الإجمالي
         if (!errorMsg) {
             totalOrderPrice += itemTotalPrice;
             totalSeriesCount += item.qty;
@@ -194,14 +203,14 @@ function renderCartItems(dbInventory, dbModels) {
                     ${errorMsg ? `
                         <div class="mt-2 p-2 bg-devo-error/20 border border-devo-error/40 rounded flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
                             <span class="text-devo-error text-[11px] font-bold flex items-center gap-1"><i class="ph ph-warning-circle text-sm"></i> ${errorMsg}</span>
-                            ${available > 0 ? `<button type="button" onclick="updateCartItemQty(${index}, ${available})" class="text-[10px] bg-devo-orange text-white px-3 py-1.5 rounded shadow whitespace-nowrap hover:bg-devo-orangeHover transition-colors font-bold">تصحيح لـ ${available}</button>` : ''}
+                            ${trueAvailable > 0 ? `<button type="button" onclick="updateCartItemQty(${index}, ${trueAvailable}, ${trueAvailable})" class="text-[10px] bg-devo-orange text-white px-3 py-1.5 rounded shadow whitespace-nowrap hover:bg-devo-orangeHover transition-colors font-bold">تصحيح لـ ${trueAvailable}</button>` : ''}
                         </div>
                     ` : `
                         <div class="flex justify-between items-end mt-2 border-t border-devo-gray/50 pt-2">
                             <div class="flex items-center bg-devo-black border border-devo-gray rounded-lg overflow-hidden h-8">
                                 <button type="button" onclick="updateCartItemQty(${index}, ${item.qty - 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-minus"></i></button>
                                 <input type="number" readonly value="${item.qty}" class="w-10 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray">
-                                <button type="button" onclick="updateCartItemQty(${index}, ${item.qty + 1}, ${available})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-plus"></i></button>
+                                <button type="button" onclick="updateCartItemQty(${index}, ${item.qty + 1}, ${trueAvailable})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-plus"></i></button>
                             </div>
                             <div class="text-left">
                                 <p class="text-devo-orange font-black text-sm">${itemTotalPrice.toLocaleString()} ج.م</p>
@@ -239,6 +248,33 @@ function renderCartItems(dbInventory, dbModels) {
     }
 }
 
+// 🌟 دالة إفراغ السلة بالكامل وإلغاء وضع التعديل 🌟
+window.clearEntireCart = async () => {
+    if (cartItems.length === 0 && !editingOrderId) {
+        return showToast('السلة فارغة بالفعل', 'info');
+    }
+
+    const confirmed = await confirmDialog({ 
+        title: 'إفراغ السلة', 
+        message: 'هل أنت متأكد من رغبتك في إفراغ السلة بالكامل وإلغاء أي تعديلات جارية؟', 
+        isDestructive: true 
+    });
+    
+    if (confirmed) {
+        cartItems = [];
+        editingOrderId = null;
+        localStorage.removeItem('devo_cart');
+        localStorage.removeItem('devo_edit_order_data');
+        
+        const form = document.getElementById('checkout-form');
+        if (form) form.reset();
+        
+        updateFloatingCart();
+        loadAndRenderCart();
+        showToast('تم إفراغ السلة وإلغاء وضع التعديل بنجاح', 'success');
+    }
+};
+
 window.filterCartItems = () => {
     const term = document.getElementById('cart-search-input')?.value.toLowerCase().trim() || '';
     const cards = document.querySelectorAll('.cart-item-card');
@@ -256,7 +292,7 @@ window.filterCartItems = () => {
 window.updateCartItemQty = (index, newQty, maxAvailable = null) => {
     if (newQty < 1) return;
     if (maxAvailable !== null && newQty > maxAvailable) {
-        return showToast(`أقصى كمية متاحة الآن هي ${maxAvailable}`, 'warning');
+        return showToast(`أقصى كمية متاحة لك الآن هي ${maxAvailable}`, 'warning');
     }
     cartItems[index].qty = newQty;
     saveCart();
@@ -264,7 +300,7 @@ window.updateCartItemQty = (index, newQty, maxAvailable = null) => {
 };
 
 // ==========================================
-// 🌟 4. الدفع وتأكيد الأوردر (Checkout) مع المخزون
+// 🌟 3. الدفع وتأكيد الأوردر مع المخزون 🌟
 // ==========================================
 async function handleCheckout(e) {
     e.preventDefault();
@@ -281,11 +317,25 @@ async function handleCheckout(e) {
             supabase.from('models').select('id, is_active').in('id', modelIds)
         ]);
 
+        let originalOrderData = null;
+        if (editingOrderId) {
+            const savedData = localStorage.getItem('devo_edit_order_data');
+            if (savedData) originalOrderData = JSON.parse(savedData);
+        }
+
         let hasFinalErrors = false;
         cartItems.forEach(item => {
             const inv = dbInv?.find(i => i.model_id === item.modelId && i.color_id === item.colorId);
             const mod = dbMod?.find(m => m.id === item.modelId);
-            if (!mod || !mod.is_active || !inv || inv.available_series < item.qty) hasFinalErrors = true;
+            
+            let ownedQty = 0;
+            if (editingOrderId && originalOrderData && originalOrderData.original_items) {
+                 const oldItem = originalOrderData.original_items.find(oi => oi.model_id === item.modelId && oi.color_id === item.colorId);
+                 if (oldItem) ownedQty = oldItem.quantity;
+            }
+            const trueAvail = (inv ? inv.available_series : 0) + ownedQty;
+
+            if (!mod || !mod.is_active || trueAvail < item.qty) hasFinalErrors = true;
         });
 
         if (hasFinalErrors) {
@@ -294,7 +344,6 @@ async function handleCheckout(e) {
             throw new Error('ValidationError');
         }
 
-        // 🌟 تطبيق المعادلة الصحيحة في قاعدة البيانات 🌟
         const orderData = {
             worker_id: currentUser.id,
             customer_name: document.getElementById('c-name').value,
@@ -302,7 +351,7 @@ async function handleCheckout(e) {
             phone_2: document.getElementById('c-phone2').value || null,
             address: document.getElementById('c-address').value || null,
             notes: document.getElementById('c-notes').value || null, 
-            total_price: cartItems.reduce((sum, item) => sum + (item.qty * item.sizesCount * item.price), 0), // المجموع الدقيق
+            total_price: cartItems.reduce((sum, item) => sum + (item.qty * (item.sizesCount || 1) * item.price), 0),
             total_series: cartItems.reduce((sum, item) => sum + item.qty, 0),
             deposit: parseFloat(document.getElementById('c-deposit').value) || 0,
             deposit_receiver: document.getElementById('c-receiver').value || null,
@@ -314,6 +363,14 @@ async function handleCheckout(e) {
         let oldOrderItems = []; 
 
         if (editingOrderId) {
+            const { data: checkOrder } = await supabase.from('orders').select('is_locked').eq('id', editingOrderId).single();
+            if (checkOrder && checkOrder.is_locked) {
+                showToast('عفواً، لقد قامت الإدارة بقفل هذا الأوردر ولا يمكن تعديله الآن!', 'error');
+                btn.disabled = false;
+                btn.innerHTML = `حفظ التعديلات وإصدار الفاتورة`;
+                return;
+            }
+
             const { data: oldItemsData } = await supabase.from('order_items').select('*').eq('order_id', editingOrderId);
             oldOrderItems = oldItemsData || [];
 
@@ -346,20 +403,18 @@ async function handleCheckout(e) {
             finalOrderObj = insertRes.data;
         }
 
-        // 🌟 تجهيز الفاتورة بالأسعار الصحيحة 🌟
         const orderItemsData = cartItems.map(item => ({
             order_id: orderIdToPrint,
             model_id: item.modelId,
             color_id: item.colorId,
             quantity: item.qty,
-            price_per_series: item.price * item.sizesCount, // سعر السيريه
-            total_price: item.qty * item.sizesCount * item.price // الإجمالي
+            price_per_series: item.price * (item.sizesCount || 1),
+            total_price: item.qty * (item.sizesCount || 1) * item.price 
         }));
 
         const { error: itemsError } = await supabase.from('order_items').insert(orderItemsData);
         if (itemsError) throw itemsError;
 
-        // خوارزمية تحديث المخزون
         let movementsToInsert = [];
         let inventoryUpdates = [];
         const newItemsMap = {};

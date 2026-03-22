@@ -4,7 +4,7 @@ import { showToast } from '../../components/toast.js';
 
 let currentUser = null;
 let allOrders = [];
-let currentTab = 'active'; // active or archived
+let currentTab = 'active'; 
 let orderToEdit = null;
 
 export async function initOrdersView() {
@@ -18,6 +18,26 @@ export async function initOrdersView() {
     });
 
     await fetchMyOrders();
+    setupOrdersRealtime(); // 🌟 تفعيل الرادار اللحظي للموظف 🌟
+}
+
+// 🌟 الرادار اللحظي لمنع التعديل عند القفل 🌟
+function setupOrdersRealtime() {
+    supabase.channel('worker_orders_sync')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `worker_id=eq.${currentUser.id}` }, (payload) => {
+            const idx = allOrders.findIndex(o => o.id === payload.new.id);
+            if (idx > -1) {
+                allOrders[idx] = { ...allOrders[idx], ...payload.new };
+                renderOrders();
+                
+                // إذا كان يحاول تعديله وقامت الإدارة بقفله
+                if (orderToEdit && orderToEdit.id === payload.new.id && payload.new.is_locked) {
+                    closeEditWarningModal();
+                    showToast('قامت الإدارة بقفل هذا الأوردر للتو، لا يمكن تعديله الآن!', 'error');
+                }
+            }
+        })
+        .subscribe();
 }
 
 window.switchOrdersTab = (tab) => {
@@ -37,7 +57,7 @@ async function fetchMyOrders() {
     const tBody = document.getElementById('orders-table-body');
     if(tBody) tBody.innerHTML = `<tr><td colspan="6" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري التحميل...</td></tr>`;
 
-const { data, error } = await supabase
+    const { data, error } = await supabase
         .from('orders')
         .select(`
             *,
@@ -167,15 +187,13 @@ window.viewOrderDetails = (id) => {
     const remaining = o.total_price - (o.deposit || 0);
     const groupedItems = {};
 
-    // 🌟 التجميع والحساب اللحظي المباشر 🌟
     o.order_items.forEach(item => {
         const modelId = item.model_id;
         const colorName = item.colors?.name || '-';
         const qty = item.quantity;
         
-        // استخراج عدد المقاسات من الاستعلام الرئيسي
-const classSizes = item.models?.classes?.class_sizes || [];
-const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
         const pieces = qty * sizesCount;
 
         const colorWithQty = `${qty} ${colorName}`;
@@ -197,7 +215,6 @@ const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.mod
         }
     });
 
-    // 🌟 إظهار السريات والقطع معاً في الشاشة بشكل واضح 🌟
     let itemsHtml = Object.values(groupedItems).map(item => `
         <tr class="border-b border-devo-gray last:border-0">
             <td class="py-3 text-white text-sm font-bold">${item.modelName}</td>
@@ -260,6 +277,7 @@ window.closeOrderDetailsModal = () => {
     modal.classList.add('opacity-0');
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
+
 window.reprintOrder = (id) => {
     const o = allOrders.find(x => x.id === id);
     if (!o) return;
@@ -268,10 +286,10 @@ window.reprintOrder = (id) => {
 
     const mappedItems = o.order_items.map(i => {
         const classSizes = i.models?.classes?.class_sizes || [];
-const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1);
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1);
         return {
-            model_id: i.model_id, // 🌟 هذا السطر هو الذي سيمنع تداخل الموديلات!
-            factory_code: i.models?.factory_code || i.models?.system_code || '', // 🌟 جلب الكود
+            model_id: i.model_id, 
+            factory_code: i.models?.factory_code || i.models?.system_code || '', 
             model_name: i.models?.name,
             color_name: i.colors?.name,
             qty: i.quantity,
@@ -293,6 +311,18 @@ window.toggleArchive = async (id, archiveStatus) => {
         fetchMyOrders();
     }
 };
+
+// 🌟 دالة مساعدة لفك روابط الصور لكي تظهر في السلة بعد التعديل 🌟
+function resolveImageUrl(url) {
+    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.jpeg';
+    try {
+        if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
+            const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+            if (idMatch && idMatch[1]) return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w400`;
+        }
+    } catch (e) {}
+    return url; 
+}
 
 window.confirmEditOrder = (id) => {
     orderToEdit = allOrders.find(x => x.id === id);
@@ -322,23 +352,23 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', () => {
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري التجهيز...`;
     btn.disabled = true;
 
-// داخل document.getElementById('btn-confirm-edit')?.addEventListener ...
+    // 🌟 الإصلاح الجذري لمعادلة الأسعار والصور عند إرسالها للسلة 🌟
     const newCart = orderToEdit.order_items.map(item => {
         let imgUrl = './src/assets/icons/devo.jpeg';
         if (item.models?.model_images && item.models.model_images.length > 0) {
-            imgUrl = item.models.model_images[0].image_url;
+            imgUrl = resolveImageUrl(item.models.model_images[0].image_url);
         }
         
         const classSizes = item.models?.classes?.class_sizes || [];
-const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
 
         return {
             modelId: item.model_id, 
-            factoryCode: item.models?.factory_code || item.models?.system_code || '', // 🌟 إضافة الكود
+            factoryCode: item.models?.factory_code || item.models?.system_code || '',
             colorId: item.color_id,
             modelName: item.models?.name, 
             colorName: item.colors?.name,
-            price: item.price_per_series, 
+            price: item.price_per_series / sizesCount, // 🌟 Fix: إرسال سعر القطعة للسلة
             image: imgUrl, 
             qty: item.quantity,
             sizesCount: sizesCount
@@ -347,12 +377,14 @@ const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.mod
 
     localStorage.setItem('devo_cart', JSON.stringify(newCart));
     
-    const orderData = {
+const orderData = {
         id: orderToEdit.id,
+        invoice_number: orderToEdit.invoice_number,
         customer_name: orderToEdit.customer_name,
         phone_1: orderToEdit.phone_1, phone_2: orderToEdit.phone_2,
         address: orderToEdit.address, deposit: orderToEdit.deposit,
-        deposit_receiver: orderToEdit.deposit_receiver, notes: orderToEdit.notes
+        deposit_receiver: orderToEdit.deposit_receiver, notes: orderToEdit.notes,
+        original_items: orderToEdit.order_items // 🌟 السطر السحري: تمرير ما يملكه الأوردر للسلة 🌟
     };
     localStorage.setItem('devo_edit_order_data', JSON.stringify(orderData));
     

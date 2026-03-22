@@ -233,6 +233,17 @@
                 <div id="cart-content" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     
 <div class="lg:col-span-2 space-y-4">
+    <div class="flex gap-2">
+        <div class="relative flex-1">
+            <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+            <input type="text" id="cart-search-input" oninput="filterCartItems()" placeholder="بحث بكود الموديل أو الاسم داخل السلة..." class="w-full bg-devo-dark border border-devo-gray rounded-xl pr-10 pl-4 py-3 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
+        </div>
+        <button type="button" onclick="clearEntireCart()" class="bg-devo-error/10 text-devo-error border border-devo-error/30 hover:bg-devo-error hover:text-white px-4 md:px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-all font-bold whitespace-nowrap shadow-sm" title="إفراغ السلة وإلغاء التعديل">
+            <i class="ph ph-trash text-xl"></i>
+            <span class="hidden sm:block">إفراغ السلة</span>
+        </button>
+    </div>
+    
     <div id="cart-items-container" class="space-y-3">
         </div>
 </div>
