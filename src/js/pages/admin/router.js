@@ -133,14 +133,21 @@ async function initRouter() {
         });
     });
 
-    // Handle Logout (تم تحديثه ليعمل مع النظام الجديد بدون أخطاء)
     document.getElementById('logout-btn').addEventListener('click', () => {
-        logoutUser(); // الدالة الجديدة لا ترجع Error بل تخرج فوراً
+        logoutUser(); 
     });
 
-    // Activate Default View (Dashboard)
-    const defaultLink = document.querySelector('[data-target="view-dashboard"]');
-    if (defaultLink) switchView('view-dashboard', defaultLink);
+    // 🌟 الإصلاح: فحص الرابط العميق قبل فتح الداشبورد 🌟
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('admin_model')) {
+        // إذا كان هناك رابط موديل، افتح صفحة الموديلات
+        const modelsLink = document.querySelector('[data-target="view-models"]');
+        if (modelsLink) switchView('view-models', modelsLink);
+    } else {
+        // غير ذلك، افتح الداشبورد كالمعتاد
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+    }
 }
 
 // Start the Router

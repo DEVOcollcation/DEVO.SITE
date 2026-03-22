@@ -3,6 +3,7 @@ import { getCurrentSession } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
 
 let allModels = [];
+let currentCategories = new Set();
 let currentUser = null;
 let isWorker = false;
 let localCart = []; 
@@ -25,13 +26,12 @@ export async function initGallery() {
     document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
 
     await fetchGalleryModels();
-    setupGalleryRealtime(); // 🌟 تفعيل الرادار اللحظي الذكي 🌟
+    setupGalleryRealtime(); // 🌟 تفعيل الرادار اللحظي الشامل 🌟
 
-    // 🌟 نظام الروابط العميقة (Deep Linking): فحص الرابط عند الدخول 🌟
+    // نظام الروابط العميقة (Deep Linking)
     const urlParams = new URLSearchParams(window.location.search);
     const modelFromUrl = urlParams.get('model');
     if (modelFromUrl) {
-        // ننتظر قليلاً للتأكد من تحميل الموقع ثم نفتح الموديل
         setTimeout(() => { window.openModelViewer(modelFromUrl); }, 500);
     }
 }
@@ -64,9 +64,8 @@ async function fetchGalleryModels() {
 
     allModels = data;
     
-    // تعبئة تصنيفات الفلتر
     const catSelect = document.getElementById('gal-category');
-    let currentCategories = new Set();
+    currentCategories = new Set();
     allModels.forEach(m => { if(m.categories?.name) currentCategories.add(m.categories.name); });
     let catOptions = `<option value="">جميع التصنيفات</option>`;
     currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
@@ -76,38 +75,89 @@ async function fetchGalleryModels() {
 }
 
 // ==========================================
-// 🌟 2. الرادار اللحظي للمعرض (Targeted Updates) 🌟
+// 🌟 2. الرادار اللحظي الشامل (Insert, Update, Delete) 🌟
 // ==========================================
 function setupGalleryRealtime() {
     supabase.channel('public_gallery_sync')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'models' }, (payload) => {
-            const index = allModels.findIndex(m => m.id === payload.new.id);
-            if (index > -1) {
-                // تحديث البيانات الأساسية (مثل السعر أو الاسم)
-                allModels[index] = { ...allModels[index], ...payload.new };
-                updateGalleryCardDOM(payload.new.id);
-                updateModelViewerDOM(payload.new.id); // تحديث النافذة إن كانت مفتوحة
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, (payload) => {
+            
+            // 🚨 حالة الحذف المباشر (DELETE) - تحدث فوراً ولا تحتاج انتظار 🚨
+            if (payload.eventType === 'DELETE') {
+                allModels = allModels.filter(m => m.id !== payload.old.id);
+                applyGalleryFilters();
+                checkAndCloseModal(payload.old.id, 'تم حذف هذا الموديل من قبل الإدارة.');
+                return;
             }
+
+            // 🌟 الحل السحري (Race Condition Fix): 
+            // ننتظر 800 ملي ثانية لكي تكتمل عمليات مسح وإعادة إدخال الألوان والصور في قاعدة البيانات
+            setTimeout(async () => {
+                const { data: fullModel, error } = await supabase
+                    .from('models')
+                    .select(`
+                        *, categories(name), classes(name, class_sizes(sizes(name))),
+                        model_sizes(sizes(name)), model_inventory(color_id, available_series, colors(name)), model_images(image_url)
+                    `)
+                    .eq('id', payload.new.id)
+                    .single();
+
+                if (error || !fullModel) return;
+
+                if (payload.eventType === 'INSERT') {
+                    if (fullModel.is_active) {
+                        // تجنب التكرار إذا كان الموديل موجوداً بالفعل
+                        if (!allModels.find(m => m.id === fullModel.id)) {
+                            allModels.unshift(fullModel);
+                            applyGalleryFilters();
+                        }
+                    }
+                } 
+                else if (payload.eventType === 'UPDATE') {
+                    if (!fullModel.is_active) {
+                        allModels = allModels.filter(m => m.id !== fullModel.id);
+                        applyGalleryFilters();
+                        checkAndCloseModal(fullModel.id, 'تم تعطيل هذا الموديل ولم يعد متاحاً.');
+                    } else {
+                        const index = allModels.findIndex(m => m.id === fullModel.id);
+                        if (index > -1) {
+                            allModels[index] = fullModel;
+                            updateGalleryCardDOM(fullModel.id);
+                            updateModelViewerDOM(fullModel.id);
+                        } else {
+                            // كان معطلاً وأصبح نشطاً (إضافة جديدة للمعرض)
+                            allModels.unshift(fullModel);
+                            applyGalleryFilters();
+                        }
+                    }
+                }
+            }, 800); // <-- زمن الانتظار الذكي
         })
+        
+        // 🚨 حالة تعديل المخزون المباشر (سحب الكميات من السلة) 🚨
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
-            // تحديث المخزون برمجياً
-            const model = allModels.find(m => m.id === payload.new.model_id);
-            if (model && model.model_inventory) {
-                const invIndex = model.model_inventory.findIndex(i => i.color_id === payload.new.color_id);
+            const modelIndex = allModels.findIndex(m => m.id === payload.new.model_id);
+            if (modelIndex > -1) {
+                const invIndex = allModels[modelIndex].model_inventory.findIndex(i => i.color_id === payload.new.color_id);
                 if (invIndex > -1) {
-                    model.model_inventory[invIndex].available_series = payload.new.available_series;
-                    
-                    // تحديث الكارت في الشاشة بصمت (رقم السريات والشارات)
-                    updateGalleryCardDOM(model.id);
-                    
-                    // 🌟 التحديث السحري: إذا كانت نافذة الموديل مفتوحة، نحدث الألوان وزر الإضافة للسلة! 🌟
-                    updateModelViewerDOM(model.id);
+                    allModels[modelIndex].model_inventory[invIndex].available_series = payload.new.available_series;
+                    updateGalleryCardDOM(payload.new.model_id);
+                    updateModelViewerDOM(payload.new.model_id);
                 }
             }
         })
         .subscribe();
 }
 
+// دالة حماية: إغلاق نافذة الموديل إذا تم إخفاؤه أو حذفه
+function checkAndCloseModal(modelId, message) {
+    const modal = document.getElementById('model-viewer-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-current-model-id') === modelId) {
+        window.closeModelViewer();
+        showToast(message, 'warning');
+    }
+}
+
+// تحديث كارت الموديل في واجهة المعرض بصمت
 function updateGalleryCardDOM(id) {
     const existingCard = document.getElementById(`gallery-card-${id}`);
     if (existingCard) {
@@ -116,16 +166,39 @@ function updateGalleryCardDOM(id) {
     }
 }
 
+// 🌟 التحديث الشامل داخل نافذة التفاصيل 🌟
 function updateModelViewerDOM(id) {
     const modal = document.getElementById('model-viewer-modal');
-    // إذا كانت النافذة مفتوحة لهذا الموديل تحديداً
     if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-current-model-id') === id) {
         const model = allModels.find(m => m.id === id);
         if (model) {
-            // تحديث قسم الألوان فقط لمنع إفساد موضع الـ Scroll وصور المعرض
+            // تحديث الاسم
+            const nameEl = document.getElementById('viewer-name');
+            if (nameEl) nameEl.textContent = model.name;
+
+            // تحديث السعر
+            const priceEl = document.getElementById('viewer-price');
+            if (priceEl) priceEl.textContent = model.price;
+
+            // تحديث عدد المقاسات الكلي في العنوان
+            const classSizes = model.classes?.class_sizes || [];
+            const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
+            const sizesTitleEl = document.getElementById('viewer-sizes-title');
+            if (sizesTitleEl) sizesTitleEl.innerHTML = `<i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)`;
+
+            // تحديث بادجات (Tags) المقاسات
+            const sizesContainer = document.getElementById('viewer-sizes-container');
+            if (sizesContainer) {
+                const renderSizesTags = classSizes.length > 0 
+                    ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
+                    : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('');
+                sizesContainer.innerHTML = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
+            }
+
+            // تحديث الألوان والمخزون
             const colorsContainer = document.getElementById('viewer-colors-container');
             if (colorsContainer) {
-                colorsContainer.innerHTML = generateColorsHTML(model);
+                colorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
             }
         }
     }
@@ -218,7 +291,6 @@ function generateGalleryCardHTML(m) {
 
     const cardStyle = isOut ? 'grayscale opacity-80' : 'card-hover cursor-pointer';
 
-    // 🌟 إضافة الـ ID للكارت 🌟
     return `
     <div id="gallery-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
         ${stockBadge}
@@ -264,7 +336,6 @@ window.openModelViewer = (id) => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
 
-    // 🌟 تحديث الرابط برمجياً (Deep Linking) 🌟
     history.pushState(null, '', `?model=${id}`);
 
     const classSizes = model.classes?.class_sizes || [];
@@ -298,21 +369,21 @@ window.openModelViewer = (id) => {
                     <div class="mb-4 pb-4 border-b border-devo-gray flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                         <div>
                             <p class="text-devo-muted text-xs font-mono mb-1">كود: ${model.factory_code || model.system_code}</p>
-                            <h2 class="text-2xl font-black text-white leading-tight">${model.name}</h2>
-                            <p class="text-3xl text-devo-orange font-black mt-2">${model.price} <span class="text-base font-normal">ج.م</span></p>
+                            <h2 id="viewer-name" class="text-2xl font-black text-white leading-tight">${model.name}</h2>
+                            <p class="text-3xl text-devo-orange font-black mt-2"><span id="viewer-price">${model.price}</span> <span class="text-base font-normal">ج.م</span></p>
                         </div>
                         <button onclick="shareModel('${model.id}')" class="flex items-center justify-center gap-2 bg-devo-dark border border-devo-gray hover:border-devo-info hover:text-devo-info text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold w-full md:w-auto shrink-0 shadow-sm">
                             <i class="ph ph-share-network text-lg"></i> مشاركة
                         </button>
                     </div>
                     <div class="mb-6">
-                        <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
-                        <div class="flex flex-wrap gap-2">${sizesHtml}</div>
+                        <h4 id="viewer-sizes-title" class="text-sm font-bold text-white mb-2 flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
+                        <div id="viewer-sizes-container" class="flex flex-wrap gap-2">${sizesHtml}</div>
                     </div>
                     <div class="flex-1">
                         <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i class="ph ph-palette"></i> الألوان المتاحة للطلب</h4>
                         <div id="viewer-colors-container" class="space-y-1">
-                            ${generateColorsHTML(model)}
+                            ${generateColorsHTML(model, sizesCount)}
                         </div>
                     </div>
                 </div>
@@ -323,14 +394,11 @@ window.openModelViewer = (id) => {
     if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.remove('opacity-0'), 10); }
 };
 
-// 🌟 دالة فصل الألوان ليسهل تحديثها لحظياً 🌟
-function generateColorsHTML(model) {
+function generateColorsHTML(model, sizesCount) {
     if (!model.model_inventory || model.model_inventory.length === 0) {
         return `<div class="text-center p-4 text-devo-error bg-devo-error/10 rounded-xl text-sm border border-devo-error/20">لا توجد ألوان مسجلة.</div>`;
     }
 
-    const classSizes = model.classes?.class_sizes || [];
-    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
     const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
 
     return model.model_inventory.map(inv => {
@@ -369,12 +437,10 @@ window.closeModelViewer = () => {
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.removeAttribute('data-current-model-id');
-        // 🌟 إرجاع الرابط لشكله الطبيعي عند الإغلاق 🌟
         history.pushState(null, '', window.location.pathname);
     }, 300);
 };
 
-// 🌟 دالة النسخ والمشاركة 🌟
 window.shareModel = async (id) => {
     const url = `${window.location.origin}${window.location.pathname}?model=${id}`;
     try {
