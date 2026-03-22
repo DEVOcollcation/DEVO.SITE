@@ -23,18 +23,18 @@ export async function initAdminOrdersView() {
     if(session) currentUserProfile = session.user;
 
     ['ao-search', 'ao-status', 'ao-date-from', 'ao-date-to'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', renderAdminOrders);
+        document.getElementById(id)?.addEventListener('input', applyAdminOrdersFilter);
     });
 
     await fetchAdminOrders();
-
-    supabase.channel('admin_orders_channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchAdminOrders)
-        .subscribe();
+    setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي بدلاً من التحديث القديم
 
     isInitialized = true;
 }
 
+// ==========================================
+// 🌟 1. استدعاء البيانات الأساسي 🌟
+// ==========================================
 async function fetchAdminOrders() {
     const tBody = document.getElementById('ao-table-body');
     if(tBody && allAdminOrders.length === 0) tBody.innerHTML = `<tr><td colspan="9" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></td></tr>`;
@@ -46,7 +46,7 @@ async function fetchAdminOrders() {
             system_users (full_name),
             order_items (
                 *,
-                models (name, factory_code, system_code, model_sizes(size_id)),
+                models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))),
                 colors (id, name, color_code)
             )
         `)
@@ -55,10 +55,138 @@ async function fetchAdminOrders() {
     if (!error && data) {
         allAdminOrders = data;
         updateAdminStats();
-        renderAdminOrders();
+        applyAdminOrdersFilter();
+    } else if (error) {
+        showToast('حدث خطأ أثناء جلب الأوردرات', 'error');
+        console.error(error);
     }
 }
 
+// ==========================================
+// 🌟 2. الرادار اللحظي (Targeted DOM Updates) 🌟
+// ==========================================
+function setupRealtimeAdminOrders() {
+    supabase.channel('admin_orders_tracker')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
+            console.log('🚨 رادار DEVO: تم التقاط أوردر جديد!', payload.new);
+            
+            // جلب الأوردر الجديد بالكامل مع علاقاته
+            const { data, error } = await supabase
+                .from('orders')
+                .select(`*, system_users (full_name), order_items (*, models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))), colors (id, name, color_code))`)
+                .eq('id', payload.new.id).single();
+            
+            if (data && !error) {
+                allAdminOrders.unshift(data); // إضافته في أول الذاكرة
+                updateAdminStats();
+                
+                const tbody = document.getElementById('ao-table-body');
+                if (tbody) {
+                    const noDataRow = tbody.querySelector('.no-data-row');
+                    if(noDataRow) noDataRow.remove(); 
+                    
+                    // حقن الصف الجديد في أعلى الجدول
+                    tbody.insertAdjacentHTML('afterbegin', generateOrderRowHTML(data));
+                    
+                    // تنبيه مرئي (وميض برتقالي) للصف الجديد
+                    const newRow = document.getElementById(`admin-order-row-${data.id}`);
+                    if(newRow) {
+                        newRow.classList.add('bg-devo-orange/30', 'transition-all', 'duration-500');
+                        setTimeout(() => newRow.classList.remove('bg-devo-orange/30'), 3000);
+                    }
+                }
+            }
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
+            console.log('🔄 رادار DEVO: تم تحديث أوردر!', payload.new.id);
+            const index = allAdminOrders.findIndex(o => o.id === payload.new.id);
+            if (index > -1) {
+                // تحديث الذاكرة
+                allAdminOrders[index] = { ...allAdminOrders[index], ...payload.new };
+                updateAdminStats();
+                
+                // تحديث الـ DOM للصف المستهدف فقط
+                const existingRow = document.getElementById(`admin-order-row-${payload.new.id}`);
+                if (existingRow) {
+                    existingRow.outerHTML = generateOrderRowHTML(allAdminOrders[index]);
+                }
+            }
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
+            console.log('🗑️ رادار DEVO: تم حذف أوردر!', payload.old.id);
+            allAdminOrders = allAdminOrders.filter(o => o.id !== payload.old.id);
+            updateAdminStats();
+            
+            // إزالة الصف من الشاشة بتأثير حركي
+            const existingRow = document.getElementById(`admin-order-row-${payload.old.id}`);
+            if (existingRow) {
+                existingRow.classList.add('opacity-0', 'scale-95', 'transition-all');
+                setTimeout(() => existingRow.remove(), 300);
+            }
+        })
+        .subscribe((status, err) => {
+            // 🌟 هذه الأسطر ستخبرك بحالة الاتصال في الـ Console 🌟
+            console.log('📡 حالة اتصال رادار الأوردرات:', status);
+            if (err) console.error('⚠️ خطأ في اتصال الرادار:', err);
+        });
+}
+
+// ==========================================
+// 🌟 3. هندسة الـ HTML للصف الواحد 🌟
+// ==========================================
+function generateOrderRowHTML(o) {
+    const dateStr = new Date(o.created_at).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour:'2-digit', minute:'2-digit' });
+    const isOwner = currentUserProfile?.role === 'owner';
+    const conf = statusConfig[o.status] || { text: 'غير معروف', color: 'text-devo-muted bg-transparent' };
+    
+    // الصلاحيات
+    const isAssignedToMe = o.assigned_admin_name === currentUserProfile?.full_name;
+    const canEdit = !o.is_locked || isAssignedToMe || isOwner;
+
+    const lockIcon = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="${o.is_locked ? 'text-devo-error' : 'text-devo-success'} p-1 hover:bg-white/10 rounded transition-colors" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-lg"></i></button>`;
+
+    const assignedHTML = o.assigned_admin_name 
+        ? `<span class="bg-devo-info/20 text-devo-info px-2 py-1 rounded text-[10px] font-bold"><i class="ph ph-user-gear"></i> ${o.assigned_admin_name}</span>` 
+        : `<span class="text-devo-muted text-[10px]">-</span>`;
+
+    const buildStatusOptions = (currentVal) => {
+        return Object.keys(statusConfig).map(k => `<option value="${k}" ${k === currentVal ? 'selected' : ''}>${statusConfig[k].text}</option>`).join('');
+    };
+
+    return `
+        <tr id="admin-order-row-${o.id}" class="hover:bg-devo-black/40 transition-colors">
+            <td class="p-3 font-mono text-devo-orange font-bold text-xs flex items-center gap-1">${o.invoice_number} ${lockIcon}</td>
+            <td class="p-3 text-devo-muted text-[10px]">${dateStr}</td>
+            <td class="p-3 font-bold text-white text-xs">
+                ${o.customer_name} <br>
+                <span class="text-devo-muted text-[10px] font-mono">${o.phone_1}</span>
+            </td>
+            <td class="p-3 text-devo-muted text-[11px]"><i class="ph-fill ph-user-circle"></i> ${o.system_users?.full_name || '-'}</td>
+            <td class="p-3 text-center text-white font-black">${o.total_series}</td>
+            <td class="p-3 text-center text-devo-orange font-bold">${o.total_price}</td>
+            <td class="p-3 text-center">${assignedHTML}</td>
+            <td class="p-3 text-center">
+                <select ${!canEdit ? 'disabled' : ''} onchange="updateOrderStatus('${o.id}', this.value)" class="bg-devo-black border border-devo-gray rounded px-2 py-1 text-white text-xs outline-none focus:border-devo-orange cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                    ${buildStatusOptions(o.status)}
+                </select>
+                <div class="mt-1 text-[10px] ${conf.color} px-2 py-0.5 rounded inline-block">${conf.text}</div>
+            </td>
+            <td class="p-3">
+                <div class="flex items-center justify-center gap-1.5">
+                    <button onclick="exportSingleOrderToExcel('${o.id}')" class="p-1.5 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded transition-colors" title="تصدير (Excel)"><i class="ph ph-file-xls text-lg"></i></button>
+                    <button onclick="printAdminOrder('${o.id}', 'customer')" class="p-1.5 bg-gray-200 text-gray-800 hover:bg-white rounded transition-colors" title="طباعة فاتورة العميل"><i class="ph ph-receipt text-lg"></i></button>
+                    <button onclick="printAdminOrder('${o.id}', 'detailed')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-lg"></i></button>
+                    <button onclick="viewAdminOrderDetails('${o.id}')" class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="التفاصيل"><i class="ph ph-eye text-lg"></i></button>
+                    ${isOwner ? `<button onclick="deleteOrder('${o.id}')" class="p-1.5 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded transition-colors" title="حذف وإرجاع المخزون"><i class="ph ph-trash text-lg"></i></button>` : ''}
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// ==========================================
+// 🌟 4. الإحصائيات والفلترة 🌟
+// ==========================================
 function updateAdminStats() {
     let totalRev = 0, prog = 0, done = 0, totalSeries = 0;
     allAdminOrders.forEach(o => {
@@ -75,7 +203,7 @@ function updateAdminStats() {
     document.getElementById('ao-stat-done').textContent = done;
 }
 
-function renderAdminOrders() {
+window.applyAdminOrdersFilter = () => {
     const term = document.getElementById('ao-search')?.value.toLowerCase() || '';
     const statusFilter = document.getElementById('ao-status')?.value || '';
     const dateFrom = document.getElementById('ao-date-from')?.value;
@@ -102,62 +230,17 @@ function renderAdminOrders() {
     if (!tbody) return;
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="p-10 text-center text-devo-muted">لا توجد أوردرات تطابق بحثك.</td></tr>`;
+        tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">لا توجد أوردرات تطابق بحثك.</td></tr>`;
         return;
     }
 
-    const buildStatusOptions = (currentVal) => {
-        return Object.keys(statusConfig).map(k => 
-            `<option value="${k}" ${k === currentVal ? 'selected' : ''}>${statusConfig[k].text}</option>`
-        ).join('');
-    };
+    tbody.innerHTML = filtered.map(o => generateOrderRowHTML(o)).join('');
+};
 
-    tbody.innerHTML = filtered.map(o => {
-        const dateStr = new Date(o.created_at).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour:'2-digit', minute:'2-digit' });
-        const isOwner = currentUserProfile?.role === 'owner';
-        
-        // الصلاحيات
-        const isAssignedToMe = o.assigned_admin_name === currentUserProfile?.full_name;
-        const canEdit = !o.is_locked || isAssignedToMe || isOwner;
+// ==========================================
+// 🌟 5. إجراءات الإدارة (تحديث، قفل، تفاصيل، طباعة) 🌟
+// ==========================================
 
-        const lockIcon = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="${o.is_locked ? 'text-devo-error' : 'text-devo-success'} p-1 hover:bg-white/10 rounded transition-colors" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-lg"></i></button>`;
-
-        const assignedHTML = o.assigned_admin_name 
-            ? `<span class="bg-devo-info/20 text-devo-info px-2 py-1 rounded text-[10px] font-bold"><i class="ph ph-user-gear"></i> ${o.assigned_admin_name}</span>` 
-            : `<span class="text-devo-muted text-[10px]">-</span>`;
-
-        return `
-            <tr class="hover:bg-devo-black/40 transition-colors">
-                <td class="p-3 font-mono text-devo-orange font-bold text-xs flex items-center gap-1">${o.invoice_number} ${lockIcon}</td>
-                <td class="p-3 text-devo-muted text-[10px]">${dateStr}</td>
-                <td class="p-3 font-bold text-white text-xs">
-                    ${o.customer_name} <br>
-                    <span class="text-devo-muted text-[10px] font-mono">${o.phone_1}</span>
-                </td>
-                <td class="p-3 text-devo-muted text-[11px]"><i class="ph-fill ph-user-circle"></i> ${o.system_users?.full_name || '-'}</td>
-                <td class="p-3 text-center text-white font-black">${o.total_series}</td>
-                <td class="p-3 text-center text-devo-orange font-bold">${o.total_price}</td>
-                <td class="p-3 text-center">${assignedHTML}</td>
-                <td class="p-3 text-center">
-                    <select ${!canEdit ? 'disabled' : ''} onchange="updateOrderStatus('${o.id}', this.value)" class="bg-devo-black border border-devo-gray rounded px-2 py-1 text-white text-xs outline-none focus:border-devo-orange cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                        ${buildStatusOptions(o.status)}
-                    </select>
-                </td>
-                <td class="p-3">
-                    <div class="flex items-center justify-center gap-1.5">
-                        <button onclick="exportSingleOrderToExcel('${o.id}')" class="p-1.5 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded transition-colors" title="تصدير الأوردر للإدخال (Excel)"><i class="ph ph-file-xls text-lg"></i></button>
-                        <button onclick="printAdminOrder('${o.id}', 'customer')" class="p-1.5 bg-gray-200 text-gray-800 hover:bg-white rounded transition-colors" title="طباعة فاتورة العميل (ريسييت)"><i class="ph ph-receipt text-lg"></i></button>
-                        <button onclick="printAdminOrder('${o.id}', 'detailed')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-lg"></i></button>
-                        <button onclick="viewAdminOrderDetails('${o.id}')" class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="التفاصيل"><i class="ph ph-eye text-lg"></i></button>
-                        ${isOwner ? `<button onclick="deleteOrder('${o.id}')" class="p-1.5 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded transition-colors" title="حذف وإرجاع المخزون"><i class="ph ph-trash text-lg"></i></button>` : ''}
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// 🌟 تحديث الحالة التلقائي والقفل 🌟
 window.updateOrderStatus = async (id, newStatus) => {
     const o = allAdminOrders.find(x => x.id === id);
     if (!o) return;
@@ -173,10 +256,12 @@ window.updateOrderStatus = async (id, newStatus) => {
         assignedAdmin = null;
     }
 
+    // التحديث اللحظي الصامت (Optimistic Update)
     o.status = newStatus;
     o.is_locked = lockState;
     o.assigned_admin_name = assignedAdmin;
-    renderAdminOrders();
+    const row = document.getElementById(`admin-order-row-${id}`);
+    if (row) row.outerHTML = generateOrderRowHTML(o);
 
     const { error } = await supabase.from('orders').update({ 
         status: newStatus, 
@@ -188,7 +273,6 @@ window.updateOrderStatus = async (id, newStatus) => {
     else showToast('تم تحديث وتخصيص الأوردر بنجاح', 'success');
 };
 
-// 🌟 القفل اليدوي المباشر 🌟
 window.toggleOrderLock = async (id, lockState) => {
     const o = allAdminOrders.find(x => x.id === id);
     if(!o) return;
@@ -197,9 +281,11 @@ window.toggleOrderLock = async (id, lockState) => {
         return showToast('لا تملك صلاحية فتح قفل هذا الأوردر، تواصل مع المالك.', 'error');
     }
 
+    // التحديث اللحظي الصامت
     o.is_locked = lockState;
     o.assigned_admin_name = lockState ? currentUserProfile?.full_name : null;
-    renderAdminOrders();
+    const row = document.getElementById(`admin-order-row-${id}`);
+    if (row) row.outerHTML = generateOrderRowHTML(o);
 
     const { error } = await supabase.from('orders').update({ 
         is_locked: lockState,
@@ -222,8 +308,12 @@ window.viewAdminOrderDetails = (id) => {
         const code = item.models?.factory_code || item.models?.system_code || '';
         const colorName = item.colors?.name || '-';
         const qty = item.quantity;
-        const sizesCount = item.models?.model_sizes?.length || 1; 
+        
+        // حساب المقاسات الذكي
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1); 
         const pieces = qty * sizesCount;
+        
         const colorWithQty = `${qty} ${colorName}`;
 
         if (!groupedItems[modelId]) {
@@ -256,7 +346,6 @@ window.viewAdminOrderDetails = (id) => {
 
     document.getElementById('ao-details-content').innerHTML = `
         <div class="flex flex-col gap-4 h-full">
-            
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
                 <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
                     <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-user"></i> بيانات العميل</span>
@@ -315,7 +404,6 @@ window.closeAdminOrderDetails = () => {
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
-// 🌟 المحرك المعزول للطباعة (Iframe Engine) يمنع تضارب الشاشات البيضاء 🌟
 function printHtmlInIframe(htmlContent) {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -350,7 +438,9 @@ window.printAdminOrder = (id, type) => {
         const code = item.models?.factory_code || item.models?.system_code || '';
         const colorName = item.colors?.name || '-';
         const qty = item.quantity;
-        const sizesCount = item.models?.model_sizes?.length || 1; 
+        
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1); 
         const pieces = qty * sizesCount;
         
         const colorWithQty = type === 'detailed' ? `${colorName} ${qty}` : colorName; 
@@ -431,7 +521,7 @@ window.printAdminOrder = (id, type) => {
         `;
 
     } else if (type === 'customer') {
-let custHtml = Object.values(groupedItems).map((item, idx) => `
+        let custHtml = Object.values(groupedItems).map((item, idx) => `
             <tr>
                 <td style="padding: 2px 4px; border: 1px solid #ccc; text-align: center;">${idx + 1}</td>
                 <td style="padding: 2px 4px; border: 1px solid #ccc; font-weight: bold;">
@@ -458,56 +548,30 @@ let custHtml = Object.values(groupedItems).map((item, idx) => `
             </head>
             <body>
             <div style="border-bottom:4px solid black; padding-bottom:6px; margin-bottom:10px;">
-
-    <div style="display:flex; align-items:center; gap:10px;">
-            <span style="
-            background:#c7d7e5;
-            padding:3px 10px;
-            font-size:16px;
-            font-weight:700;
-            letter-spacing:2px;">
-             Collection
-        </span>
-        <span style="font-size:28px; font-weight:900; letter-spacing:1px;">
-            DEVO
-        </span>
-    </div>
-
-    <div style="font-size:14px; font-weight:600; margin-top:4px;">
-        Phone: +20 12 12751111
-    </div>
-
-</div>
-
-<div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px;">
-    <div>
-        <b>رقم:</b>
-        <span style="color:red; font-family:monospace; font-size:16px;">
-            ${o.invoice_number}
-        </span>
-    </div>
-
-    <div>
-        التاريخ: ${new Date(o.created_at).toLocaleDateString('ar-EG')}
-    </div>
-
-    <div>
-        الكاشير: ${o.system_users?.full_name}
-    </div>
-</div>
-                <div style="background: #f3f4f6; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; font-size: 12px;"><b>العميل:</b> ${o.customer_name} &nbsp;|&nbsp; <b>هاتف:</b> <span dir="ltr">${o.phone_1}</span></div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; border: 1px solid black;">
-                    <thead style="background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><tr><th style="padding: 6px;">م</th><th style="padding: 6px;">الموديل</th><th style="padding: 6px;">اللون</th><th style="padding: 6px;">الكمية (ق)</th><th style="padding: 6px;">السعر</th><th style="padding: 6px;">الإجمالي</th></tr></thead>
-                    <tbody>${custHtml}</tbody>
-                </table>
-                <div style="display: flex; justify-content: flex-end; page-break-inside: avoid;">
-                    <div style="border: 2px solid black; width: 250px; border-radius: 4px; overflow: hidden;">
-                        <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px;"><span>الإجمالي:</span> <b>${o.total_price}</b></div>
-                        <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px; background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><span>المدفوع:</span> <b style="color: green;">${o.deposit}</b></div>
-                        <div style="padding: 8px; display: flex; justify-content: space-between; font-size: 14px; background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><span>المتبقي:</span> <b>${remaining} ج.م</b></div>
-                    </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="background:#c7d7e5; padding:3px 10px; font-size:16px; font-weight:700; letter-spacing:2px;">Collection</span>
+                    <span style="font-size:28px; font-weight:900; letter-spacing:1px;">DEVO</span>
                 </div>
-                <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">Engineered by Ahmed M. Attia</div>
+                <div style="font-size:14px; font-weight:600; margin-top:4px;">Phone: +20 12 12751111</div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px;">
+                <div><b>رقم:</b> <span style="color:red; font-family:monospace; font-size:16px;">${o.invoice_number}</span></div>
+                <div>التاريخ: ${new Date(o.created_at).toLocaleDateString('ar-EG')}</div>
+                <div>الكاشير: ${o.system_users?.full_name}</div>
+            </div>
+            <div style="background: #f3f4f6; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; font-size: 12px;"><b>العميل:</b> ${o.customer_name} &nbsp;|&nbsp; <b>هاتف:</b> <span dir="ltr">${o.phone_1}</span></div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; border: 1px solid black;">
+                <thead style="background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><tr><th style="padding: 6px;">م</th><th style="padding: 6px;">الموديل</th><th style="padding: 6px;">اللون</th><th style="padding: 6px;">الكمية (ق)</th><th style="padding: 6px;">السعر</th><th style="padding: 6px;">الإجمالي</th></tr></thead>
+                <tbody>${custHtml}</tbody>
+            </table>
+            <div style="display: flex; justify-content: flex-end; page-break-inside: avoid;">
+                <div style="border: 2px solid black; width: 250px; border-radius: 4px; overflow: hidden;">
+                    <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px;"><span>الإجمالي:</span> <b>${o.total_price}</b></div>
+                    <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px; background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><span>المدفوع:</span> <b style="color: green;">${o.deposit}</b></div>
+                    <div style="padding: 8px; display: flex; justify-content: space-between; font-size: 14px; background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><span>المتبقي:</span> <b>${remaining} ج.م</b></div>
+                </div>
+            </div>
+            <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">Engineered by Ahmed M. Attia</div>
             </body>
             </html>
         `;
@@ -537,7 +601,8 @@ window.exportOrdersToExcel = () => {
     const excelData = [];
     allAdminOrders.forEach(o => {
         o.order_items.forEach(i => {
-            const sizesCount = i.models?.model_sizes?.length || 1;
+            const classSizes = i.models?.classes?.class_sizes || [];
+            const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1); 
             excelData.push({
                 'رقم الفاتورة': o.invoice_number,
                 'التاريخ': new Date(o.created_at).toLocaleDateString('ar-EG'),
@@ -564,21 +629,19 @@ window.exportOrdersToExcel = () => {
     showToast('تم تحميل الملف بنجاح', 'success');
 };
 
-// 🌟 النظام الجديد لتصدير أوردر واحد للإدخال للـ ERP 🌟
 window.exportSingleOrderToExcel = (id) => {
     const o = allAdminOrders.find(x => x.id === id);
     if (!o) return;
 
     showToast('جاري تجهيز ملف الإكسيل...', 'info');
 
-    // 1. معالجة وتجهيز اسم الملف (CustomerName_OrderNumber_Date.xlsx)
     const cleanCustomerName = (o.customer_name || 'Customer').replace(/[^a-zA-Z0-9\u0600-\u06FF\s]/g, '').replace(/\s+/g, '_').trim();
     const dateStr = new Date(o.created_at).toISOString().split('T')[0];
     const fileName = `${cleanCustomerName}_ORD${o.invoice_number}_${dateStr}.xlsx`;
 
-    // 2. تجميع البيانات حسب المسميات الإنجليزية المطلوبة للإدخال
-const excelData = o.order_items.map(i => {
-        const sizesCount = i.models?.model_sizes?.length || 1;
+    const excelData = o.order_items.map(i => {
+        const classSizes = i.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1); 
         return {
             'System Code': i.models?.system_code || '',
             'Model Code': i.models?.factory_code || '',
@@ -593,22 +656,12 @@ const excelData = o.order_items.map(i => {
         };
     });
 
-    // 3. إنشاء الشيت وضبط مسافات الأعمدة (لتبقى منظمة عند الفتح)
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     worksheet['!cols'] = [
-        { wch: 15 }, // System Code
-        { wch: 15 }, // Model Code
-        { wch: 30 }, // Model Name
-        { wch: 35 }, // Color Code (ID)
-        { wch: 20 }, // Color Name
-        { wch: 12 }, // Series Size
-        { wch: 12 }, // Series Qty
-        { wch: 12 }, // Pieces Qty
-        { wch: 12 }, // Unit Price
-        { wch: 15 }  // Total
+        { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 35 }, { wch: 20 }, 
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }
     ];
 
-    // 4. بناء الملف وتنزيله
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Order_Items");
     XLSX.writeFile(workbook, fileName);
