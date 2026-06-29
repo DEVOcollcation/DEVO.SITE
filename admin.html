@@ -50,52 +50,126 @@
         ::-webkit-scrollbar-track { background: #0a0a0a; }
         ::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #f97316; }
+
+        /* ===== SIDEBAR COLLAPSED STATE ===== */
+        #main-sidebar { transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        #main-sidebar.collapsed { width: 64px; }
+
+        /* Hide labels & user text when collapsed */
+        #main-sidebar.collapsed .sidebar-label { opacity: 0; width: 0; overflow: hidden; pointer-events: none; }
+        #main-sidebar.collapsed #sidebar-logo { display: none; }
+        #main-sidebar.collapsed #sidebar-logo-mini { display: block; }
+
+        /* Center nav items when collapsed */
+        #main-sidebar.collapsed .sidebar-item { justify-content: center; padding-left: 0; padding-right: 0; }
+        #main-sidebar.collapsed #sidebar-toggle-btn { margin-right: 0; margin-left: 0; }
+        #main-sidebar.collapsed #sidebar-nav { padding-left: 8px; padding-right: 8px; }
+
+        /* Tooltip: visible only when collapsed */
+        .sidebar-tooltip {
+            display: none;
+            position: absolute;
+            right: calc(100% + 8px);
+            top: 50%;
+            transform: translateY(-50%);
+            background: #171717;
+            border: 1px solid #262626;
+            color: #f5f5f5;
+            font-size: 13px;
+            white-space: nowrap;
+            padding: 6px 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            z-index: 999;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+        .sidebar-tooltip::after {
+            content: '';
+            position: absolute;
+            right: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 5px solid transparent;
+            border-left-color: #262626;
+        }
+        #main-sidebar.collapsed .sidebar-item:hover .sidebar-tooltip { display: block; }
     </style>
 </head>
 <body class="bg-devo-black text-devo-text h-screen flex overflow-hidden">
 
-    <aside class="w-64 bg-devo-dark border-l border-devo-gray flex flex-col transition-all duration-300 relative z-20">
-        <div class="h-20 flex items-center justify-center border-b border-devo-gray">
-            <h1 class="text-3xl font-bold tracking-wider text-white">
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="main-sidebar" class="w-64 bg-devo-dark border-l border-devo-gray flex flex-col transition-all duration-300 relative z-20 shrink-0">
+        <!-- Logo + Toggle button -->
+        <div class="h-20 flex items-center justify-between px-5 border-b border-devo-gray shrink-0 overflow-hidden">
+            <h1 id="sidebar-logo" class="text-3xl font-bold tracking-wider text-white transition-all duration-300 whitespace-nowrap">
                 D<span class="text-devo-orange">E</span>VO
             </h1>
+            <!-- Collapsed mini-logo -->
+            <h1 id="sidebar-logo-mini" class="text-2xl font-bold tracking-wider text-white hidden">
+                D<span class="text-devo-orange">E</span>
+            </h1>
+            <button id="sidebar-toggle-btn"
+                onclick="toggleSidebar()"
+                title="طي / فتح القائمة"
+                class="w-8 h-8 rounded-lg bg-devo-gray hover:bg-devo-orange/20 hover:text-devo-orange text-devo-muted
+                       flex items-center justify-center transition-colors shrink-0 mr-auto">
+                <i id="sidebar-toggle-icon" class="ph ph-sidebar text-lg"></i>
+            </button>
         </div>
 
-        <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-2" id="sidebar-nav">
-            <a href="#" data-target="view-dashboard" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-squares-four text-xl"></i>
-                <span>الإحصائيات الرئيسية</span>
+        <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1" id="sidebar-nav">
+            <a href="#" data-target="view-dashboard" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="الإحصائيات الرئيسية">
+                <i class="ph ph-squares-four text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">الإحصائيات الرئيسية</span>
+                <span class="sidebar-tooltip">الإحصائيات الرئيسية</span>
             </a>
-            <a href="#" data-target="view-admin-orders" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-receipt text-xl"></i>
-                <span>إدارة الأوردرات</span>
+            <a href="#" data-target="view-admin-orders" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة الأوردرات">
+                <i class="ph ph-receipt text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الأوردرات</span>
+                <span class="sidebar-tooltip">إدارة الأوردرات</span>
             </a>
-            <a href="#" data-target="view-definitions" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-list-dashes text-xl"></i>
-                <span>التعريفات الأساسية</span>
+            <a href="#" data-target="view-preparation" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تحضير الأوردرات">
+                <i class="ph ph-package text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">تحضير الأوردرات</span>
+                <span class="sidebar-tooltip">تحضير الأوردرات</span>
             </a>
-            <a href="#" data-target="view-models" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-t-shirt text-xl"></i>
-                <span>إدارة الموديلات</span>
+            <a href="#" data-target="view-definitions" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="التعريفات الأساسية">
+                <i class="ph ph-list-dashes text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">التعريفات الأساسية</span>
+                <span class="sidebar-tooltip">التعريفات الأساسية</span>
             </a>
-            <a href="#" data-target="view-bulk-edits" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-    <i class="ph ph-stack text-xl"></i>
-    <span>التعديلات المجمعة</span>
-</a>
-            <a href="#" data-target="view-home-settings" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-browser text-xl"></i>
-                <span>واجهة الموقع</span>
+            <a href="#" data-target="view-models" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة الموديلات">
+                <i class="ph ph-t-shirt text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الموديلات</span>
+                <span class="sidebar-tooltip">إدارة الموديلات</span>
             </a>
-            <a href="#" data-target="view-users" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-devo-muted hover:bg-devo-gray hover:text-white transition-colors">
-                <i class="ph ph-users text-xl"></i>
-                <span>إدارة الحسابات</span>
+            <a href="#" data-target="view-bulk-edits" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="التعديلات المجمعة">
+                <i class="ph ph-stack text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">التعديلات المجمعة</span>
+                <span class="sidebar-tooltip">التعديلات المجمعة</span>
+            </a>
+            <a href="#" data-target="view-import-stock" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="استيراد أعداد وألوان الموديلات">
+                <i class="ph ph-file-arrow-up text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">استيراد أعداد وألوان الموديلات</span>
+                <span class="sidebar-tooltip">استيراد الموديلات</span>
+            </a>
+            <a href="#" data-target="view-home-settings" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="واجهة الموقع">
+                <i class="ph ph-browser text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">واجهة الموقع</span>
+                <span class="sidebar-tooltip">واجهة الموقع</span>
+            </a>
+            <a href="#" data-target="view-users" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة الحسابات">
+                <i class="ph ph-users text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الحسابات</span>
+                <span class="sidebar-tooltip">إدارة الحسابات</span>
             </a>
         </nav>
 
-        <div class="p-4 border-t border-devo-gray">
+        <!-- User profile footer -->
+        <div id="sidebar-user-footer" class="p-4 border-t border-devo-gray shrink-0 overflow-hidden">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-devo-gray flex items-center justify-center text-devo-orange font-bold" id="user-avatar">...</div>
-                <div class="flex-1 overflow-hidden">
+                <div class="w-10 h-10 rounded-full bg-devo-gray flex items-center justify-center text-devo-orange font-bold shrink-0" id="user-avatar">...</div>
+                <div class="flex-1 overflow-hidden sidebar-label transition-all duration-300">
                     <p class="text-sm font-medium text-white truncate" id="current-user-name">جاري التحميل...</p>
                     <p class="text-xs text-devo-orange" id="current-user-role">...</p>
                 </div>
@@ -316,7 +390,7 @@
 
         <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
             <div class="overflow-x-auto min-h-[400px]">
-                <table class="w-full text-right text-sm whitespace-nowrap">
+                <table id="admin-orders-table" class="w-full text-right text-sm whitespace-nowrap">
 <thead class="bg-devo-black border-b border-devo-gray text-devo-muted">
                         <tr>
                             <th class="p-3 font-medium">رقم الأوردر</th>
@@ -670,6 +744,15 @@
                     <option value="in_stock">متوفر</option>
                     <option value="out_stock">نفذت الكمية</option>
                 </select>
+                <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[150px] flex-1">
+                    <select id="filter-stock-op" class="bg-transparent text-white outline-none text-xs cursor-pointer w-full py-2.5">
+                        <option class="bg-devo-dark text-white" value="">كمية المخزون (الكل)</option>
+                        <option class="bg-devo-dark text-white" value="less">الكمية أقل من</option>
+                        <option class="bg-devo-dark text-white" value="greater">الكمية أكبر من</option>
+                        <option class="bg-devo-dark text-white" value="equal">الكمية تساوي</option>
+                    </select>
+                    <input type="number" id="filter-stock-qty" placeholder="الكمية" min="0" class="bg-transparent text-white outline-none text-xs w-14 text-center border-r border-devo-gray py-2.5 hidden">
+                </div>
 
                 <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[110px]">
                     <span class="text-[10px] text-devo-muted font-bold">من:</span>
@@ -888,40 +971,152 @@
             </div>
 
             <div id="bulk-filters-container" class="p-4 border-t border-devo-gray transition-all duration-300">
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                    <div class="sm:col-span-2 relative">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <!-- Row 1: Split Searches -->
+                    <div class="lg:col-span-2 relative">
                         <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="bulk-search" placeholder="بحث بالاسم، كود المصنع، أو كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="bulk-search-name" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
-                    <select id="bulk-filter-cat" class="bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-white outline-none focus:border-devo-orange text-sm cursor-pointer"><option value="">جميع التصنيفات</option></select>
-                    <select id="bulk-filter-class" class="bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-white outline-none focus:border-devo-orange text-sm cursor-pointer"><option value="">جميع الفئات</option></select>
-                    
-                    <select id="bulk-filter-status" class="bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-white outline-none focus:border-devo-orange text-sm cursor-pointer">
+                    <div class="relative">
+                        <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="bulk-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                    </div>
+                    <div class="relative">
+                        <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="bulk-search-system" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                    </div>
+
+                    <!-- Row 2: Factory Range & Multi-select Dropdowns -->
+                    <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                        <span class="text-xs text-devo-muted whitespace-nowrap">رينج كود المصنع:</span>
+                        <input type="text" id="bulk-factory-from" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="من كود">
+                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                        <input type="text" id="bulk-factory-to" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="إلى كود">
+                    </div>
+
+                    <!-- Category Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="bulk-dropdown-cat-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleMultiSelectDropdown(event, 'bulk-dropdown-cat-menu')">
+                            <span id="bulk-dropdown-cat-label" class="truncate text-right">جميع التصنيفات</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="bulk-dropdown-cat-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="bulk-dropdown-cat-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateMultiSelectLabel('cat')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="multiSelectAction(event, 'cat', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="multiSelectAction(event, 'cat', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="bulk-dropdown-cat-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Class Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="bulk-dropdown-class-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleMultiSelectDropdown(event, 'bulk-dropdown-class-menu')">
+                            <span id="bulk-dropdown-class-label" class="truncate text-right">جميع الفئات</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="bulk-dropdown-class-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="bulk-dropdown-class-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateMultiSelectLabel('class')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="multiSelectAction(event, 'class', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="multiSelectAction(event, 'class', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="bulk-dropdown-class-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Colors, Sizes, Activation Status, Stock Status -->
+                    <!-- Color Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="bulk-dropdown-color-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleMultiSelectDropdown(event, 'bulk-dropdown-color-menu')">
+                            <span id="bulk-dropdown-color-label" class="truncate text-right">جميع الألوان</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="bulk-dropdown-color-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="bulk-dropdown-color-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateMultiSelectLabel('color')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="multiSelectAction(event, 'color', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="multiSelectAction(event, 'color', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="bulk-dropdown-color-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Size Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="bulk-dropdown-size-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleMultiSelectDropdown(event, 'bulk-dropdown-size-menu')">
+                            <span id="bulk-dropdown-size-label" class="truncate text-right">جميع المقاسات</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="bulk-dropdown-size-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="bulk-dropdown-size-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateMultiSelectLabel('size')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="multiSelectAction(event, 'size', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="multiSelectAction(event, 'size', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="bulk-dropdown-size-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <select id="bulk-filter-status" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm cursor-pointer">
                         <option value="">حالة التفعيل (الكل)</option>
                         <option value="true">النشطة فقط</option>
                         <option value="false">المعطلة فقط</option>
                     </select>
-                    <select id="bulk-filter-stock" class="bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-white outline-none focus:border-devo-orange text-sm cursor-pointer">
-                        <option value="">حالة المخزون (الكل)</option>
-                        <option value="in_stock">متوفر في المخزن</option>
-                        <option value="out_stock">نفذت الكمية (صفر)</option>
-                    </select>
-                    <select id="bulk-filter-color" class="bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-white outline-none focus:border-devo-orange text-sm cursor-pointer"><option value="">جميع الألوان</option></select>
-                    <select id="bulk-filter-size" class="bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-white outline-none focus:border-devo-orange text-sm cursor-pointer"><option value="">جميع المقاسات</option></select>
+                    <div class="flex items-center gap-1 bg-devo-black border border-devo-gray rounded-lg px-2">
+                        <select id="bulk-filter-stock-op" class="bg-transparent text-white outline-none text-sm cursor-pointer w-full py-2.5">
+                            <option class="bg-devo-dark text-white" value="">كمية المخزون (الكل)</option>
+                            <option class="bg-devo-dark text-white" value="less">الكمية أقل من</option>
+                            <option class="bg-devo-dark text-white" value="greater">الكمية أكبر من</option>
+                            <option class="bg-devo-dark text-white" value="equal">الكمية تساوي</option>
+                        </select>
+                        <input type="number" id="bulk-filter-stock-qty" placeholder="الكمية" min="0" class="bg-transparent text-white outline-none text-sm w-16 text-center border-r border-devo-gray py-2.5 hidden">
+                    </div>
 
-                    <div class="sm:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-2 py-1">
+                    <!-- Row 4: Price & Date Ranges -->
+                    <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
                         <span class="text-xs text-devo-muted whitespace-nowrap">السعر:</span>
                         <input type="number" id="bulk-price-min" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="من">
-                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2">إلى:</span>
+                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
                         <input type="number" id="bulk-price-max" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="أقصى">
                     </div>
-                    <div class="sm:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-2 py-1">
+                    <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
                         <span class="text-xs text-devo-muted whitespace-nowrap">الإضافة:</span>
                         <input type="date" id="bulk-date-from" class="bg-transparent text-devo-muted outline-none text-xs w-full cursor-pointer">
-                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2">إلى:</span>
+                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
                         <input type="date" id="bulk-date-to" class="bg-transparent text-devo-muted outline-none text-xs w-full cursor-pointer">
                     </div>
 
+                    <!-- Row 5: Action Buttons -->
                     <div class="col-span-full flex gap-2 mt-2">
                         <button onclick="applyBulkFilters()" class="flex-1 bg-devo-orange hover:bg-devo-orangeHover text-white py-2.5 rounded-lg text-sm font-bold transition-all flex justify-center items-center gap-2 shadow-md"><i class="ph ph-magnifying-glass text-lg"></i> بحث وتطبيق الفلاتر</button>
                         <button onclick="clearBulkFilters()" class="bg-devo-gray hover:bg-devo-black border border-devo-gray text-white px-5 py-2.5 rounded-lg text-sm transition-all" title="مسح الفلاتر"><i class="ph ph-eraser text-lg"></i></button>
@@ -937,7 +1132,7 @@
             </div>
             
             <div class="overflow-y-auto flex-1 custom-scrollbar">
-                <table class="w-full text-right text-sm">
+                <table id="bulk-table" class="w-full text-right text-sm">
                     <thead class="bg-devo-black/95 backdrop-blur-sm sticky top-0 z-10 text-devo-muted text-xs border-b border-devo-gray">
                         <tr>
                             <th class="p-3 w-12 text-center border-l border-devo-gray/30"><input type="checkbox" id="bulk-select-all" onchange="toggleBulkSelectAll(this)" class="accent-devo-orange w-4 h-4 cursor-pointer" title="تحديد/إلغاء تحديد كل النتائج"></th>
@@ -994,7 +1189,480 @@
 
     </div>
 </div>
+<div id="view-import-stock" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-6">
+        
+        <div id="import-global-header" class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                <i class="ph ph-file-arrow-up text-devo-orange"></i> استيراد أعداد وألوان الموديلات (ERP)
+            </h2>
+            <p class="text-devo-muted text-sm mt-1">تحديث مخزون الموديلات وأسعارها بالربط مع نظام ERP الداخلي باستخدام كود السيستم فقط.</p>
+        </div>
+
+        <!-- الخطوة 1: رفع الملف وتحديد الخيارات -->
+        <div id="import-step-1" class="bg-devo-dark border border-devo-gray rounded-xl p-6 shadow-sm space-y-6">
+            <h3 class="text-lg font-bold text-devo-orange flex items-center gap-2">
+                <i class="ph ph-gear"></i> 1. خيارات الاستيراد ورفع الملف
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- خيارات الأعداد -->
+                <div class="space-y-3">
+                    <label class="block text-sm font-bold text-white"><i class="ph ph-math-operations"></i> طريقة معالجة أعداد المخزون (الرصيد):</label>
+                    <div class="space-y-2 bg-devo-black p-4 rounded-lg border border-devo-gray">
+                        <label class="flex items-center gap-3 cursor-pointer select-none text-xs text-white">
+                            <input type="radio" name="import-qty-option" value="as_is" checked class="accent-devo-orange w-4 h-4 cursor-pointer">
+                            <div>
+                                <span class="font-bold">إدخال العدد كما هو</span>
+                                <p class="text-[10px] text-devo-muted">يتم حفظ الرقم القادم من ملف Excel مباشرة كعدد سرايات.</p>
+                            </div>
+                        </label>
+                        <hr class="border-devo-gray/50">
+                        <label class="flex items-center gap-3 cursor-pointer select-none text-xs text-white">
+                            <input type="radio" name="import-qty-option" value="round_down" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                            <div>
+                                <span class="font-bold">التقريب إلى عدد السرايات الأقل</span>
+                                <p class="text-[10px] text-devo-muted">إذا لم تكن القطع من مضاعفات السرية، يتم التقريب للسرية الأقل (مثال: 14 قطعة / 5 = 2 سرية).</p>
+                            </div>
+                        </label>
+                        <hr class="border-devo-gray/50">
+                        <label class="flex items-center gap-3 cursor-pointer select-none text-xs text-white">
+                            <input type="radio" name="import-qty-option" value="round_up" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                            <div>
+                                <span class="font-bold">التقريب إلى عدد السرايات الأعلى</span>
+                                <p class="text-[10px] text-devo-muted">التقريب للسرية الأعلى إذا لم يكن العدد مضاعفاً للسرية (مثال: 14 قطعة / 5 = 3 سرايات).</p>
+                            </div>
+                        </label>
+                        <hr class="border-devo-gray/50">
+                        <label class="flex items-center gap-3 cursor-pointer select-none text-xs text-white">
+                            <input type="radio" name="import-qty-option" value="round_balanced" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                            <div>
+                                <span class="font-bold">التقريب المتوازن</span>
+                                <p class="text-[10px] text-devo-muted">التقريب للسرية الأقرب (مثال: 13 قطعة -> 3 سرايات، 12 قطعة -> 2 سرية).</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- خيارات الأسعار والرفع -->
+                <div class="space-y-4 flex flex-col justify-between">
+                    <div class="space-y-3">
+                        <label class="block text-sm font-bold text-white"><i class="ph ph-currency-dollar"></i> تحديث الأسعار:</label>
+                        <div class="bg-devo-black p-4 rounded-lg border border-devo-gray flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-bold text-white block">تحديث سعر الموديل طبقًا للبيانات الواردة</span>
+                                <span class="text-[10px] text-devo-muted">سيتم تعديل سعر الصنف في السيستم بسعر البيع الوارد بالملف.</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="import-update-price" class="sr-only peer">
+                                <div class="w-11 h-6 bg-devo-gray rounded-full peer peer-checked:bg-devo-success after:content-[''] after:absolute after:top-0.5 after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:-translate-x-full shadow-inner"></div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- منطقة الرفع -->
+                    <div class="border-2 border-dashed border-devo-gray hover:border-devo-orange bg-devo-black rounded-xl p-8 text-center relative group transition-colors flex-1 flex flex-col items-center justify-center min-h-[140px]">
+                        <input type="file" id="import-file-input" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                        <i class="ph ph-upload-simple text-4xl text-devo-muted group-hover:text-devo-orange mb-2 transition-colors"></i>
+                        <p class="text-white font-bold text-sm" id="import-file-name">اسحب ملف الإكسيل هنا أو اضغط للاختيار</p>
+                        <p class="text-[10px] text-devo-muted mt-1">يدعم ملفات (.xlsx, .xls) المصدّرة من ERP</p>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" id="import-btn-analyze" class="w-full bg-devo-orange hover:bg-devo-orangeHover text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20 text-sm">
+                <i class="ph ph-magnifying-glass text-xl"></i>
+                <span>تحليل ومعاينة ملف الجرد</span>
+            </button>
+        </div>
+
+        <!-- الخطوة الجديدة: مراجعة الموديلات غير المسجلة بالسيستم -->
+        <div id="import-step-models" class="bg-devo-dark border border-devo-gray rounded-xl p-6 shadow-sm space-y-6 hidden">
+            <!-- شريط البحث الثلاثي والقرارات السريعة -->
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-devo-black p-4 rounded-xl border border-devo-gray">
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-devo-muted font-bold block">البحث بكود السيستم</label>
+                        <div class="relative">
+                            <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                            <input type="text" id="model-search-system" placeholder="كود السيستم..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-devo-muted font-bold block">البحث بكود المصنع</label>
+                        <div class="relative">
+                            <i class="ph ph-barcode absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                            <input type="text" id="model-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-devo-muted font-bold block">البحث باسم الموديل</label>
+                        <div class="relative">
+                            <i class="ph ph-tag absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                            <input type="text" id="model-search-name" placeholder="اسم الموديل..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-3 items-center justify-between bg-devo-black/40 p-4 rounded-xl border border-devo-gray">
+                    <span class="text-xs text-devo-muted flex items-center gap-1.5"><i class="ph ph-lightning text-devo-orange"></i> تطبيق قرار سريع على الكل:</span>
+                    <div class="flex gap-2">
+                        <button type="button" id="import-models-bulk-create" class="bg-devo-success/15 hover:bg-devo-success text-devo-success hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-devo-success/20 flex items-center gap-1.5">
+                            <i class="ph ph-plus-circle text-base"></i> إنشاء جميع الموديلات
+                        </button>
+                        <button type="button" id="import-models-bulk-ignore" class="bg-devo-error/15 hover:bg-devo-error text-devo-error hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-devo-error/20 flex items-center gap-1.5">
+                            <i class="ph ph-x-circle text-base"></i> تجاهل جميع الموديلات
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <p class="text-xs text-devo-muted leading-relaxed">
+                الموديلات التالية واردة في ملف Excel ولكن أكواد السيستم الخاصة بها غير مطابقة لأي موديل مسجل في الموقع حالياً. يرجى تحديد الإجراء المطلوب لكل موديل للمتابعة.
+            </p>
+
+            <div class="overflow-x-auto border border-devo-gray rounded-lg">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-devo-black text-devo-muted text-xs">
+                        <tr>
+                            <th class="p-3">كود السيستم</th>
+                            <th class="p-3">اسم الموديل وتفاصيل الألوان والقطع</th>
+                            <th class="p-3 text-center">السعر بالملف</th>
+                            <th class="p-3 w-1/4">الإجراء المطلوب</th>
+                        </tr>
+                    </thead>
+                    <tbody id="import-models-mapping-tbody" class="divide-y divide-devo-gray text-white">
+                        <!-- تضاف الموديلات برمجياً -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex gap-4 pt-4 border-t border-devo-gray">
+                <button type="button" id="import-btn-back-to-step1-from-models" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">
+                    رجوع وتعديل الخيارات
+                </button>
+                <button type="button" id="import-btn-apply-models" class="flex-[2] py-3 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 transition-all text-sm shadow-lg shadow-devo-success/20 flex items-center justify-center gap-2">
+                    <span>حفظ الموديلات ومتابعة للألوان</span>
+                    <i class="ph ph-arrow-left text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- الخطوة 2: مطابقة الألوان المفقودة -->
+        <div id="import-step-2" class="bg-devo-dark border border-devo-gray rounded-xl p-6 shadow-sm space-y-6 hidden">
+            <div class="flex justify-between items-center border-b border-devo-gray pb-4">
+                <h3 class="text-lg font-bold text-devo-orange flex items-center gap-2">
+                    <i class="ph ph-palette"></i> 2. مطابقة ألوان الموديلات الواردة بالملف
+                </h3>
+                <span class="text-xs text-devo-error bg-devo-error/10 border border-devo-error/20 px-3 py-1 rounded-full">
+                    تم اكتشاف ألوان غير معرفة بالسيستم
+                </span>
+            </div>
+            
+            <p class="text-xs text-devo-muted leading-relaxed">
+                الألوان التالية غير مطابقة لأي لون مسجل في قاعدة بيانات الموقع حالياً. يرجى تحديد الإجراء المناسب لكل موديل ولون.
+            </p>
+
+            <div class="overflow-x-auto border border-devo-gray rounded-lg">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-devo-black text-devo-muted text-xs">
+                        <tr>
+                            <th class="p-3">اسم الموديل وكود المصنع</th>
+                            <th class="p-3">اللون الوارد بالملف</th>
+                            <th class="p-3 text-center">تكرار ظهوره بالملف</th>
+                            <th class="p-3">الإجراء المطلوب</th>
+                        </tr>
+                    </thead>
+                    <tbody id="import-color-mapping-tbody" class="divide-y divide-devo-gray text-white">
+                        <!-- تضاف الصفوف برمجياً -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex gap-4 pt-4 border-t border-devo-gray">
+                <button type="button" id="import-btn-back-to-models" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">
+                    رجوع للخلف
+                </button>
+                <button type="button" id="import-btn-apply-colors" class="flex-[2] py-3 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 transition-all text-sm shadow-lg shadow-devo-success/20 flex items-center justify-center gap-2">
+                    <span>حفظ ومتابعة للمعاينة</span>
+                    <i class="ph ph-arrow-left text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- الخطوة 3: شاشة مراجعة ومعاينة البيانات التفصيلية -->
+        <div id="import-step-3" class="bg-devo-dark border border-devo-gray rounded-xl p-6 shadow-sm space-y-6 hidden">
+            <h3 class="text-lg font-bold text-devo-orange flex items-center gap-2">
+                <i class="ph ph-eye"></i> 3. مراجعة وتأكيد البيانات قبل الحفظ
+            </h3>
+
+            <!-- لوحة إحصائيات المعاينة المحدثة -->
+            <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                    <span class="block text-devo-muted text-[10px] mb-1">إجمالي سجلات الملف</span>
+                    <span class="text-xl font-black text-white" id="preview-stat-excel-rows">0</span>
+                </div>
+                <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                    <span class="block text-devo-muted text-[10px] mb-1">الألوان المحدثة مخزوناً</span>
+                    <span class="text-xl font-black text-white" id="preview-stat-updated-qty">0</span>
+                </div>
+                <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                    <span class="block text-devo-muted text-[10px] mb-1">الموديلات المحدثة</span>
+                    <span class="text-xl font-black text-white" id="preview-stat-models">0</span>
+                </div>
+                <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                    <span class="block text-devo-muted text-[10px] mb-1">ألوان مضافة للسيستم</span>
+                    <span class="text-xl font-black text-devo-orange" id="preview-stat-colors">0</span>
+                </div>
+                <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                    <span class="block text-devo-muted text-[10px] mb-1">تحديثات الأسعار</span>
+                    <span class="text-xl font-black text-devo-info" id="preview-stat-prices">0</span>
+                </div>
+                <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
+                    <span class="block text-devo-muted text-[10px] mb-1">سجلات الحركة المضافة</span>
+                    <span class="text-xl font-black text-devo-success" id="preview-stat-movements">0</span>
+                </div>
+            </div>
+
+            <!-- فلتر البحث في المعاينة -->
+            <div class="relative w-full max-w-md">
+                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                <input type="text" id="preview-search" placeholder="بحث سريع في جدول المعاينة بالاسم أو الكود..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+            </div>
+
+            <!-- جدول المعاينة التفصيلي -->
+            <div class="overflow-y-auto max-h-[450px] border border-devo-gray rounded-lg custom-scrollbar">
+                <table class="w-full text-right text-sm border-collapse">
+                    <thead class="bg-devo-black text-devo-muted text-xs sticky top-0 border-b border-devo-gray z-10">
+                        <tr>
+                            <th class="p-3 border-l border-devo-gray/50">كود السيستم</th>
+                            <th class="p-3 border-l border-devo-gray/50">الموديل وكود المصنع</th>
+                            <th class="p-3 border-l border-devo-gray/50">اللون</th>
+                            <th class="p-3 text-center border-l border-devo-gray/50">السعر</th>
+                            <th class="p-3 text-center border-l border-devo-gray/50">الرصيد الحالي</th>
+                            <th class="p-3 text-center border-l border-devo-gray/50">الرصيد بعد الرفع</th>
+                            <th class="p-3 text-center">التغير</th>
+                        </tr>
+                    </thead>
+                    <tbody id="import-preview-tbody-container" class="divide-y divide-devo-gray text-white">
+                        <!-- تضاف مجموعات tbody للموديلات برمجياً -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex gap-4 pt-4 border-t border-devo-gray">
+                <button type="button" id="import-btn-back-to-options" class="flex-1 py-3.5 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">
+                    رجوع للخلف
+                </button>
+                <button type="button" id="import-btn-confirm-save" class="flex-[2] py-3.5 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
+                    <i class="ph ph-check-circle text-xl"></i>
+                    <span>تأكيد وحفظ البيانات في قاعدة البيانات</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- مودال التقدم للمزامنة والاستيراد المنبثق -->
+        <div id="import-progress-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 hidden opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray p-6 rounded-2xl max-w-md w-full mx-4 space-y-4 text-center shadow-2xl scale-95 transition-transform duration-300" id="import-progress-content">
+                <i class="ph ph-spinner animate-spin text-4xl text-devo-orange block mx-auto"></i>
+                <h3 class="text-white font-bold text-lg" id="import-progress-title">جاري معالجة البيانات...</h3>
+                <p class="text-devo-muted text-xs leading-relaxed" id="import-progress-status">الرجاء الانتظار، جاري قراءة الملف...</p>
+                <div class="w-full bg-devo-black rounded-full h-2.5 overflow-hidden border border-devo-gray">
+                    <div id="import-progress-bar" class="bg-devo-orange h-full w-0 transition-all duration-200"></div>
+                </div>
+                <span class="text-xs text-devo-orange font-bold font-mono" id="import-progress-percent">0%</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+<!-- ============================================================ -->
+<!-- VIEW: تحضير الأوردرات -->
+<!-- ============================================================ -->
+<div id="view-preparation" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-4">
+
+        <!-- Header -->
+        <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-package text-devo-orange"></i> تحضير الأوردرات
+                </h2>
+                <p class="text-devo-muted text-sm mt-1">متابعة سير تحضير الأوردرات داخل المخزن.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="flex items-center gap-2 text-xs text-devo-muted">
+                    <input type="checkbox" id="prep-show-archived" class="accent-devo-orange w-4 h-4">
+                    عرض المؤرشَف
+                </label>
+                <button onclick="refreshPreparationView()" class="bg-devo-gray hover:bg-devo-gray/70 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors">
+                    <i class="ph ph-arrows-clockwise"></i> تحديث
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" id="prep-stats-row">
+            <div class="bg-devo-dark border border-devo-gray rounded-xl p-3 text-center">
+                <span class="block text-2xl font-black text-white" id="prep-stat-pending">0</span>
+                <span class="text-xs text-devo-muted mt-1 block">في الانتظار</span>
+            </div>
+            <div class="bg-devo-dark border border-devo-orange/30 rounded-xl p-3 text-center">
+                <span class="block text-2xl font-black text-devo-orange" id="prep-stat-inprogress">0</span>
+                <span class="text-xs text-devo-orange mt-1 block">جاري التحضير</span>
+            </div>
+            <div class="bg-devo-dark border border-yellow-500/30 rounded-xl p-3 text-center">
+                <span class="block text-2xl font-black text-yellow-400" id="prep-stat-onhold">0</span>
+                <span class="text-xs text-yellow-400 mt-1 block">موقوف (مشكلة)</span>
+            </div>
+            <div class="bg-devo-dark border border-blue-500/30 rounded-xl p-3 text-center">
+                <span class="block text-2xl font-black text-blue-400" id="prep-stat-prepared">0</span>
+                <span class="text-xs text-blue-400 mt-1 block">تم التحضير</span>
+            </div>
+            <div class="bg-devo-dark border border-green-500/30 rounded-xl p-3 text-center">
+                <span class="block text-2xl font-black text-green-400" id="prep-stat-shipped">0</span>
+                <span class="text-xs text-green-400 mt-1 block">تم الشحن</span>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="bg-devo-dark border border-devo-gray rounded-xl p-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <input type="text" id="prep-filter-invoice" placeholder="رقم الفاتورة..."
+                    class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-sm focus:border-devo-orange outline-none col-span-1">
+                <input type="text" id="prep-filter-customer" placeholder="اسم أو رقم العميل..."
+                    class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-sm focus:border-devo-orange outline-none col-span-1">
+                <input type="date" id="prep-filter-date-from"
+                    class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-devo-muted text-sm focus:border-devo-orange outline-none">
+                <input type="date" id="prep-filter-date-to"
+                    class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-devo-muted text-sm focus:border-devo-orange outline-none">
+                <select id="prep-filter-status"
+                    class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-devo-muted text-sm focus:border-devo-orange outline-none col-span-2 md:col-span-1">
+                    <option value="">كل الحالات</option>
+                    <option value="pending">في الانتظار</option>
+                    <option value="in_progress">جاري التحضير</option>
+                    <option value="on_hold">موقوف (مشكلة)</option>
+                    <option value="prepared">تم التحضير</option>
+                    <option value="shipped">تم الشحن</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-devo-black/80 text-devo-muted text-xs border-b border-devo-gray sticky top-0">
+                        <tr>
+                            <th class="p-3">رقم الفاتورة</th>
+                            <th class="p-3">العميل</th>
+                            <th class="p-3">تاريخ الإنشاء</th>
+                            <th class="p-3">العامل</th>
+                            <th class="p-3 text-center">التقدم</th>
+                            <th class="p-3 text-center">الحالة</th>
+                            <th class="p-3 text-center">إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="prep-table-body" class="divide-y divide-devo-gray">
+                        <tr><td colspan="7" class="p-10 text-center text-devo-muted">
+                            <i class="ph ph-spinner animate-spin text-3xl text-devo-orange block mb-2"></i>
+                            جاري التحميل...
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: تفاصيل تحضير أوردر -->
+<!-- ============================================================ -->
+<div id="prep-detail-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        
+        <!-- Modal Header -->
+        <div class="p-5 border-b border-devo-gray flex justify-between items-start bg-devo-black/50 rounded-t-2xl shrink-0">
+            <div>
+                <h3 class="text-lg font-bold text-white" id="prep-modal-title">تفاصيل التحضير</h3>
+                <p class="text-xs text-devo-muted mt-1" id="prep-modal-subtitle"></p>
+            </div>
+            <div class="flex items-center gap-2">
+                <!-- Change Status -->
+                <select id="prep-modal-status-select"
+                    class="bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5 text-white text-xs focus:border-devo-orange outline-none">
+                    <option value="pending">في الانتظار</option>
+                    <option value="in_progress">جاري التحضير</option>
+                    <option value="on_hold">موقوف (مشكلة)</option>
+                    <option value="prepared">تم التحضير</option>
+                    <option value="shipped">تم الشحن</option>
+                </select>
+                <button id="prep-modal-save-status" onclick="savePreparationStatus()"
+                    class="bg-devo-orange hover:bg-devo-orangeHover text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1">
+                    <i class="ph ph-floppy-disk"></i> حفظ
+                </button>
+                <button onclick="closePrepDetailModal()" class="text-devo-muted hover:text-white transition-colors">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="px-5 py-3 bg-devo-black/30 border-b border-devo-gray shrink-0">
+            <div class="flex justify-between items-center mb-2 text-xs">
+                <span class="text-devo-muted">تقدم التحضير</span>
+                <span class="font-bold text-devo-orange" id="prep-modal-progress-text">0%</span>
+            </div>
+            <div class="w-full bg-devo-gray rounded-full h-2.5 overflow-hidden">
+                <div id="prep-modal-progress-bar" class="h-full bg-devo-orange transition-all duration-500 rounded-full" style="width:0%"></div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+                <div class="bg-devo-dark rounded-lg p-2">
+                    <span class="text-lg font-black text-white" id="prep-modal-total">0</span>
+                    <span class="block text-[10px] text-devo-muted">إجمالي الألوان</span>
+                </div>
+                <div class="bg-devo-dark rounded-lg p-2">
+                    <span class="text-lg font-black text-green-400" id="prep-modal-done">0</span>
+                    <span class="block text-[10px] text-devo-muted">تم تحضيره</span>
+                </div>
+                <div class="bg-devo-dark rounded-lg p-2">
+                    <span class="text-lg font-black text-yellow-400" id="prep-modal-issues">0</span>
+                    <span class="block text-[10px] text-devo-muted">به مشكلة</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items Tabs -->
+        <div class="flex gap-1 px-5 pt-3 shrink-0">
+            <button onclick="switchPrepModalTab('all')" id="prep-tab-all"
+                class="prep-detail-tab px-4 py-1.5 rounded-lg text-xs font-bold transition-colors bg-devo-orange text-white">
+                جميع العناصر
+            </button>
+            <button onclick="switchPrepModalTab('done')" id="prep-tab-done"
+                class="prep-detail-tab px-4 py-1.5 rounded-lg text-xs font-bold transition-colors bg-devo-gray text-devo-muted hover:text-white">
+                تم تحضيره
+            </button>
+            <button onclick="switchPrepModalTab('pending')" id="prep-tab-pending"
+                class="prep-detail-tab px-4 py-1.5 rounded-lg text-xs font-bold transition-colors bg-devo-gray text-devo-muted hover:text-white">
+                لم يُحضَّر
+            </button>
+            <button onclick="switchPrepModalTab('issues')" id="prep-tab-issues"
+                class="prep-detail-tab px-4 py-1.5 rounded-lg text-xs font-bold transition-colors bg-devo-gray text-devo-muted hover:text-white">
+                مشاكل / ملاحظات
+            </button>
+        </div>
+
+        <!-- Items Body -->
+        <div class="flex-1 overflow-y-auto p-5 space-y-2" id="prep-modal-items-body" style="scrollbar-width:thin;">
+            <!-- filled by JS -->
+        </div>
+
+    </div>
+</div>
+
 <div id="view-home-settings" class="view-section hidden h-full">
+
     <div class="animate-fade-in relative pb-10 space-y-6">
         
         <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
@@ -1193,5 +1861,31 @@
     <script type="module" src="./src/js/pages/admin/router.js"></script>
     <script type="module" src="./src/js/pages/admin/definitions.js"></script>
 <script type="module" src="./src/js/pages/admin/bulk_edits.js"></script>
+    <script type="module" src="./src/js/components/searchable_select.js"></script>
+    <script type="module" src="./src/js/components/table_sorter.js"></script>
+    <script type="module" src="./src/js/pages/admin/preparation.js"></script>
+
+    <!-- ===== SIDEBAR TOGGLE ===== -->
+    <script>
+        (function() {
+            const STORAGE_KEY = 'devo_sidebar_collapsed';
+            const sidebar     = document.getElementById('main-sidebar');
+
+            function applyCollapsed(collapsed) {
+                sidebar.classList.toggle('collapsed', collapsed);
+                const icon = document.getElementById('sidebar-toggle-icon');
+                if (icon) icon.className = collapsed ? 'ph ph-sidebar-simple text-lg' : 'ph ph-sidebar text-lg';
+                localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+            }
+
+            window.toggleSidebar = function() {
+                applyCollapsed(!sidebar.classList.contains('collapsed'));
+            };
+
+            // Restore saved state on load
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved === '1') applyCollapsed(true);
+        })();
+    </script>
 </body>
 </html>

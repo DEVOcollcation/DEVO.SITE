@@ -43,7 +43,7 @@ async function fetchAdminOrders() {
         .from('orders')
         .select(`
             *,
-            system_users (full_name),
+            system_users!worker_id (full_name),
             order_items (
                 *,
                 models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))),
@@ -73,7 +73,7 @@ function setupRealtimeAdminOrders() {
             // جلب الأوردر الجديد بالكامل مع علاقاته
             const { data, error } = await supabase
                 .from('orders')
-                .select(`*, system_users (full_name), order_items (*, models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))), colors (id, name, color_code))`)
+                .select(`*, system_users!worker_id (full_name), order_items (*, models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))), colors (id, name, color_code))`)
                 .eq('id', payload.new.id).single();
             
             if (data && !error) {
@@ -672,4 +672,56 @@ window.exportSingleOrderToExcel = (id) => {
     XLSX.writeFile(workbook, fileName);
 
     showToast('تم تحميل ملف الأوردر بنجاح', 'success');
+};
+
+// --- Custom Sort Handler ---
+window.customSortHandlers = window.customSortHandlers || {};
+window.customSortHandlers['admin-orders-table'] = (colIndex, direction) => {
+    allAdminOrders.sort((a, b) => {
+        let valA, valB;
+        switch (colIndex) {
+            case 0: // رقم الأوردر
+                valA = a.invoice_number || '';
+                valB = b.invoice_number || '';
+                break;
+            case 1: // التاريخ
+                valA = new Date(a.created_at);
+                valB = new Date(b.created_at);
+                break;
+            case 2: // العميل / المحل
+                valA = a.customer_name || '';
+                valB = b.customer_name || '';
+                break;
+            case 3: // البائع
+                valA = a.system_users?.full_name || '';
+                valB = b.system_users?.full_name || '';
+                break;
+            case 4: // الكمية
+                valA = a.total_series || 0;
+                valB = b.total_series || 0;
+                break;
+            case 5: // الإجمالي
+                valA = a.total_price || 0;
+                valB = b.total_price || 0;
+                break;
+            case 6: // مسند إلى
+                valA = a.assigned_admin_name || '';
+                valB = b.assigned_admin_name || '';
+                break;
+            case 7: // الحالة
+                valA = a.status || '';
+                valB = b.status || '';
+                break;
+            default:
+                return 0;
+        }
+
+        if (typeof valA === 'string') {
+            return direction === 'asc' ? valA.localeCompare(valB, 'ar') : valB.localeCompare(valA, 'ar');
+        } else {
+            return direction === 'asc' ? valA - valB : valB - valA;
+        }
+    });
+
+    window.applyAdminOrdersFilter();
 };

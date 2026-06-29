@@ -116,6 +116,14 @@ async function loadViewLogic(targetId) {
             const { initAdminOrdersView } = await import('./admin_orders.js');
             await initAdminOrdersView();
             break;
+        case 'view-import-stock':
+            const { initImportStockView } = await import('./import_stock.js');
+            await initImportStockView();
+            break;
+        case 'view-preparation':
+            const { initPreparationView } = await import('./preparation.js');
+            await initPreparationView();
+            break;
     }
 }
 // --- Event Listeners Initialization ---

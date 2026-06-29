@@ -16,6 +16,19 @@ export async function initBulkEditsView() {
     
     await fetchBulkFilterOptions();
     await fetchBulkModels();
+
+    const stockOp = document.getElementById('bulk-filter-stock-op');
+    const stockQty = document.getElementById('bulk-filter-stock-qty');
+    if (stockOp && stockQty) {
+        stockOp.addEventListener('change', () => {
+            if (stockOp.value) {
+                stockQty.classList.remove('hidden');
+            } else {
+                stockQty.classList.add('hidden');
+                stockQty.value = '';
+            }
+        });
+    }
     
     isBulkInitialized = true;
 }
@@ -34,6 +47,76 @@ window.toggleBulkFilters = () => {
     }
 };
 
+window.toggleMultiSelectDropdown = (event, menuId) => {
+    event.stopPropagation();
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    
+    // Close other dropdowns
+    const allMenus = document.querySelectorAll('.multi-select-dropdown [id$="-menu"]');
+    allMenus.forEach(m => {
+        if (m.id !== menuId) {
+            m.classList.add('hidden');
+        }
+    });
+    
+    menu.classList.toggle('hidden');
+};
+
+window.multiSelectAction = (event, key, action) => {
+    event.stopPropagation();
+    const checkboxes = document.querySelectorAll(`input[name="bulk-filter-${key}"]`);
+    checkboxes.forEach(cb => {
+        cb.checked = (action === 'all');
+    });
+    window.updateMultiSelectLabel(key);
+};
+
+window.updateMultiSelectLabel = (key) => {
+    const checkboxes = document.querySelectorAll(`input[name="bulk-filter-${key}"]:checked`);
+    const excludeCheckbox = document.getElementById(`bulk-dropdown-${key}-exclude`);
+    const labelEl = document.getElementById(`bulk-dropdown-${key}-label`);
+    
+    if (!labelEl) return;
+    
+    const count = checkboxes.length;
+    const isExclude = excludeCheckbox ? excludeCheckbox.checked : false;
+    
+    let defaultLabel = '';
+    if (key === 'cat') defaultLabel = 'جميع التصنيفات';
+    else if (key === 'class') defaultLabel = 'جميع الفئات';
+    else if (key === 'color') defaultLabel = 'جميع الألوان';
+    else if (key === 'size') defaultLabel = 'جميع المقاسات';
+    
+    if (count === 0) {
+        labelEl.textContent = isExclude ? `استثناء: لا شيء (الكل)` : defaultLabel;
+        labelEl.classList.remove('text-devo-orange');
+    } else {
+        const names = Array.from(checkboxes).map(cb => cb.nextElementSibling.textContent.trim());
+        if (isExclude) {
+            if (count <= 2) {
+                labelEl.textContent = `استثناء: ${names.join('، ')}`;
+            } else {
+                labelEl.textContent = `الكل عدا ${count}`;
+            }
+            labelEl.classList.add('text-devo-orange');
+        } else {
+            if (count <= 2) {
+                labelEl.textContent = names.join('، ');
+            } else {
+                labelEl.textContent = `${count} محددة`;
+            }
+            labelEl.classList.add('text-devo-orange');
+        }
+    }
+};
+
+// Global click handler to close dropdowns when clicking outside
+document.addEventListener('click', () => {
+    const allMenus = document.querySelectorAll('.multi-select-dropdown [id$="-menu"]');
+    allMenus.forEach(m => m.classList.add('hidden'));
+});
+
 async function fetchBulkFilterOptions() {
     try {
         const [cats, clss, colors, sizes] = await Promise.all([
@@ -43,17 +126,28 @@ async function fetchBulkFilterOptions() {
             supabase.from('sizes').select('id, name')
         ]);
 
-        const populate = (id, data, defaultText) => {
-            const el = document.getElementById(id);
-            if (el && data) {
-                el.innerHTML = `<option value="">${defaultText}</option>` + data.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
+        const populateCheckbox = (containerId, data, key) => {
+            const container = document.getElementById(containerId);
+            if (container && data) {
+                container.innerHTML = data.map(item => `
+                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-devo-black/40 rounded cursor-pointer text-xs text-white select-none" onclick="event.stopPropagation()">
+                        <input type="checkbox" value="${item.id}" name="bulk-filter-${key}" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateMultiSelectLabel('${key}')">
+                        <span class="truncate">${item.name}</span>
+                    </label>
+                `).join('');
             }
         };
 
-        populate('bulk-filter-cat', cats.data, 'جميع التصنيفات');
-        populate('bulk-filter-class', clss.data, 'جميع الفئات');
-        populate('bulk-filter-color', colors.data, 'جميع الألوان');
-        populate('bulk-filter-size', sizes.data, 'جميع المقاسات');
+        populateCheckbox('bulk-dropdown-cat-options', cats.data, 'cat');
+        populateCheckbox('bulk-dropdown-class-options', clss.data, 'class');
+        populateCheckbox('bulk-dropdown-color-options', colors.data, 'color');
+        populateCheckbox('bulk-dropdown-size-options', sizes.data, 'size');
+
+        // Setup labels
+        window.updateMultiSelectLabel('cat');
+        window.updateMultiSelectLabel('class');
+        window.updateMultiSelectLabel('color');
+        window.updateMultiSelectLabel('size');
 
         // تعبئة القوائم السفلية للتعديل المجمع
         const actionSelect = document.getElementById('bulk-action-select');
@@ -114,13 +208,28 @@ async function fetchBulkModels() {
 }
 
 window.applyBulkFilters = () => {
-    const term = document.getElementById('bulk-search')?.value.toLowerCase().trim() || '';
-    const catId = document.getElementById('bulk-filter-cat')?.value || '';
-    const classId = document.getElementById('bulk-filter-class')?.value || '';
+    const nameTerm = document.getElementById('bulk-search-name')?.value.toLowerCase().trim() || '';
+    const factoryTerm = document.getElementById('bulk-search-factory')?.value.toLowerCase().trim() || '';
+    const systemTerm = document.getElementById('bulk-search-system')?.value.toLowerCase().trim() || '';
+
+    const factoryFromVal = document.getElementById('bulk-factory-from')?.value.trim() || '';
+    const factoryToVal = document.getElementById('bulk-factory-to')?.value.trim() || '';
+
+    const selectedCats = Array.from(document.querySelectorAll('input[name="bulk-filter-cat"]:checked')).map(cb => cb.value);
+    const isCatExclude = document.getElementById('bulk-dropdown-cat-exclude')?.checked || false;
+
+    const selectedClasses = Array.from(document.querySelectorAll('input[name="bulk-filter-class"]:checked')).map(cb => cb.value);
+    const isClassExclude = document.getElementById('bulk-dropdown-class-exclude')?.checked || false;
+
     const status = document.getElementById('bulk-filter-status')?.value || '';
-    const stockStatus = document.getElementById('bulk-filter-stock')?.value || '';
-    const colorId = document.getElementById('bulk-filter-color')?.value || '';
-    const sizeId = document.getElementById('bulk-filter-size')?.value || '';
+    const stockOp = document.getElementById('bulk-filter-stock-op')?.value || '';
+    const stockQtyVal = parseInt(document.getElementById('bulk-filter-stock-qty')?.value, 10);
+
+    const selectedColors = Array.from(document.querySelectorAll('input[name="bulk-filter-color"]:checked')).map(cb => cb.value);
+    const isColorExclude = document.getElementById('bulk-dropdown-color-exclude')?.checked || false;
+
+    const selectedSizes = Array.from(document.querySelectorAll('input[name="bulk-filter-size"]:checked')).map(cb => cb.value);
+    const isSizeExclude = document.getElementById('bulk-dropdown-size-exclude')?.checked || false;
 
     const minPriceVal = document.getElementById('bulk-price-min')?.value;
     const maxPriceVal = document.getElementById('bulk-price-max')?.value;
@@ -133,31 +242,72 @@ window.applyBulkFilters = () => {
     filteredBulkModels = bulkAllModels.filter(m => {
         let isMatch = true;
         
-        const searchStr = `${m.factory_code || ''} ${m.system_code || ''} ${m.name || ''}`.toLowerCase();
-        if (term && !searchStr.includes(term)) isMatch = false;
+        // 1. Split search fields (AND logic)
+        if (nameTerm && !m.name?.toLowerCase().includes(nameTerm)) isMatch = false;
+        if (factoryTerm && !m.factory_code?.toLowerCase().includes(factoryTerm)) isMatch = false;
+        if (systemTerm && !m.system_code?.toLowerCase().includes(systemTerm)) isMatch = false;
         
-        if (catId && m.category_id !== catId) isMatch = false;
-        if (classId && m.class_id !== classId) isMatch = false;
+        // 2. Factory Code Range Filter
+        if (factoryFromVal || factoryToVal) {
+            const codeNum = parseInt(m.factory_code, 10);
+            const fromNum = factoryFromVal ? parseInt(factoryFromVal, 10) : NaN;
+            const toNum = factoryToVal ? parseInt(factoryToVal, 10) : NaN;
+            
+            if (!isNaN(codeNum)) {
+                if (!isNaN(fromNum) && codeNum < fromNum) isMatch = false;
+                if (!isNaN(toNum) && codeNum > toNum) isMatch = false;
+            } else {
+                if (factoryFromVal && m.factory_code < factoryFromVal) isMatch = false;
+                if (factoryToVal && m.factory_code > factoryToVal) isMatch = false;
+            }
+        }
+
+        // 3. Category Multi-select (Inclusion / Exclusion)
+        if (selectedCats.length > 0) {
+            const inList = selectedCats.includes(m.category_id);
+            if (isCatExclude && inList) isMatch = false;
+            if (!isCatExclude && !inList) isMatch = false;
+        }
+
+        // 4. Class Multi-select (Inclusion / Exclusion)
+        if (selectedClasses.length > 0) {
+            const inList = selectedClasses.includes(m.class_id);
+            if (isClassExclude && inList) isMatch = false;
+            if (!isClassExclude && !inList) isMatch = false;
+        }
+
+        // 5. Activation status
         if (status !== "" && String(m.is_active) !== status) isMatch = false;
+
+        // 6. Stock quantity filter
+        const totalQty = m.model_inventory?.reduce((sum, inv) => sum + (inv.available_series || 0), 0) || 0;
+        if (stockOp && !isNaN(stockQtyVal)) {
+            if (stockOp === 'less' && totalQty >= stockQtyVal) isMatch = false;
+            if (stockOp === 'greater' && totalQty <= stockQtyVal) isMatch = false;
+            if (stockOp === 'equal' && totalQty !== stockQtyVal) isMatch = false;
+        }
+
+        // 7. Colors Multi-select (Inclusion / Exclusion)
+        if (selectedColors.length > 0) {
+            const hasAnyColor = m.model_inventory?.some(inv => selectedColors.includes(inv.color_id)) || false;
+            if (isColorExclude && hasAnyColor) isMatch = false;
+            if (!isColorExclude && !hasAnyColor) isMatch = false;
+        }
+
+        // 8. Sizes Multi-select (Inclusion / Exclusion)
+        if (selectedSizes.length > 0) {
+            const classSizes = m.classes?.class_sizes?.map(cs => cs.size_id) || [];
+            const manualSizes = m.model_sizes?.map(ms => ms.size_id) || [];
+            const hasAnySize = selectedSizes.some(sId => classSizes.includes(sId) || manualSizes.includes(sId));
+            if (isSizeExclude && hasAnySize) isMatch = false;
+            if (!isSizeExclude && !hasAnySize) isMatch = false;
+        }
+
+        // 9. Prices Range
         if (!isNaN(minPrice) && m.price < minPrice) isMatch = false;
         if (!isNaN(maxPrice) && m.price > maxPrice) isMatch = false;
 
-        const totalQty = m.model_inventory?.reduce((sum, inv) => sum + (inv.available_series || 0), 0) || 0;
-        if (stockStatus === 'in_stock' && totalQty === 0) isMatch = false;
-        if (stockStatus === 'out_stock' && totalQty > 0) isMatch = false;
-
-        if (colorId) {
-            const hasColor = m.model_inventory?.some(inv => inv.color_id === colorId);
-            if (!hasColor) isMatch = false;
-        }
-
-        if (sizeId) {
-            const classSizes = m.classes?.class_sizes?.map(cs => cs.size_id) || [];
-            const manualSizes = m.model_sizes?.map(ms => ms.size_id) || [];
-            const hasSize = classSizes.includes(sizeId) || manualSizes.includes(sizeId);
-            if (!hasSize) isMatch = false;
-        }
-
+        // 10. Date Range
         if (dateFrom || dateTo) {
             const modelDate = new Date(m.created_at);
             modelDate.setHours(0, 0, 0, 0);
@@ -179,31 +329,38 @@ window.applyBulkFilters = () => {
     filteredBulkModels.forEach(m => selectedModelIds.add(m.id));
     
     bulkCurrentPage = 1; 
-    
-    const container = document.getElementById('bulk-filters-container');
-    if (container && term === '' && catId === '') {
-        // لا نغلقها إذا كان المستخدم يبحث، نغلقها فقط لتوفير المساحة
-    } else {
-        window.toggleBulkFilters(); 
-    }
 
     renderBulkPage();
     updateBulkActionBar();
 };
 
 window.clearBulkFilters = () => {
-    const filterIds = [
-        'bulk-search', 'bulk-filter-cat', 'bulk-filter-class', 
-        'bulk-filter-status', 'bulk-filter-stock', 'bulk-price-min', 
-        'bulk-price-max', 'bulk-date-from', 'bulk-date-to',
-        'bulk-filter-color', 'bulk-filter-size'
+    const textSelectIds = [
+        'bulk-search-name', 'bulk-search-factory', 'bulk-search-system',
+        'bulk-factory-from', 'bulk-factory-to',
+        'bulk-filter-status', 'bulk-filter-stock-op', 'bulk-filter-stock-qty',
+        'bulk-price-min', 'bulk-price-max', 
+        'bulk-date-from', 'bulk-date-to'
     ];
-    
-    filterIds.forEach(id => {
+    textSelectIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-    
+    const stockQty = document.getElementById('bulk-filter-stock-qty');
+    if (stockQty) stockQty.classList.add('hidden');
+
+    const multiSelectKeys = ['cat', 'class', 'color', 'size'];
+    multiSelectKeys.forEach(key => {
+        const checkboxes = document.querySelectorAll(`input[name="bulk-filter-${key}"]`);
+        checkboxes.forEach(cb => {
+            cb.checked = false;
+        });
+        const excludeCb = document.getElementById(`bulk-dropdown-${key}-exclude`);
+        if (excludeCb) excludeCb.checked = false;
+        
+        window.updateMultiSelectLabel(key);
+    });
+
     window.applyBulkFilters(); 
 };
 
@@ -480,4 +637,41 @@ window.undoBulkEdit = async () => {
         btn.disabled = false;
         btn.innerHTML = `<i class="ph ph-arrow-u-up-left text-lg"></i> تراجع (Undo)`;
     }
+};
+
+// --- Custom Sort Handler ---
+window.customSortHandlers = window.customSortHandlers || {};
+window.customSortHandlers['bulk-table'] = (colIndex, direction) => {
+    bulkAllModels.sort((a, b) => {
+        let valA, valB;
+        switch (colIndex) {
+            case 1: // الكود والموديل
+                valA = a.factory_code || '';
+                valB = b.factory_code || '';
+                break;
+            case 2: // السعر
+                valA = a.price || 0;
+                valB = b.price || 0;
+                break;
+            case 3: // التصنيف / المخزون
+                // Sort by total stock quantity
+                valA = a.model_inventory?.reduce((sum, inv) => sum + (inv.available_series || 0), 0) || 0;
+                valB = b.model_inventory?.reduce((sum, inv) => sum + (inv.available_series || 0), 0) || 0;
+                break;
+            case 4: // الحالة
+                valA = a.is_active ? 1 : 0;
+                valB = b.is_active ? 1 : 0;
+                break;
+            default:
+                return 0;
+        }
+
+        if (typeof valA === 'string') {
+            return direction === 'asc' ? valA.localeCompare(valB, 'ar') : valB.localeCompare(valA, 'ar');
+        } else {
+            return direction === 'asc' ? valA - valB : valB - valA;
+        }
+    });
+
+    window.applyBulkFilters();
 };

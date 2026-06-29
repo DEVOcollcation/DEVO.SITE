@@ -398,3 +398,43 @@ const orderData = {
 });
 
 window.refreshOrders = fetchMyOrders;
+
+// --- Custom Sort Handler ---
+window.customSortHandlers = window.customSortHandlers || {};
+window.customSortHandlers['customer-orders-table'] = (colIndex, direction) => {
+    allOrders.sort((a, b) => {
+        let valA, valB;
+        switch (colIndex) {
+            case 0: // رقم الأوردر
+                valA = a.invoice_number || '';
+                valB = b.invoice_number || '';
+                break;
+            case 1: // اسم العميل
+                valA = a.customer_name || '';
+                valB = b.customer_name || '';
+                break;
+            case 2: // الموديلات
+                valA = a.order_items?.length || 0;
+                valB = b.order_items?.length || 0;
+                break;
+            case 3: // التاريخ
+                valA = new Date(a.created_at);
+                valB = new Date(b.created_at);
+                break;
+            case 4: // الحالة
+                valA = a.status || '';
+                valB = b.status || '';
+                break;
+            default:
+                return 0;
+        }
+
+        if (typeof valA === 'string') {
+            return direction === 'asc' ? valA.localeCompare(valB, 'ar') : valB.localeCompare(valA, 'ar');
+        } else {
+            return direction === 'asc' ? valA - valB : valB - valA;
+        }
+    });
+
+    renderOrders();
+};

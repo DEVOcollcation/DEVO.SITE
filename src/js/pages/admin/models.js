@@ -15,9 +15,28 @@ let currentModelMovements = [];
 export async function initModelsView() {
     if (isInitialized) return;
     
-    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-date-from', 'filter-date-to'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', applyFilters);
+    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', applyFilters);
+            el.addEventListener('change', applyFilters);
+        }
     });
+
+    const stockOp = document.getElementById('filter-stock-op');
+    const stockQty = document.getElementById('filter-stock-qty');
+    if (stockOp && stockQty) {
+        stockOp.addEventListener('change', () => {
+            if (stockOp.value) {
+                stockQty.classList.remove('hidden');
+                // Force wrapper to sync if needed, though Tailwind controls it
+            } else {
+                stockQty.classList.add('hidden');
+                stockQty.value = '';
+            }
+            applyFilters();
+        });
+    }
     
     document.getElementById('model-form')?.addEventListener('submit', handleSaveModel);
     document.getElementById('add-stock-form')?.addEventListener('submit', handleAddStockSubmit);
@@ -194,10 +213,12 @@ function updateAdminStats() {
 }
 
 window.clearModelFilters = () => {
-    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-date-from', 'filter-date-to'].forEach(id => {
+    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.value = '';
     });
+    const stockQty = document.getElementById('filter-stock-qty');
+    if (stockQty) stockQty.classList.add('hidden');
     applyFilters(); 
 };
 
@@ -206,6 +227,8 @@ function applyFilters() {
     const catId = document.getElementById('filter-category')?.value || '';
     const classId = document.getElementById('filter-class')?.value || '';
     const stockStatus = document.getElementById('filter-stock')?.value || '';
+    const stockOp = document.getElementById('filter-stock-op')?.value || '';
+    const stockQtyVal = parseInt(document.getElementById('filter-stock-qty')?.value, 10);
     const dateFrom = document.getElementById('filter-date-from')?.value;
     const dateTo = document.getElementById('filter-date-to')?.value;
 
@@ -218,6 +241,13 @@ function applyFilters() {
         if (classId && m.class_id !== classId) isMatch = false;
         if (stockStatus === 'in_stock' && totalQty === 0) isMatch = false;
         if (stockStatus === 'out_stock' && totalQty > 0) isMatch = false;
+
+        // Stock quantity filter
+        if (stockOp && !isNaN(stockQtyVal)) {
+            if (stockOp === 'less' && totalQty >= stockQtyVal) isMatch = false;
+            if (stockOp === 'greater' && totalQty <= stockQtyVal) isMatch = false;
+            if (stockOp === 'equal' && totalQty !== stockQtyVal) isMatch = false;
+        }
 
         if (dateFrom || dateTo) {
             const modelDate = new Date(m.created_at);

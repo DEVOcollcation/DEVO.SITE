@@ -316,9 +316,17 @@ function renderGalleryPaginationControls(totalPages) {
     if (totalPages <= 1) { topContainer.innerHTML = ''; bottomContainer.innerHTML = ''; return; }
 
     let html = `
-        <button onclick="changeGalleryPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-2 md:px-4 py-1 md:py-2 rounded md:rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 md:gap-2 text-[11px] md:text-sm"><i class="ph ph-caret-right"></i> <span class="hidden sm:inline">السابق</span></button>
-        <span class="px-3 md:px-6 py-1 md:py-2 rounded md:rounded-lg bg-devo-dark text-devo-orange font-bold border border-devo-gray text-[11px] md:text-sm whitespace-nowrap">صفحة ${currentPage} / ${totalPages}</span>
-        <button onclick="changeGalleryPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-2 md:px-4 py-1 md:py-2 rounded md:rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 md:gap-2 text-[11px] md:text-sm"><span class="hidden sm:inline">التالي</span> <i class="ph ph-caret-left"></i></button>
+        <button onclick="changeGalleryPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3.5 md:px-5 py-2 md:py-2.5 rounded-xl border border-devo-gray bg-devo-dark/80 text-white disabled:text-neutral-600 disabled:border-neutral-800/40 disabled:opacity-40 disabled:pointer-events-none hover:border-devo-orange hover:text-devo-orange transition-all duration-300 flex items-center gap-1.5 text-xs md:text-sm font-medium group">
+            <i class="ph ph-caret-right text-devo-orange group-disabled:text-inherit text-sm md:text-base transition-colors"></i>
+            <span class="text-inherit">السابق</span>
+        </button>
+        <span class="px-4 md:px-6 py-2 md:py-2.5 rounded-xl bg-devo-dark/80 text-white font-bold border border-devo-gray text-xs md:text-sm whitespace-nowrap">
+            صفحة <span class="text-devo-orange font-bold">${currentPage} من ${totalPages}</span>
+        </span>
+        <button onclick="changeGalleryPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3.5 md:px-5 py-2 md:py-2.5 rounded-xl border border-devo-gray bg-devo-dark/80 text-white disabled:text-neutral-600 disabled:border-neutral-800/40 disabled:opacity-40 disabled:pointer-events-none hover:border-devo-orange hover:text-devo-orange transition-all duration-300 flex items-center gap-1.5 text-xs md:text-sm font-medium group">
+            <span class="text-inherit">التالي</span>
+            <i class="ph ph-caret-left text-devo-orange group-disabled:text-inherit text-sm md:text-base transition-colors"></i>
+        </button>
     `;
     topContainer.innerHTML = html; bottomContainer.innerHTML = html;
 }
@@ -438,6 +446,9 @@ window.closeModelViewer = () => {
         modal.classList.add('hidden');
         modal.removeAttribute('data-current-model-id');
         history.pushState(null, '', window.location.pathname);
+        if (typeof window.onModelViewerClosed === 'function') {
+            window.onModelViewerClosed();
+        }
     }, 300);
 };
 
@@ -520,4 +531,13 @@ function updateFloatingCart() {
         countEl.parentElement.parentElement.classList.add('animate-bounce');
         setTimeout(() => countEl.parentElement.parentElement.classList.remove('animate-bounce'), 1000);
     }
+}
+
+export function findModelByCode(code) {
+    if (!code) return null;
+    const cleanCode = code.trim().toLowerCase();
+    return allModels.find(m => 
+        (m.system_code && m.system_code.toString().toLowerCase() === cleanCode) || 
+        (m.factory_code && m.factory_code.toString().toLowerCase() === cleanCode)
+    );
 }

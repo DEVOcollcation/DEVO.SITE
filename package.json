@@ -2,5 +2,11 @@
   "name": "devo-site",
   "version": "1.0.0",
   "description": "DEVO Management System",
-  "scripts": {}
+  "scripts": {
+    "db:docs": "node docs/generate-db-docs.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0"
+  }
 }

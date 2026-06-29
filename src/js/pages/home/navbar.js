@@ -40,6 +40,11 @@ export function initNavbar() {
             const icon = document.querySelector('#mobile-menu-btn i');
             if(icon) { icon.classList.add('ph-list'); icon.classList.remove('ph-x'); }
         }
+
+        // تنبيه بتغيير الصفحة للتحكم في الكاميرا والباركود
+        if (typeof window.onViewChanged === 'function') {
+            window.onViewChanged(targetId);
+        }
     };
 
     if (user) {
@@ -47,6 +52,7 @@ export function initNavbar() {
         desktopLinks.innerHTML = `
             <button onclick="switchSiteView('view-home')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">الرئيسية</button>
             <button onclick="switchSiteView('view-gallery')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">المعرض</button>
+            <button onclick="switchSiteView('view-barcode')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-qr-code"></i> الباركود</button>
             <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-shopping-cart"></i> السلة</button>
             <button onclick="switchSiteView('view-orders')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-receipt"></i> الأوردرات</button>
         `;
@@ -54,9 +60,10 @@ export function initNavbar() {
         mobileLinks.innerHTML = `
             <button onclick="switchSiteView('view-home')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">الرئيسية</button>
             <button onclick="switchSiteView('view-gallery')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">المعرض</button>
+            <button onclick="switchSiteView('view-barcode')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full flex items-center gap-2"><i class="ph ph-qr-code"></i> الباركود</button>
             <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-shopping-cart"></i> السلة</button>
             <button onclick="switchSiteView('view-orders')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-receipt"></i> الأوردرات</button>
-            ${isAdmin ? `<a href="admin.html" class="py-3 text-devo-info hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-shield-check"></i> لوحة الإدارة</a>` : ''}
+            \${isAdmin ? \`<a href="admin.html" class="py-3 text-devo-info hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-shield-check"></i> لوحة الإدارة</a>\` : ''}
             <button onclick="handleLogout()" class="py-3 text-devo-error text-right mt-4 flex items-center gap-2"><i class="ph ph-sign-out"></i> تسجيل خروج</button>
         `;
 

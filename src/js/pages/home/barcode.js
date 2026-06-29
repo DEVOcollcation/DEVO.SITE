@@ -1,0 +1,258 @@
+import { findModelByCode } from './gallery.js';
+import { showToast } from '../../components/toast.js';
+
+let html5QrCode = null;
+let isScannerRunning = false;
+let isScannerLocked = false;
+let selectedCameraId = null;
+
+export function initBarcode() {
+    const btnToggleScan = document.getElementById('btn-toggle-scan');
+    const btnSubmitManualCode = document.getElementById('btn-submit-manual-code');
+    const manualInput = document.getElementById('barcode-manual-input');
+    const selectCamera = document.getElementById('select-camera');
+
+    if (!btnToggleScan || !btnSubmitManualCode || !manualInput) return;
+
+    // Initialize Html5Qrcode instance dynamically once libraries are loaded
+    try {
+        if (window.Html5Qrcode) {
+            html5QrCode = new window.Html5Qrcode("barcode-reader");
+        }
+    } catch (e) {
+        console.error("Failed to initialize Html5Qrcode:", e);
+    }
+
+    // Toggle scanning button click
+    btnToggleScan.addEventListener('click', () => {
+        if (isScannerRunning) {
+            stopScanning();
+        } else {
+            startScanning();
+        }
+    });
+
+    // Camera selection change
+    if (selectCamera) {
+        selectCamera.addEventListener('change', (e) => {
+            selectedCameraId = e.target.value;
+            if (isScannerRunning) {
+                stopScanning().then(() => startScanning());
+            }
+        });
+    }
+
+    // Manual code submit click
+    btnSubmitManualCode.addEventListener('click', handleManualCodeSubmit);
+    manualInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            handleManualCodeSubmit();
+        }
+    });
+
+    // Defensive hook chaining for site navigation
+    const existingOnViewChanged = window.onViewChanged;
+    window.onViewChanged = (targetId) => {
+        if (typeof existingOnViewChanged === 'function') {
+            existingOnViewChanged(targetId);
+        }
+
+        if (targetId === 'view-barcode') {
+            // Automatically start scanning when switching to barcode tab
+            setTimeout(() => {
+                if (!isScannerRunning) {
+                    startScanning();
+                }
+            }, 200);
+        } else {
+            // Automatically stop scanning when leaving barcode tab
+            if (isScannerRunning) {
+                stopScanning();
+            }
+        }
+    };
+
+    // Defensive hook chaining for model details modal close event
+    const existingOnModelViewerClosed = window.onModelViewerClosed;
+    window.onModelViewerClosed = () => {
+        if (typeof existingOnModelViewerClosed === 'function') {
+            existingOnModelViewerClosed();
+        }
+
+        // If current active view is barcode, resume scanning
+        const barcodeView = document.getElementById('view-barcode');
+        if (barcodeView && barcodeView.classList.contains('block')) {
+            isScannerLocked = false;
+            // Clear manual input for next scan
+            if (manualInput) {
+                manualInput.value = '';
+                manualInput.focus();
+            }
+        }
+    };
+}
+
+async function startScanning() {
+    if (!window.Html5Qrcode) {
+        showToast("مكتبة قارئ الباركود لم تكتمل في التحميل بعد. أعد المحاولة.", "warning");
+        return;
+    }
+
+    if (!html5QrCode) {
+        try {
+            html5QrCode = new window.Html5Qrcode("barcode-reader");
+        } catch (e) {
+            console.error("Failed to create Html5Qrcode instance:", e);
+            showToast("حدث خطأ أثناء تهيئة الكاميرا.", "error");
+            return;
+        }
+    }
+    
+    const btnToggleScan = document.getElementById('btn-toggle-scan');
+    const txtToggleScan = document.getElementById('txt-toggle-scan');
+    const selectCamera = document.getElementById('select-camera');
+    const laser = document.getElementById('barcode-scanner-laser');
+
+    try {
+        // Request cameras list
+        const devices = await window.Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+            // Populate select box if multiple cameras
+            if (selectCamera) {
+                selectCamera.innerHTML = devices.map(device => 
+                    `<option value="${device.id}" ${device.id === selectedCameraId ? 'selected' : ''}>${device.label || `كاميرا ${devices.indexOf(device) + 1}`}</option>`
+                ).join('');
+                selectCamera.classList.remove('hidden');
+            }
+
+            // Default to first camera if none selected, or back camera if available
+            if (!selectedCameraId) {
+                const backCamera = devices.find(d => {
+                    const label = (d.label || '').toLowerCase();
+                    return label.includes('back') || label.includes('environment') || label.includes('rear') || label.includes('out');
+                });
+                selectedCameraId = backCamera ? backCamera.id : devices[0].id;
+                if (selectCamera) selectCamera.value = selectedCameraId;
+            }
+        }
+
+        const config = {
+            fps: 15,
+            qrbox: function(width, height) {
+                // Focus area optimized for 1D barcode and QR codes
+                return {
+                    width: Math.min(width * 0.85, 320),
+                    height: Math.min(height * 0.45, 160)
+                };
+            },
+            aspectRatio: 1.333333
+        };
+
+        await html5QrCode.start(
+            selectedCameraId ? selectedCameraId : { facingMode: "environment" },
+            config,
+            onScanSuccess,
+            (errorMessage) => {
+                // Ignore scanning cycle failures/no code detected
+            }
+        );
+
+        isScannerRunning = true;
+        isScannerLocked = false;
+
+        if (txtToggleScan) txtToggleScan.textContent = "إيقاف الكاميرا";
+        if (btnToggleScan) {
+            btnToggleScan.classList.replace('bg-devo-orange', 'bg-devo-error');
+            btnToggleScan.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-red-600');
+        }
+        if (laser) laser.classList.remove('hidden');
+
+    } catch (err) {
+        console.error("Camera access failed", err);
+        showToast("لم نتمكن من تشغيل الكاميرا. تأكد من إعطاء الصلاحيات للمتصفح.", "error");
+    }
+}
+
+async function stopScanning() {
+    if (!html5QrCode || !isScannerRunning) return;
+
+    const btnToggleScan = document.getElementById('btn-toggle-scan');
+    const txtToggleScan = document.getElementById('txt-toggle-scan');
+    const laser = document.getElementById('barcode-scanner-laser');
+
+    try {
+        await html5QrCode.stop();
+        isScannerRunning = false;
+        isScannerLocked = false;
+
+        if (txtToggleScan) txtToggleScan.textContent = "تشغيل الكاميرا";
+        if (btnToggleScan) {
+            btnToggleScan.classList.replace('bg-devo-error', 'bg-devo-orange');
+            btnToggleScan.classList.replace('hover:bg-red-600', 'hover:bg-devo-orangeHover');
+        }
+        if (laser) laser.classList.add('hidden');
+    } catch (err) {
+        console.error("Failed to stop Html5Qrcode:", err);
+    }
+}
+
+function onScanSuccess(decodedText) {
+    if (isScannerLocked) return;
+    isScannerLocked = true;
+
+    playBeepSound();
+
+    const code = decodedText.trim();
+    const model = findModelByCode(code);
+
+    if (model) {
+        showToast(`تم مسح الباركود بنجاح. الموديل: ${model.name}`, 'success');
+        window.openModelViewer(model.id);
+    } else {
+        showToast(`الباركود (${code}) غير مطابق لأي موديل نشط بالمعرض`, 'error');
+        // Resume scanning after a 2.5 seconds delay so toast is readable
+        setTimeout(() => {
+            isScannerLocked = false;
+        }, 2500);
+    }
+}
+
+function handleManualCodeSubmit() {
+    const manualInput = document.getElementById('barcode-manual-input');
+    if (!manualInput) return;
+
+    const code = manualInput.value.trim();
+    if (!code) {
+        return showToast("يرجى إدخال كود الموديل للبحث", "warning");
+    }
+
+    const model = findModelByCode(code);
+    if (model) {
+        showToast(`تم العثور على الموديل: ${model.name}`, 'success');
+        window.openModelViewer(model.id);
+    } else {
+        showToast(`كود الموديل (${code}) غير موجود بالمعرض`, 'error');
+    }
+}
+
+function playBeepSound() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.type = "sine";
+        oscillator.frequency.value = 1100; // Sharp beep sound
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.04);
+        gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.12);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.12);
+    } catch (e) {
+        console.warn("AudioContext beep failed", e);
+    }
+}

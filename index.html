@@ -8,6 +8,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -84,6 +85,14 @@
                 print-color-adjust: exact !important;
             }
             @page { margin: 1cm; size: A4; }
+        }
+        @keyframes laser {
+            0% { top: 0%; }
+            50% { top: 100%; }
+            100% { top: 0%; }
+        }
+        .animate-laser {
+            animation: laser 2s infinite linear;
         }
     </style>
 </head>
@@ -182,7 +191,7 @@
     </div>
 
     <section class="px-2 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[50vh]">
-        <div id="gallery-pagination-top" class="hidden md:flex justify-center items-center gap-1.5 md:gap-3 mb-3 col-span-full"></div>
+        <div id="gallery-pagination-top" class="flex justify-center items-center gap-1.5 md:gap-3 mb-3 col-span-full"></div>
         
         <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         </div>
@@ -211,6 +220,46 @@
                 </div>
         </div>
     </div>
+<div id="view-barcode" class="site-view-section hidden animate-fade-in pb-20">
+    <div class="max-w-md mx-auto w-full px-4 py-8 text-center">
+        <i class="ph ph-qr-code text-devo-orange text-5xl mb-3"></i>
+        <h2 class="text-2xl font-bold text-white mb-2">إضافة المنتجات بالباركود</h2>
+        <p class="text-devo-muted text-xs leading-relaxed mb-6">وجه كاميرا جهازك نحو الباركود الخاص بالموديل ليتم قراءته وفتح بياناته لإضافته للسلة فوراً.</p>
+
+        <div class="bg-devo-dark border border-devo-gray rounded-2xl p-4 shadow-lg mb-6 relative overflow-hidden">
+            <!-- Laser scanning effect overlay -->
+            <div class="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-black border border-neutral-800">
+                <!-- Scanner container -->
+                <div id="barcode-reader" class="w-full h-full"></div>
+                
+                <!-- Laser line -->
+                <div id="barcode-scanner-laser" class="absolute left-0 right-0 h-0.5 bg-devo-orange shadow-[0_0_10px_#f97316] animate-laser top-0 pointer-events-none hidden"></div>
+            </div>
+            
+            <!-- Camera control buttons -->
+            <div class="mt-4 flex flex-col gap-2">
+                <button id="btn-toggle-scan" class="w-full bg-devo-orange hover:bg-devo-orangeHover text-white py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-sm shadow-md">
+                    <i class="ph ph-camera"></i>
+                    <span id="txt-toggle-scan">تشغيل الكاميرا</span>
+                </button>
+                <select id="select-camera" class="w-full bg-devo-black border border-devo-gray rounded-xl px-3 py-3 text-white outline-none focus:border-devo-orange cursor-pointer text-xs h-[48px] hidden">
+                    <option value="">جاري البحث عن الكاميرات...</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="bg-devo-dark border border-devo-gray rounded-2xl p-5 shadow-lg space-y-4 text-right">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="ph ph-keyboard text-devo-info"></i> إدخال الكود يدوياً</h3>
+            <div class="flex gap-2">
+                <input type="text" id="barcode-manual-input" placeholder="اكتب كود المصنع أو السيستم..." class="flex-1 bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white focus:border-devo-orange outline-none text-sm transition-all">
+                <button id="btn-submit-manual-code" class="bg-devo-info hover:bg-blue-600 text-white font-bold px-5 py-3 rounded-xl transition-all text-sm shadow-md flex items-center gap-2">
+                    <span>بحث</span>
+                    <i class="ph ph-magnifying-glass"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 
 <div id="view-cart" class="site-view-section hidden animate-fade-in pb-20">
@@ -359,7 +408,7 @@
                     </div>
 
                     <div class="border border-black mb-2">
-                        <table class="w-full text-right text-[11px]">
+                        <table id="invoice-items-table" class="w-full text-right text-[11px]">
                             <thead class="bg-black text-white">
                                 <tr>
                                     <th class="p-1 border-l border-gray-700 w-8 text-center">م</th>
@@ -446,7 +495,7 @@
 
                 <div id="orders-container">
                     <div class="hidden md:block bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
-                        <table class="w-full text-right text-sm">
+                        <table id="customer-orders-table" class="w-full text-right text-sm">
                             <thead class="bg-devo-black border-b border-devo-gray text-devo-muted">
                                 <tr>
                                     <th class="p-4 font-medium">رقم الأوردر</th>
@@ -540,6 +589,8 @@
         </div>
     </footer>
     <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
+    <script type="module" src="./src/js/components/searchable_select.js"></script>
+    <script type="module" src="./src/js/components/table_sorter.js"></script>
     <script type="module" src="./src/js/pages/home/index.js"></script>
 </body>
 </html>

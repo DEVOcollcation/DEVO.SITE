@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DEVO | تحضير المخزن</title>
+    <link rel="icon" type="image/png" href="../../src/assets/icons/dv.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        devo: {
+                            black: '#0a0a0a', dark: '#171717', gray: '#262626',
+                            orange: '#f97316', orangeHover: '#ea580c',
+                            text: '#f5f5f5', muted: '#a3a3a3',
+                            success: '#10b981', error: '#ef4444'
+                        }
+                    },
+                    fontFamily: { sans: ['Tajawal', 'sans-serif'] },
+                }
+            }
+        }
+    </script>
+    <style>
+        * { font-family: 'Tajawal', sans-serif; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f97316; }
+
+        .screen { display: none; }
+        .screen.active { display: flex; flex-direction: column; }
+
+        /* Card view animation */
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(-30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        .slide-in { animation: slideInRight 0.25s ease; }
+        .slide-in-back { animation: slideInLeft 0.25s ease; }
+
+        /* Color item toggle */
+        .color-item { transition: all 0.2s; }
+        .color-item.prepared { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.4); }
+        .color-item.has-issue { background: rgba(234, 179, 8, 0.08); border-color: rgba(234, 179, 8, 0.4); }
+
+        /* Progress ring */
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.5s ease;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+<body class="bg-devo-black text-devo-text min-h-screen flex flex-col">
+
+<!-- ============================================================ -->
+<!-- HEADER (always visible) -->
+<!-- ============================================================ -->
+<header class="bg-devo-dark border-b border-devo-gray px-4 py-3 flex items-center justify-between shrink-0 sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+        <button id="btn-back-to-list" onclick="goToOrderList()" class="hidden text-devo-muted hover:text-white transition-colors p-1">
+            <i class="ph ph-arrow-right text-xl"></i>
+        </button>
+        <h1 class="text-lg font-black text-white">
+            D<span class="text-devo-orange">E</span>VO
+            <span class="text-sm font-normal text-devo-muted mr-1">| المخزن</span>
+        </h1>
+    </div>
+    <div class="flex items-center gap-2">
+        <span id="wh-worker-name" class="text-xs text-devo-muted hidden sm:block"></span>
+        <button onclick="whLogout()" class="text-devo-muted hover:text-white transition-colors text-xs flex items-center gap-1">
+            <i class="ph ph-sign-out text-base"></i>
+        </button>
+    </div>
+</header>
+
+<!-- ============================================================ -->
+<!-- SCREEN 1: قائمة الأوردرات -->
+<!-- ============================================================ -->
+<div id="screen-orders" class="screen active flex-1 flex-col p-4 gap-4 overflow-y-auto">
+
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="ph ph-package text-devo-orange"></i>
+            أوردرات التحضير
+        </h2>
+        <button onclick="refreshOrderList()" class="text-devo-muted hover:text-devo-orange transition-colors p-2">
+            <i class="ph ph-arrows-clockwise text-xl"></i>
+        </button>
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:none;">
+        <button onclick="setOrderFilter('active')" id="filter-tab-active"
+            class="order-filter-tab shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-colors bg-devo-orange text-white">
+            نشطة
+        </button>
+        <button onclick="setOrderFilter('in_progress')" id="filter-tab-in_progress"
+            class="order-filter-tab shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-colors bg-devo-gray text-devo-muted">
+            جاري التحضير
+        </button>
+        <button onclick="setOrderFilter('on_hold')" id="filter-tab-on_hold"
+            class="order-filter-tab shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-colors bg-devo-gray text-devo-muted">
+            موقوف
+        </button>
+        <button onclick="setOrderFilter('prepared')" id="filter-tab-prepared"
+            class="order-filter-tab shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-colors bg-devo-gray text-devo-muted">
+            تم التحضير
+        </button>
+    </div>
+
+    <!-- Orders list -->
+    <div id="wh-orders-list" class="space-y-3 pb-20">
+        <div class="text-center py-16 text-devo-muted">
+            <i class="ph ph-spinner animate-spin text-4xl text-devo-orange block mb-3"></i>
+            جاري التحميل...
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 2: تحضير أوردر -->
+<!-- ============================================================ -->
+<div id="screen-preparation" class="screen flex-1 flex-col overflow-hidden">
+
+    <!-- Sub-header: Order info + progress -->
+    <div class="bg-devo-dark border-b border-devo-gray px-4 py-3 shrink-0">
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex-1 min-w-0">
+                <h3 class="font-black text-white text-base" id="prep-order-title">—</h3>
+                <p class="text-xs text-devo-muted" id="prep-order-subtitle">—</p>
+            </div>
+            <!-- Ring progress -->
+            <div class="shrink-0 relative" style="width:56px;height:56px;">
+                <svg viewBox="0 0 56 56" width="56" height="56">
+                    <circle cx="28" cy="28" r="22" fill="none" stroke="#262626" stroke-width="5"/>
+                    <circle id="prep-progress-ring" cx="28" cy="28" r="22" fill="none" stroke="#f97316" stroke-width="5"
+                        stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2"
+                        class="progress-ring-circle"/>
+                </svg>
+                <span id="prep-progress-pct" class="absolute inset-0 flex items-center justify-center text-xs font-black text-devo-orange">0%</span>
+            </div>
+        </div>
+
+        <!-- View mode toggle + sort -->
+        <div class="flex items-center gap-2 mt-3">
+            <button onclick="setViewMode('full')" id="btn-mode-full"
+                class="view-mode-btn flex-1 py-3 rounded-xl text-sm font-bold transition-colors bg-devo-orange text-white flex items-center justify-center gap-2 touch-manipulation">
+                <i class="ph ph-list text-lg"></i> عرض كامل
+            </button>
+            <button onclick="setViewMode('card')" id="btn-mode-card"
+                class="view-mode-btn flex-1 py-3 rounded-xl text-sm font-bold transition-colors bg-devo-gray text-devo-muted flex items-center justify-center gap-2 touch-manipulation">
+                <i class="ph ph-cards text-lg"></i> صنف بصنف
+            </button>
+            <select id="prep-sort-select" onchange="changeSortOrder(this.value)"
+                class="bg-devo-black border border-devo-gray rounded-xl px-3 py-3 text-sm text-devo-muted outline-none focus:border-devo-orange shrink-0">
+                <option value="original">الترتيب الأصلي</option>
+                <option value="category">حسب الفئة</option>
+                <option value="factory_code">حسب كود المصنع</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- FULL VIEW -->
+    <div id="prep-full-view" class="flex-1 overflow-y-auto p-3 space-y-3 pb-32">
+        <!-- filled by JS -->
+    </div>
+
+    <!-- CARD VIEW -->
+    <div id="prep-card-view" class="hidden flex-1 flex-col overflow-hidden">
+        <!-- Card content (scrollable, swipeable) -->
+        <div class="flex-1 overflow-y-auto" id="prep-card-content" style="padding-bottom: 160px;">
+            <!-- filled by JS -->
+        </div>
+
+        <!-- ★ LARGE bottom card navigation (mobile-first) ★ -->
+        <div class="fixed bottom-20 left-0 right-0 z-30 px-3">
+            <!-- Swipe hint -->
+            <p id="card-swipe-hint" class="text-center text-xs text-devo-gray mb-2">← اسحب للتنقل →</p>
+            <!-- Navigation row -->
+            <div class="flex items-center bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-2xl">
+                <!-- Previous -->
+                <button onclick="prevCard()" id="btn-prev-card"
+                    class="flex-1 flex flex-col items-center justify-center gap-1 py-4 border-l border-devo-gray
+                           text-devo-muted active:bg-devo-gray transition-colors touch-manipulation
+                           disabled:opacity-25 disabled:pointer-events-none" disabled>
+                    <i class="ph ph-arrow-right text-3xl"></i>
+                    <span class="text-xs font-bold">السابق</span>
+                </button>
+                <!-- Counter -->
+                <div class="px-4 text-center shrink-0">
+                    <span class="text-sm font-black text-devo-orange" id="card-counter"><span dir="ltr">0 / 0</span></span>
+                    <p class="text-[10px] text-devo-muted">صنف</p>
+                </div>
+                <!-- Next -->
+                <button onclick="nextCard()" id="btn-next-card"
+                    class="flex-1 flex flex-col items-center justify-center gap-1 py-4 border-r border-devo-gray
+                           text-devo-orange active:bg-devo-orange/20 transition-colors touch-manipulation
+                           disabled:opacity-25 disabled:pointer-events-none">
+                    <i class="ph ph-arrow-left text-3xl"></i>
+                    <span class="text-xs font-bold">التالي</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed bottom action bar (notes + finalize) -->
+    <div class="fixed bottom-0 left-0 right-0 bg-devo-dark border-t border-devo-gray px-3 py-2.5 flex gap-2 z-40">
+        <button onclick="openNotesSummary()"
+            class="flex-none px-4 py-3 rounded-xl bg-devo-gray active:bg-devo-gray/70 text-devo-muted text-sm
+                   flex items-center gap-2 transition-colors touch-manipulation">
+            <i class="ph ph-note-pencil text-lg"></i>
+            <span>الملاحظات</span>
+        </button>
+        <button onclick="finalizePreparation()"
+            class="flex-1 py-3 rounded-xl bg-devo-orange active:bg-devo-orangeHover text-white font-bold text-sm
+                   flex items-center justify-center gap-2 transition-colors shadow-lg touch-manipulation">
+            <i class="ph ph-floppy-disk text-lg"></i>
+            حفظ وإتمام التحضير
+        </button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: ملخص الملاحظات -->
+<!-- ============================================================ -->
+<div id="notes-summary-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex items-end justify-center">
+    <div class="bg-devo-dark border border-devo-gray rounded-t-3xl w-full max-w-2xl max-h-[80vh] flex flex-col transform translate-y-full transition-transform duration-300" id="notes-summary-sheet">
+        <div class="flex items-center justify-between p-4 border-b border-devo-gray shrink-0">
+            <h3 class="font-bold text-white flex items-center gap-2">
+                <i class="ph ph-note-pencil text-devo-orange"></i>
+                ملخص الملاحظات والمشاكل
+            </h3>
+            <button onclick="closeNotesSummary()" class="text-devo-muted hover:text-white">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-3" id="notes-summary-body">
+            <!-- filled by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: حفظ وإتمام -->
+<!-- ============================================================ -->
+<div id="finalize-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex items-center justify-center p-4">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
+        <h3 class="text-lg font-bold text-white text-center" id="finalize-modal-title">حفظ التحضير</h3>
+        <p class="text-devo-muted text-sm text-center" id="finalize-modal-message"></p>
+
+        <div class="grid grid-cols-2 gap-3 pt-2">
+            <button onclick="closeFinalizeModal()"
+                class="py-3 rounded-xl bg-devo-gray text-devo-muted font-bold text-sm hover:bg-devo-gray/70 transition-colors">
+                مراجعة مرة أخرى
+            </button>
+            <button id="finalize-confirm-btn" onclick="confirmFinalize()"
+                class="py-3 rounded-xl bg-devo-orange text-white font-bold text-sm hover:bg-devo-orangeHover transition-colors">
+                تأكيد الحفظ
+            </button>
+        </div>
+
+        <!-- Status selector (if incomplete) -->
+        <div id="finalize-status-selector" class="hidden">
+            <label class="block text-xs text-devo-muted mb-1">اختر حالة التحضير:</label>
+            <select id="finalize-status-select"
+                class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-sm focus:border-devo-orange outline-none">
+                <option value="in_progress">جاري التحضير</option>
+                <option value="on_hold">موقوف (يوجد نقص)</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="wh-toast-container" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+<script type="module" src="./src/js/pages/warehouse/warehouse.js"></script>
+</body>
+</html>
