@@ -6,6 +6,8 @@ export function initNavbar() {
     const user = session ? session.user : null;
     const isWorker = user && user.role === 'worker';
     const isAdmin = user && (user.role === 'admin' || user.role === 'owner');
+    const hasWarehouseAccess = user && (user.role === 'owner' || user.role === 'admin' || user.worker_job === 'warehouse' || user.worker_job === 'both');
+    const hasAdminAccess = user && (user.role === 'owner' || user.role === 'admin');
 
     const desktopLinks = document.getElementById('desktop-nav-links');
     const mobileLinks = document.getElementById('mobile-nav-links');
@@ -63,16 +65,24 @@ export function initNavbar() {
             <button onclick="switchSiteView('view-barcode')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full flex items-center gap-2"><i class="ph ph-qr-code"></i> الباركود</button>
             <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-shopping-cart"></i> السلة</button>
             <button onclick="switchSiteView('view-orders')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-receipt"></i> الأوردرات</button>
-            \${isAdmin ? \`<a href="admin.html" class="py-3 text-devo-info hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-shield-check"></i> لوحة الإدارة</a>\` : ''}
+            ${hasWarehouseAccess ? `<a href="warehouse.html" class="py-3 text-devo-success hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-hard-hat"></i> صفحة العمال (المخزن)</a>` : ''}
+            ${hasAdminAccess ? `<a href="admin.html" class="py-3 text-devo-info hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-shield-check"></i> لوحة الإدارة</a>` : ''}
             <button onclick="handleLogout()" class="py-3 text-devo-error text-right mt-4 flex items-center gap-2"><i class="ph ph-sign-out"></i> تسجيل خروج</button>
         `;
 
+        let workerTitle = 'عامل مبيعات';
+        if (isWorker) {
+            if (user.worker_job === 'warehouse') workerTitle = 'عامل مخزن';
+            else if (user.worker_job === 'both') workerTitle = 'مبيعات + مخزن';
+        }
+
         desktopUserArea.innerHTML = `
-            ${isAdmin ? `<a href="admin.html" class="text-devo-info hover:text-white text-sm font-bold flex items-center gap-1" title="لوحة الإدارة"><i class="ph ph-shield-check text-xl"></i></a>` : ''}
+            ${hasAdminAccess ? `<a href="admin.html" class="text-devo-info hover:text-white text-sm font-bold flex items-center gap-1 mr-2" title="لوحة الإدارة"><i class="ph ph-shield-check text-xl"></i></a>` : ''}
+            ${hasWarehouseAccess ? `<a href="warehouse.html" class="text-devo-success hover:text-white text-sm font-bold flex items-center gap-1 mr-2" title="صفحة العمال (المخزن)"><i class="ph ph-hard-hat text-xl"></i></a>` : ''}
             <div class="flex items-center gap-2 border-r border-devo-gray pr-4 mr-2">
-                <div class="text-right">
-                    <p class="text-sm font-bold text-white leading-tight">${user.full_name}</p>
-                    <p class="text-[10px] text-devo-orange leading-tight">${isWorker ? 'عامل مبيعات' : 'إدارة'}</p>
+                <div class="text-right col-span-1">
+                    <p class="text-sm font-bold text-white leading-tight truncate w-24" title="${user.full_name}">${user.full_name}</p>
+                    <p class="text-[10px] text-devo-orange leading-tight">${isWorker ? workerTitle : 'إدارة'}</p>
                 </div>
                 <div class="w-10 h-10 rounded-full bg-devo-gray flex items-center justify-center text-white font-bold cursor-pointer hover:bg-devo-orange transition-colors" onclick="handleLogout()" title="تسجيل الخروج">
                     <i class="ph ph-sign-out text-xl"></i>

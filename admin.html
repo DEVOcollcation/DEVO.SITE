@@ -8,10 +8,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest-admin.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="DEVO">
+<meta name="apple-mobile-web-app-title" content="DEVO الإدارة">
 <link rel="apple-touch-icon" href="../../src/assets/icons/dv.png">
 
 <script>
@@ -128,10 +128,20 @@
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الأوردرات</span>
                 <span class="sidebar-tooltip">إدارة الأوردرات</span>
             </a>
+            <a href="#" data-target="view-returns" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة المرتجعات">
+                <i class="ph ph-arrow-counter-clockwise text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة المرتجعات</span>
+                <span class="sidebar-tooltip">إدارة المرتجعات</span>
+            </a>
             <a href="#" data-target="view-preparation" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تحضير الأوردرات">
                 <i class="ph ph-package text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">تحضير الأوردرات</span>
                 <span class="sidebar-tooltip">تحضير الأوردرات</span>
+            </a>
+            <a href="#" data-target="view-audits" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="مراجعة الجرد">
+                <i class="ph ph-list-checks text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">مراجعة الجرد</span>
+                <span class="sidebar-tooltip">مراجعة الجرد</span>
             </a>
             <a href="#" data-target="view-definitions" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="التعريفات الأساسية">
                 <i class="ph ph-list-dashes text-xl shrink-0"></i>
@@ -183,6 +193,16 @@
             <h2 class="text-xl font-bold text-white" id="page-title">جاري التحميل...</h2>
             
             <div class="flex items-center gap-4">
+                <!-- أزرار التنقل السريع للمدير -->
+                <a href="index.html" class="px-3.5 py-2 bg-devo-gray hover:bg-devo-orange/20 hover:text-devo-orange text-white border border-devo-gray hover:border-devo-orange/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="ph ph-storefront text-base"></i>
+                    <span class="hidden md:inline">الرئيسية (المعرض)</span>
+                </a>
+                <a href="warehouse.html" class="px-3.5 py-2 bg-devo-gray hover:bg-devo-orange/20 hover:text-devo-orange text-white border border-devo-gray hover:border-devo-orange/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="ph ph-hard-hat text-base"></i>
+                    <span class="hidden md:inline">صفحة العمال (المخزن)</span>
+                </a>
+                
                 <button id="logout-btn" class="px-4 py-2 text-sm font-medium text-devo-muted hover:text-devo-error transition-colors flex items-center gap-2">
                     <span>تسجيل الخروج</span>
                     <i class="ph ph-sign-out text-lg"></i>
@@ -649,6 +669,16 @@
                                 <option value="owner">مالك (صلاحيات كاملة)</option>
                             </select>
                         </div>
+                    </div>
+
+                    <!-- خيار تحديد وظيفة العامل (يظهر فقط إذا كانت الصلاحية عامل) -->
+                    <div id="worker-job-container" class="hidden">
+                        <label class="block text-xs font-bold text-devo-muted mb-1">وظيفة العامل <span class="text-devo-error">*</span></label>
+                        <select id="u-worker-job" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none cursor-pointer text-sm">
+                            <option value="showroom">بائع بالمعرض</option>
+                            <option value="warehouse">عامل بالمخزن</option>
+                            <option value="both">بائع بالمعرض وعامل بالمخزن معاً</option>
+                        </select>
                     </div>
 
                     <div>
@@ -1477,6 +1507,97 @@
     </div>
 </div>
 <!-- ============================================================ -->
+<!-- VIEW: إدارة المرتجعات -->
+<!-- ============================================================ -->
+<div id="view-returns" class="view-section hidden h-full">
+    <div class="animate-fade-in space-y-6 pb-20">
+        
+        <!-- Header -->
+        <div class="bg-devo-dark border border-devo-gray p-4 md:p-5 rounded-xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+                <h2 class="text-xl md:text-2xl font-black text-white flex items-center gap-2">
+                    <i class="ph ph-arrow-counter-clockwise text-devo-orange"></i> إدارة المرتجعات والاستبدال
+                </h2>
+                <p class="text-devo-muted text-xs md:text-sm mt-1">عرض، فلترة، ومراجعة فواتير مرتجعات المبيعات المسجلة بالسيستم.</p>
+            </div>
+            <button onclick="refreshReturnsList()" class="bg-devo-gray hover:bg-devo-gray/70 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors w-full md:w-auto justify-center">
+                <i class="ph ph-arrows-clockwise"></i> تحديث
+            </button>
+        </div>
+
+        <!-- Stats Card Row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 flex items-center gap-4 shadow-sm">
+                <div class="w-12 h-12 rounded-lg bg-devo-orange/10 flex items-center justify-center text-devo-orange"><i class="ph ph-receipt text-2xl"></i></div>
+                <div>
+                    <span class="text-devo-muted text-xs block">عدد فواتير المرتجع</span>
+                    <span class="text-2xl font-black text-white mt-1 block" id="ret-stat-count">0</span>
+                </div>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 flex items-center gap-4 shadow-sm">
+                <div class="w-12 h-12 rounded-lg bg-devo-success/10 flex items-center justify-center text-devo-success"><i class="ph ph-currency-dollar text-2xl"></i></div>
+                <div>
+                    <span class="text-devo-muted text-xs block">إجمالي مبالغ المرتجع</span>
+                    <span class="text-2xl font-black text-devo-success mt-1 block" id="ret-stat-amount">0 ج.م</span>
+                </div>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 flex items-center gap-4 shadow-sm">
+                <div class="w-12 h-12 rounded-lg bg-devo-info/10 flex items-center justify-center text-devo-info"><i class="ph ph-stack text-2xl"></i></div>
+                <div>
+                    <span class="text-devo-muted text-xs block">إجمالي السريات المرتجعة</span>
+                    <span class="text-2xl font-black text-devo-info mt-1 block" id="ret-stat-series">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm flex flex-wrap gap-3 items-center">
+            <div class="relative flex-[2] min-w-[200px]">
+                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                <input type="text" id="ret-search" placeholder="بحث برقم المرتجع، اسم العميل..." 
+                    class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs md:text-sm">
+            </div>
+            
+            <div class="flex items-center gap-2 bg-devo-black border border-devo-gray rounded-xl px-3 py-1 flex-1 min-w-[240px]">
+                <span class="text-xs text-devo-muted">من:</span>
+                <input type="date" id="ret-date-from" class="bg-transparent text-white outline-none text-xs py-1.5 w-full cursor-pointer">
+                <span class="text-xs text-devo-muted border-r border-devo-gray pr-2">إلى:</span>
+                <input type="date" id="ret-date-to" class="bg-transparent text-white outline-none text-xs py-1.5 w-full cursor-pointer">
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-devo-black border-b border-devo-gray text-devo-muted text-xs">
+                        <tr>
+                            <th class="p-4 font-medium">رقم المرتجع</th>
+                            <th class="p-4 font-medium">رقم الأوردر الأصلي</th>
+                            <th class="p-4 font-medium">اسم العميل</th>
+                            <th class="p-4 font-medium text-center">السريات المرتجعة</th>
+                            <th class="p-4 font-medium text-center">مبلغ المسترد</th>
+                            <th class="p-4 font-medium">التاريخ والوقت</th>
+                            <th class="p-4 font-medium">المستلم</th>
+                            <th class="p-4 font-medium text-center">الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ret-table-body" class="divide-y divide-devo-gray text-white">
+                        <tr>
+                            <td colspan="8" class="p-10 text-center text-devo-muted">
+                                <i class="ph ph-spinner animate-spin text-2xl text-devo-orange block mb-2 mx-auto"></i>
+                                جاري تحميل المرتجعات...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================ -->
 <!-- VIEW: تحضير الأوردرات -->
 <!-- ============================================================ -->
 <div id="view-preparation" class="view-section hidden h-full">
@@ -1809,6 +1930,495 @@
                     <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-sm"></i></a>
                 </div>
             </footer>
+<!-- ============================================================ -->
+<!-- MODAL: إنشاء مرتجع من أوردر -->
+<!-- ============================================================ -->
+<div id="create-return-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-arrow-counter-clockwise text-devo-orange"></i> إنشاء فاتورة مرتجع جديدة
+                </h3>
+                <p class="text-xs text-devo-muted mt-1" id="cr-modal-subtitle">جاري تحميل بيانات الأوردر...</p>
+            </div>
+            <button onclick="closeCreateReturnModal()" class="text-devo-muted hover:text-white transition-colors">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-5 space-y-4" style="scrollbar-width:thin;">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
+                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
+                    <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-user"></i> بيانات العميل</span>
+                    <h4 class="text-white font-bold text-sm truncate" id="cr-customer-name">-</h4>
+                    <span class="text-xs text-devo-info font-mono mt-0.5" id="cr-customer-phone">-</span>
+                </div>
+                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
+                    <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-receipt"></i> الأوردر الأصلي</span>
+                    <h4 class="text-devo-orange font-mono font-bold text-sm truncate" id="cr-invoice-number">-</h4>
+                    <span class="text-[11px] text-devo-muted mt-0.5">البائع: <span class="text-white" id="cr-seller-name">-</span></span>
+                </div>
+                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center space-y-1">
+                    <div class="flex justify-between text-xs"><span class="text-devo-muted">إجمالي الأوردر:</span> <span class="text-white font-bold" id="cr-total-price">0</span></div>
+                    <div class="flex justify-between text-xs"><span class="text-devo-muted">المدفوع (العربون):</span> <span class="text-devo-success font-bold" id="cr-deposit">0</span></div>
+                    <div class="flex justify-between text-sm border-t border-devo-gray pt-1 mt-1"><span class="text-white font-bold">المتبقي:</span> <span class="text-devo-orange font-black" id="cr-remaining">0</span></div>
+                </div>
+            </div>
+
+            <!-- Items Table to select return qty -->
+            <div class="border border-devo-gray rounded-xl overflow-hidden bg-devo-black">
+                <table class="w-full text-right text-sm">
+                    <thead class="text-xs text-devo-muted bg-devo-dark">
+                        <tr>
+                            <th class="p-3">الموديل والكود</th>
+                            <th class="p-3">اللون</th>
+                            <th class="p-3 text-center">الكمية الأصلية</th>
+                            <th class="p-3 text-center">سعر السرية</th>
+                            <th class="p-3 text-center w-32">كمية المرتجع</th>
+                            <th class="p-3 text-left">إجمالي المرتجع</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cr-items-tbody" class="divide-y divide-devo-gray text-white">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Notes -->
+            <div>
+                <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات المرتجع (سبب الإرجاع)</label>
+                <textarea id="cr-notes" rows="2" placeholder="اكتب سبب إرجاع الموديل أو أي ملاحظات أخرى..." class="w-full bg-devo-black border border-devo-gray rounded-xl px-3 py-2 text-white focus:border-devo-orange outline-none text-xs resize-none"></textarea>
+            </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="p-5 border-t border-devo-gray flex items-center justify-between bg-devo-black/50 rounded-b-2xl shrink-0">
+            <div class="flex flex-col">
+                <span class="text-devo-muted text-xs">إجمالي مبلغ الارتجاع المالي:</span>
+                <span class="text-2xl font-black text-devo-success" id="cr-refund-total">0 ج.م</span>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="closeCreateReturnModal()" class="px-5 py-2.5 rounded-xl border border-devo-gray text-white text-sm hover:bg-devo-gray transition-colors">إلغاء</button>
+                <button id="cr-btn-save" onclick="window.saveReturnInvoice()" class="bg-devo-success hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
+                    <i class="ph ph-check-circle"></i> تأكيد وحفظ المرتجع
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW: مراجعة جرد المخزن الدوري -->
+<!-- ============================================================ -->
+<div id="view-audits" class="view-section hidden h-full">
+    <div class="animate-fade-in space-y-6 pb-20">
+        <!-- Header Page Card -->
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-devo-dark border border-devo-gray p-4 md:p-5 rounded-xl shadow-sm">
+            <div>
+                <h2 class="text-xl md:text-2xl font-black text-white flex items-center gap-2">
+                    <i class="ph ph-list-checks text-devo-orange"></i> مراجعة تقارير جرد المخزن
+                </h2>
+                <p class="text-xs text-devo-muted mt-1">مراجعة وتأكيد أو تجاهل تقارير الجرد الدوري المرفوعة من المستودع لتحديث الكميات بالسيستم.</p>
+            </div>
+            
+            <div class="flex gap-2 w-full lg:w-auto">
+                <button onclick="window.openCreateAuditModal()" class="bg-devo-orange hover:bg-devo-orangeHover text-white font-bold px-4 py-2.5 rounded-xl transition-all shadow text-xs flex items-center gap-1">
+                    <i class="ph ph-plus-circle"></i> إنشاء عملية جرد جديدة
+                </button>
+                <button onclick="window.refreshAuditsList()" class="bg-devo-gray hover:bg-devo-gray/70 text-white font-bold px-4 py-2.5 rounded-xl transition-all shadow text-xs flex items-center gap-1">
+                    <i class="ph ph-arrows-clockwise"></i> تحديث القائمة
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Overview Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
+                <div class="absolute -right-4 -bottom-4 text-devo-black/40"><i class="ph-fill ph-file-text text-8xl"></i></div>
+                <div class="relative z-10">
+                    <h3 class="text-devo-muted text-xs font-bold mb-1">جلسات جرد معلقة</h3>
+                    <p class="text-3xl font-black text-devo-orange" id="audits-stat-pending">0</p>
+                </div>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
+                <div class="absolute -right-4 -bottom-4 text-devo-black/40"><i class="ph-fill ph-check-circle text-8xl"></i></div>
+                <div class="relative z-10">
+                    <h3 class="text-devo-muted text-xs font-bold mb-1">جلسات جرد معتمدة</h3>
+                    <p class="text-3xl font-black text-devo-success" id="audits-stat-confirmed">0</p>
+                </div>
+            </div>
+            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
+                <div class="absolute -right-4 -bottom-4 text-devo-black/40"><i class="ph-fill ph-x-circle text-8xl"></i></div>
+                <div class="relative z-10">
+                    <h3 class="text-devo-muted text-xs font-bold mb-1">جلسات ملغاة</h3>
+                    <p class="text-3xl font-black text-devo-error" id="audits-stat-cancelled">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-wrap gap-4 items-center">
+            <div class="flex-1 min-w-[200px] relative">
+                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                <input type="text" id="audits-search" placeholder="البحث برقم الجلسة أو اسم العامل..." class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2 text-white focus:border-devo-orange outline-none text-xs transition-all shadow-sm">
+            </div>
+            <div class="flex gap-2">
+                <select id="audits-status-filter" class="bg-devo-black border border-devo-gray rounded-xl px-3 py-2 text-xs text-white focus:border-devo-orange outline-none cursor-pointer">
+                    <option value="">كل الحالات</option>
+                    <option value="submitted">انتظار المراجعة</option>
+                    <option value="confirmed">معتمد ومطبق</option>
+                    <option value="cancelled">ملغى</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Table Card -->
+        <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto max-h-[60vh] custom-scrollbar">
+                <table class="w-full text-right text-sm">
+                    <thead class="text-xs text-devo-muted bg-devo-black/50 border-b border-devo-gray sticky top-0 z-10 shadow">
+                        <tr>
+                            <th class="p-4">رقم الجلسة</th>
+                            <th class="p-4">العامل</th>
+                            <th class="p-4">تاريخ الرفع</th>
+                            <th class="p-4 text-center">عدد الأصناف</th>
+                            <th class="p-4 text-center">الحالة</th>
+                            <th class="p-4">ملاحظات الجرد</th>
+                            <th class="p-4 text-center">الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audits-table-body" class="divide-y divide-devo-gray text-white">
+                        <tr>
+                            <td colspan="7" class="p-10 text-center text-devo-muted">
+                                <i class="ph ph-spinner animate-spin text-3xl text-devo-orange block mb-2"></i>
+                                جاري تحميل تقارير الجرد...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: تفاصيل ومراجعة جلسة الجرد -->
+<!-- ============================================================ -->
+<div id="audit-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-list-checks text-devo-orange"></i> تفاصيل ومراجعة تقرير الجرد</h3>
+                <p class="text-xs text-devo-muted mt-0.5" id="audit-modal-subtitle">جلسة جرد</p>
+            </div>
+            <button onclick="window.closeAuditDetailsModal()" class="text-devo-muted hover:text-white transition-colors">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-6 space-y-4" style="scrollbar-width:thin;">
+            <!-- Notes from worker -->
+            <div class="bg-devo-black/50 p-4 rounded-xl border border-devo-gray">
+                <span class="text-[10px] text-devo-muted block mb-1">ملاحظات أمين المستودع:</span>
+                <p id="audit-detail-worker-notes" class="text-xs text-white leading-relaxed italic">—</p>
+            </div>
+
+            <!-- Items Comparison Table -->
+            <div class="border border-devo-gray rounded-xl overflow-hidden bg-devo-black">
+                <table class="w-full text-right text-xs">
+                    <thead class="text-xs text-devo-muted bg-devo-dark">
+                        <tr>
+                            <th class="p-3">الموديل والكود</th>
+                            <th class="p-3">اللون</th>
+                            <th class="p-3 text-center">الكمية الحالية بالسيستم</th>
+                            <th class="p-3 text-center">الكمية الفعلية بالرف</th>
+                            <th class="p-3 text-center">الفارق</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-details-items-tbody" class="divide-y divide-devo-gray text-white">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Admin decision notes -->
+            <div id="audit-decision-section" class="space-y-2">
+                <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات قرار المراجعة (تظهر في السجل):</label>
+                <textarea id="audit-admin-notes" rows="2" placeholder="اكتب أي ملاحظات حول تأكيد أو تجاهل هذا الجرد..." class="w-full bg-devo-black border border-devo-gray rounded-xl px-3 py-2 text-white focus:border-devo-orange outline-none text-xs resize-none"></textarea>
+            </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="p-5 border-t border-devo-gray flex items-center justify-end gap-2 bg-devo-black/50 rounded-b-2xl shrink-0">
+            <button onclick="window.closeAuditDetailsModal()" class="px-5 py-2.5 rounded-xl border border-devo-gray text-white text-sm hover:bg-devo-gray transition-colors">إلغاء</button>
+            <div id="audit-detail-action-buttons" class="flex gap-2">
+                <button id="audit-btn-cancel" onclick="window.cancelAuditSession()" class="bg-devo-error/20 hover:bg-devo-error text-devo-error hover:text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow text-sm flex items-center gap-1">
+                    <i class="ph ph-x-circle"></i> إلغاء وتجاهل الجرد
+                </button>
+                <button id="audit-btn-confirm" onclick="window.confirmAuditSession()" class="bg-devo-success hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-1">
+                    <i class="ph ph-check-circle"></i> تأكيد وتطبيق على السيستم
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: إنشاء عملية جرد جديدة -->
+<!-- ============================================================ -->
+<div id="create-audit-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        
+        <!-- Header -->
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-plus-circle text-devo-orange"></i> إنشاء عملية جرد جديدة</h3>
+                <p class="text-xs text-devo-muted mt-0.5">حدد الموديلات المراد جردها لكتابة تقرير الجرد الخاص بالمخزن.</p>
+            </div>
+            <button onclick="window.closeCreateAuditModal()" class="text-devo-muted hover:text-white transition-colors">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            
+            <!-- Advanced Filters Card (Collapsible) -->
+            <div class="bg-devo-dark border border-devo-gray rounded-xl shadow-sm overflow-visible">
+                <div class="p-4 flex justify-between items-center cursor-pointer select-none border-b border-transparent hover:border-devo-gray/50 transition-colors" onclick="window.toggleAuditCreateFilters()">
+                    <h4 class="text-xs md:text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-funnel text-devo-orange"></i> صياد الموديلات (فلترة متقدمة)
+                    </h4>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[10px] text-devo-muted hidden md:inline">اضغط للطي/الفتح</span>
+                        <i id="audit-create-filter-icon" class="ph ph-caret-up text-base text-devo-muted transition-transform duration-300"></i>
+                    </div>
+                </div>
+
+                <div id="audit-create-filters-container" class="p-4 border-t border-devo-gray transition-all duration-300">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <!-- Row 1: Split Searches -->
+                        <div class="lg:col-span-2 relative">
+                            <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                            <input type="text" id="audit-create-search-name" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                        </div>
+                        <div class="relative">
+                            <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                            <input type="text" id="audit-create-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                        </div>
+                        <div class="relative">
+                            <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                            <input type="text" id="audit-create-search-system" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                        </div>
+
+                        <!-- Row 2: Factory Range & Dropdowns -->
+                        <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                            <span class="text-[10px] text-devo-muted whitespace-nowrap">رينج كود المصنع:</span>
+                            <input type="text" id="audit-create-factory-from" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="من كود">
+                            <span class="text-[10px] text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                            <input type="text" id="audit-create-factory-to" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="إلى كود">
+                        </div>
+
+                        <!-- Category Multi-Select Dropdown -->
+                        <div class="relative multi-select-dropdown" id="audit-create-dropdown-cat-container">
+                            <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs flex justify-between items-center cursor-pointer" onclick="window.toggleAuditCreateMultiSelectDropdown(event, 'audit-create-dropdown-cat-menu')">
+                                <span id="audit-create-dropdown-cat-label" class="truncate text-right">جميع التصنيفات</span>
+                                <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                            </button>
+                            <div id="audit-create-dropdown-cat-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                    <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                        <input type="checkbox" id="audit-create-dropdown-cat-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="window.updateAuditCreateMultiSelectLabel('cat')">
+                                        <span>استثناء المحدد 🚫</span>
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'cat', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'cat', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                    </div>
+                                </div>
+                                <div id="audit-create-dropdown-cat-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                    <!-- Checkboxes populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Class Multi-Select Dropdown -->
+                        <div class="relative multi-select-dropdown" id="audit-create-dropdown-class-container">
+                            <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs flex justify-between items-center cursor-pointer" onclick="window.toggleAuditCreateMultiSelectDropdown(event, 'audit-create-dropdown-class-menu')">
+                                <span id="audit-create-dropdown-class-label" class="truncate text-right">جميع الفئات</span>
+                                <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                            </button>
+                            <div id="audit-create-dropdown-class-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                    <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                        <input type="checkbox" id="audit-create-dropdown-class-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="window.updateAuditCreateMultiSelectLabel('class')">
+                                        <span>استثناء المحدد 🚫</span>
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'class', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'class', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                    </div>
+                                </div>
+                                <div id="audit-create-dropdown-class-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                    <!-- Checkboxes populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Colors, Sizes, Activation Status, Stock Status -->
+                        <!-- Color Multi-Select Dropdown -->
+                        <div class="relative multi-select-dropdown" id="audit-create-dropdown-color-container">
+                            <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs flex justify-between items-center cursor-pointer" onclick="window.toggleAuditCreateMultiSelectDropdown(event, 'audit-create-dropdown-color-menu')">
+                                <span id="audit-create-dropdown-color-label" class="truncate text-right">جميع الألوان</span>
+                                <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                            </button>
+                            <div id="audit-create-dropdown-color-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                    <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                        <input type="checkbox" id="audit-create-dropdown-color-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="window.updateAuditCreateMultiSelectLabel('color')">
+                                        <span>استثناء المحدد 🚫</span>
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'color', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'color', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                    </div>
+                                </div>
+                                <div id="audit-create-dropdown-color-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                    <!-- Checkboxes populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Size Multi-Select Dropdown -->
+                        <div class="relative multi-select-dropdown" id="audit-create-dropdown-size-container">
+                            <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs flex justify-between items-center cursor-pointer" onclick="window.toggleAuditCreateMultiSelectDropdown(event, 'audit-create-dropdown-size-menu')">
+                                <span id="audit-create-dropdown-size-label" class="truncate text-right">جميع المقاسات</span>
+                                <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                            </button>
+                            <div id="audit-create-dropdown-size-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                    <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                        <input type="checkbox" id="audit-create-dropdown-size-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="window.updateAuditCreateMultiSelectLabel('size')">
+                                        <span>استثناء المحدد 🚫</span>
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'size', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                        <button type="button" onclick="window.auditCreateMultiSelectAction(event, 'size', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                    </div>
+                                </div>
+                                <div id="audit-create-dropdown-size-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                    <!-- Checkboxes populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <select id="audit-create-filter-status" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                            <option value="">حالة التفعيل (الكل)</option>
+                            <option value="true">النشطة فقط</option>
+                            <option value="false">المعطلة فقط</option>
+                        </select>
+
+                        <div class="flex items-center gap-1 bg-devo-black border border-devo-gray rounded-lg px-2">
+                            <select id="audit-create-filter-stock-op" class="bg-transparent text-white outline-none text-xs cursor-pointer w-full py-2.5">
+                                <option class="bg-devo-dark text-white" value="">كمية المخزون (الكل)</option>
+                                <option class="bg-devo-dark text-white" value="less">الكمية أقل من</option>
+                                <option class="bg-devo-dark text-white" value="greater">الكمية أكبر من</option>
+                                <option class="bg-devo-dark text-white" value="equal">الكمية تساوي</option>
+                            </select>
+                            <input type="number" id="audit-create-filter-stock-qty" placeholder="الكمية" min="0" class="bg-transparent text-white outline-none text-xs w-16 text-center border-r border-devo-gray py-2.5 hidden">
+                        </div>
+
+                        <!-- Row 4: Price & Date Ranges -->
+                        <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                            <span class="text-[10px] text-devo-muted whitespace-nowrap">السعر:</span>
+                            <input type="number" id="audit-create-price-min" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="من">
+                            <span class="text-[10px] text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                            <input type="number" id="audit-create-price-max" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="أقصى">
+                        </div>
+                        <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                            <span class="text-[10px] text-devo-muted whitespace-nowrap">الإضافة:</span>
+                            <input type="date" id="audit-create-date-from" class="bg-transparent text-devo-muted outline-none text-[10px] w-full cursor-pointer">
+                            <span class="text-[10px] text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                            <input type="date" id="audit-create-date-to" class="bg-transparent text-devo-muted outline-none text-[10px] w-full cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 mt-2 pt-2 border-t border-devo-gray/50">
+                        <button type="button" onclick="window.clearAuditCreateFilters()" class="bg-devo-gray hover:bg-devo-black border border-devo-gray text-white px-4 py-2 rounded-lg text-xs transition-all" title="مسح الفلاتر"><i class="ph ph-eraser text-base"></i></button>
+                        <button type="button" onclick="window.applyAuditCreateFilters()" class="bg-devo-orange hover:bg-devo-orangeHover text-white font-bold px-6 py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-md">
+                            <i class="ph ph-magnifying-glass text-base"></i> بحث وتطبيق الفلاتر
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table of filtered models -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-devo-muted font-bold" id="audit-create-selected-count">تم تحديد: 0 موديل</span>
+                    <button type="button" onclick="window.toggleAllAuditCreateModels()" class="text-devo-orange hover:underline font-bold">تحديد / إلغاء تحديد الكل</button>
+                </div>
+                <div id="audit-create-table-wrapper" class="border border-devo-gray rounded-xl overflow-hidden bg-devo-black max-h-48 overflow-y-auto custom-scrollbar transition-all duration-300">
+                    <table class="w-full text-right text-xs">
+                        <thead class="bg-devo-dark text-devo-muted sticky top-0">
+                            <tr>
+                                <th class="p-2.5 w-12 text-center"></th>
+                                <th class="p-2.5">الموديل</th>
+                                <th class="p-2.5">كود المصنع</th>
+                                <th class="p-2.5 font-mono">كود السيستم</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-create-models-tbody" class="divide-y divide-devo-gray text-white">
+                            <tr>
+                                <td colspan="4" class="p-6 text-center text-devo-muted">قم بتطبيق التصفية لعرض الموديلات للبدء بالتحضير والجرد</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div>
+                <label class="block text-xs font-bold text-devo-muted mb-1">تعليمات وتوجيهات عملية الجرد للعامل (اختياري)</label>
+                <textarea id="audit-create-notes" rows="2" placeholder="مثال: يرجى جرد الرفوف من 1 إلى 5 والتأكد من المقاسات..." class="w-full bg-devo-black border border-devo-gray rounded-xl px-3 py-2 text-white focus:border-devo-orange outline-none text-xs resize-none"></textarea>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="p-5 border-t border-devo-gray flex items-center justify-end gap-2 bg-devo-black/50 rounded-b-2xl shrink-0">
+            <button onclick="window.closeCreateAuditModal()" class="px-5 py-2.5 rounded-xl border border-devo-gray text-white text-sm hover:bg-devo-gray transition-colors">إلغاء</button>
+            <button id="audit-create-submit-btn" onclick="window.executeCreateAuditSession()" class="bg-devo-success hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-1">
+                <i class="ph ph-check-circle"></i> إنشاء ونشر الجرد
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: تفاصيل فاتورة المرتجع -->
+<!-- ============================================================ -->
+<div id="return-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-3xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-receipt text-devo-orange"></i> تفاصيل فاتورة المرتجع</h3>
+            <div class="flex items-center gap-2">
+                <button id="ret-btn-print" class="bg-devo-info hover:bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1">
+                    <i class="ph ph-printer"></i> طباعة
+                </button>
+                <button onclick="closeReturnDetailsModal()" class="text-devo-muted hover:text-white transition-colors">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="ret-details-content" style="scrollbar-width:thin;">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+</div>
+
 <div id="color-excel-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex justify-center items-center p-4 opacity-0 transition-opacity duration-300">
         <div class="bg-devo-dark border border-devo-gray w-full max-w-2xl rounded-2xl shadow-devo-float transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]">
             <div class="p-5 border-b border-devo-gray flex justify-between items-center">
@@ -1864,6 +2474,8 @@
     <script type="module" src="./src/js/components/searchable_select.js"></script>
     <script type="module" src="./src/js/components/table_sorter.js"></script>
     <script type="module" src="./src/js/pages/admin/preparation.js"></script>
+    <script type="module" src="./src/js/pages/admin/returns.js"></script>
+    <script type="module" src="./src/js/pages/admin/audits.js"></script>
 
     <!-- ===== SIDEBAR TOGGLE ===== -->
     <script>

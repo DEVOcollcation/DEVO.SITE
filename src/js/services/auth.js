@@ -32,7 +32,8 @@ export async function loginUser(username, password) {
             id: user.id,
             username: user.username,
             full_name: user.full_name,
-            role: user.role
+            role: user.role,
+            worker_job: user.worker_job
         };
         localStorage.setItem('devo_session', JSON.stringify(sessionData));
 

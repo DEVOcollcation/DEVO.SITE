@@ -14,6 +14,17 @@ export async function initUsersView() {
         document.getElementById(id)?.addEventListener('input', applyUserFilters);
     });
 
+    document.getElementById('u-role')?.addEventListener('change', (e) => {
+        const container = document.getElementById('worker-job-container');
+        if (container) {
+            if (e.target.value === 'worker') {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+    });
+
     await loadUsers();
     isInitialized = true;
 }
@@ -76,11 +87,17 @@ function renderUsersGrid(users) {
     }
 
     container.innerHTML = users.map(u => {
-        // تحديد الأيقونات والألوان حسب الصلاحية
         let roleIcon, roleName, roleColor;
         if (u.role === 'owner') { roleIcon = 'ph-shield-check'; roleName = 'مالك (Owner)'; roleColor = 'text-devo-orange'; }
         else if (u.role === 'admin') { roleIcon = 'ph-wrench'; roleName = 'مشرف (Admin)'; roleColor = 'text-devo-info'; }
-        else { roleIcon = 'ph-hard-hat'; roleName = 'عامل (Worker)'; roleColor = 'text-devo-success'; }
+        else {
+            roleIcon = 'ph-hard-hat';
+            roleColor = 'text-devo-success';
+            let jobText = 'عامل (مبيعات)';
+            if (u.worker_job === 'warehouse') jobText = 'عامل (مخزن)';
+            else if (u.worker_job === 'both') jobText = 'عامل (مبيعات + مخزن)';
+            roleName = jobText;
+        }
 
         const isOwner = u.role === 'owner';
         const cardClass = !u.is_active ? 'opacity-70 grayscale' : '';
@@ -146,6 +163,13 @@ window.viewUserDetails = (id) => {
             <table class="w-full text-right text-sm">
                 <tbody class="divide-y divide-devo-gray">
                     <tr><td class="p-3 text-devo-muted w-1/3">الصلاحية</td><td class="p-3 font-bold ${roleColor}">${roleName}</td></tr>
+                    ${user.role === 'worker' ? `
+                    <tr>
+                        <td class="p-3 text-devo-muted">وظيفة العامل</td>
+                        <td class="p-3 text-white font-bold">
+                            ${user.worker_job === 'warehouse' ? 'عامل بالمخزن' : (user.worker_job === 'both' ? 'بائع بالمعرض وعامل بالمخزن معاً' : 'بائع بالمعرض')}
+                        </td>
+                    </tr>` : ''}
                     <tr><td class="p-3 text-devo-muted">حالة الحساب</td><td class="p-3 ${user.is_active ? 'text-devo-success' : 'text-devo-error'} font-bold">${user.is_active ? 'نشط' : 'معطل'}</td></tr>
                     <tr><td class="p-3 text-devo-muted">تاريخ الإنشاء</td><td class="p-3 text-white">${new Date(user.created_at).toLocaleDateString('ar-EG')}</td></tr>
                 </tbody>
@@ -215,6 +239,14 @@ window.openUserModal = (id = null) => {
             roleSelect.value = user.role;
         }
 
+        const workerJobContainer = document.getElementById('worker-job-container');
+        if (user.role === 'worker') {
+            workerJobContainer.classList.remove('hidden');
+            document.getElementById('u-worker-job').value = user.worker_job || 'showroom';
+        } else {
+            workerJobContainer.classList.add('hidden');
+        }
+
     } else {
         title.innerHTML = `<i class="ph ph-user-plus text-devo-orange text-xl"></i> إضافة مستخدم جديد`;
         document.getElementById('u-status').checked = true;
@@ -224,6 +256,9 @@ window.openUserModal = (id = null) => {
             <option value="admin">مشرف (إدارة جزئية)</option>
             <option value="owner">مالك (صلاحيات كاملة)</option>
         `;
+        roleSelect.value = 'worker';
+        document.getElementById('worker-job-container').classList.remove('hidden');
+        document.getElementById('u-worker-job').value = 'showroom';
 
         passInput.required = true;
         passReq.classList.remove('hidden');
@@ -255,6 +290,12 @@ async function handleSaveUser(e) {
         role: document.getElementById('u-role').value,
         is_active: document.getElementById('u-status').checked
     };
+
+    if (userData.role === 'worker') {
+        userData.worker_job = document.getElementById('u-worker-job').value;
+    } else {
+        userData.worker_job = null;
+    }
 
     if (password) {
         userData.password = password; 

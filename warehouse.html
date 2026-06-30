@@ -5,8 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>DEVO | تحضير المخزن</title>
     <link rel="icon" type="image/png" href="../../src/assets/icons/dv.png">
+    <link rel="manifest" href="manifest-warehouse.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="DEVO المخزن">
+    <link rel="apple-touch-icon" href="../../src/assets/icons/dv.png">
+
+    <script>
+      // تسجيل الـ Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('DEVO Warehouse PWA Ready!', reg))
+            .catch(err => console.log('PWA Error:', err));
+        });
+      }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
 
     <script>
@@ -59,6 +76,38 @@
             transform: rotate(-90deg);
             transform-origin: 50% 50%;
         }
+
+        /* Focus Mode overrides */
+        body.focus-mode header {
+            display: none !important;
+        }
+        body.focus-mode #wh-bottom-nav {
+            display: none !important;
+        }
+        body.focus-mode #prep-header-info {
+            display: none !important;
+        }
+        body.focus-mode #prep-bottom-actions {
+            display: none !important;
+        }
+        body.focus-mode #audit-header-info {
+            display: none !important;
+        }
+        body.focus-mode #audit-mode-selector {
+            display: none !important;
+        }
+        body.focus-mode #audit-search-container {
+            display: none !important;
+        }
+        body.focus-mode #audit-bottom-actions {
+            display: none !important;
+        }
+        body.focus-mode #prep-card-nav {
+            bottom: 1.5rem !important;
+        }
+        body.focus-mode #audit-card-nav {
+            bottom: 1.5rem !important;
+        }
     </style>
 </head>
 <body class="bg-devo-black text-devo-text min-h-screen flex flex-col">
@@ -66,7 +115,7 @@
 <!-- ============================================================ -->
 <!-- HEADER (always visible) -->
 <!-- ============================================================ -->
-<header class="bg-devo-dark border-b border-devo-gray px-4 py-3 flex items-center justify-between shrink-0 sticky top-0 z-50">
+<header id="wh-header" class="bg-devo-dark border-b border-devo-gray px-4 py-3 flex items-center justify-between shrink-0 sticky top-0 z-50">
     <div class="flex items-center gap-3">
         <button id="btn-back-to-list" onclick="goToOrderList()" class="hidden text-devo-muted hover:text-white transition-colors p-1">
             <i class="ph ph-arrow-right text-xl"></i>
@@ -129,12 +178,181 @@
 </div>
 
 <!-- ============================================================ -->
+<!-- SCREEN 3: جرد المخزن الدوري -->
+<!-- ============================================================ -->
+<div id="screen-audit" class="screen p-4 gap-4 overflow-y-auto pb-24">
+    <div class="flex items-center justify-between shrink-0 mb-2">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="ph ph-magnifying-glass text-devo-orange"></i>
+            الجرد الدوري الذكي للمخزن
+        </h2>
+    </div>
+
+    <!-- 1. VIEW: List of Assigned/Draft Audit Sessions -->
+    <div id="audit-sessions-view" class="space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-xs text-devo-muted font-bold flex items-center gap-1">
+                <i class="ph ph-clipboard-text"></i> جلسات الجرد النشطة والمكلفة من الإدارة:
+            </h3>
+        </div>
+        <div id="audit-sessions-list" class="space-y-3">
+            <div class="text-center py-12 text-devo-muted">
+                <i class="ph ph-spinner animate-spin text-3xl text-devo-orange block mb-2"></i>
+                جاري تحميل جلسات الجرد المتاحة...
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. VIEW: Active Audit Work View (hidden by default) -->
+    <div id="audit-work-view" class="hidden space-y-4">
+        <div id="audit-header-info" class="flex items-center justify-between bg-devo-dark border border-devo-gray p-3.5 rounded-2xl shrink-0 shadow-lg">
+            <div class="flex-1 min-w-0">
+                <h3 id="audit-active-title" class="font-bold text-white text-sm truncate">جلسة جرد AUD-1001</h3>
+                <p id="audit-active-subtitle" class="text-[10px] text-devo-muted truncate">ملاحظات: —</p>
+            </div>
+            <button onclick="window.backToAuditSessions()" class="text-xs font-bold text-devo-orange hover:text-white px-2 py-1 flex items-center gap-1">
+                <i class="ph ph-caret-left"></i> رجوع للقائمة
+            </button>
+        </div>
+
+        <!-- View mode toggle for Audit -->
+        <div id="audit-mode-selector" class="flex items-center gap-2 mt-1 shrink-0">
+            <button onclick="setAuditViewMode('full')" id="audit-btn-mode-full"
+                class="audit-view-mode-btn flex-1 py-3 rounded-xl text-sm font-bold transition-colors bg-devo-orange text-white flex items-center justify-center gap-2 touch-manipulation">
+                <i class="ph ph-list text-lg"></i> عرض كامل
+            </button>
+            <button onclick="setAuditViewMode('card')" id="audit-btn-mode-card"
+                class="audit-view-mode-btn flex-1 py-3 rounded-xl text-sm font-bold transition-colors bg-devo-gray text-devo-muted flex items-center justify-center gap-2 touch-manipulation">
+                <i class="ph ph-cards text-lg"></i> صنف بصنف
+            </button>
+        </div>
+
+        <!-- Scanner Controls (Modified to search-only, barcode/camera controls removed) -->
+        <div id="audit-search-container" class="bg-devo-dark border border-devo-gray rounded-2xl p-4 space-y-3 shrink-0 shadow-lg">
+            <!-- Filter items in active session -->
+            <div class="space-y-1 relative">
+                <label class="block text-xs text-devo-muted">البحث داخل الجلسة الحالية:</label>
+                <div class="relative">
+                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                    <input type="text" id="audit-search-input" placeholder="اكتب كود المصنع أو اسم الموديل للتصفية السريعة..." class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
+                </div>
+            </div>
+        </div>
+
+        <!-- Audited Items List -->
+        <div id="audit-full-view" class="flex-1 flex flex-col min-h-[250px]">
+            <h3 class="text-xs text-devo-muted mb-2 font-bold flex items-center gap-1"><i class="ph ph-list-checks"></i> الأصناف المطلوب جردها في الجلسة:</h3>
+            <div class="flex-1 bg-devo-dark border border-devo-gray rounded-2xl p-2 overflow-y-auto max-h-[45vh] custom-scrollbar">
+                <table class="w-full text-right text-xs">
+                    <thead class="bg-devo-black/50 text-devo-muted border-b border-devo-gray sticky top-0">
+                        <tr>
+                            <th class="p-2.5">الصنف</th>
+                            <th class="p-2.5 text-center">النظام</th>
+                            <th class="p-2.5 text-center">الفعلي</th>
+                            <th class="p-2.5 text-center">الفارق</th>
+                            <th class="p-2.5 text-center">إجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-table-body" class="divide-y divide-devo-gray/50">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- AUDIT CARD VIEW -->
+        <div id="audit-card-view" class="hidden flex-1 flex-col overflow-hidden">
+            <!-- Top bar for Focus Mode -->
+            <div class="bg-devo-dark border-b border-devo-gray px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
+                <button onclick="window.backToAuditSessions()" class="py-2 px-3.5 bg-red-600/10 border border-red-500/30 text-red-500 rounded-xl text-xs font-bold flex items-center gap-1.5 active:bg-red-500/20 transition-all">
+                    <i class="ph ph-sign-out text-base"></i>
+                    <span>خروج من الجرد</span>
+                </button>
+                <button onclick="setAuditViewMode('full')" class="py-2 px-3.5 bg-devo-gray text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-devo-gray/70 transition-all">
+                    <i class="ph ph-list text-base"></i>
+                    <span>خروج من وضع التركيز</span>
+                </button>
+            </div>
+
+            <!-- Card content (scrollable, swipeable) -->
+            <div class="flex-1 overflow-y-auto p-3" id="audit-card-content" style="padding-bottom: 160px;">
+                <!-- filled by JS -->
+            </div>
+
+            <!-- ★ LARGE bottom card navigation (mobile-first) ★ -->
+            <div id="audit-card-nav" class="fixed bottom-20 left-0 right-0 z-30 px-3 transition-all duration-300">
+                <!-- Swipe hint -->
+                <p id="audit-card-swipe-hint" class="text-center text-xs text-devo-gray mb-2">← اسحب للتنقل →</p>
+                <!-- Navigation row -->
+                <div class="flex items-center bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-2xl">
+                    <!-- Previous -->
+                    <button onclick="prevAuditCard()" id="btn-prev-audit-card"
+                        class="flex-1 flex flex-col items-center justify-center gap-1 py-4 border-l border-devo-gray
+                               text-devo-muted active:bg-devo-gray transition-colors touch-manipulation
+                               disabled:opacity-25 disabled:pointer-events-none" disabled>
+                        <i class="ph ph-arrow-right text-3xl"></i>
+                        <span class="text-xs font-bold">السابق</span>
+                    </button>
+                    <!-- Counter -->
+                    <div class="px-4 text-center shrink-0">
+                        <span class="text-sm font-black text-devo-orange" id="audit-card-counter"><span dir="ltr">0 / 0</span></span>
+                        <p class="text-[10px] text-devo-muted">صنف</p>
+                    </div>
+                    <!-- Next -->
+                    <button onclick="nextAuditCard()" id="btn-next-audit-card"
+                        class="flex-1 flex flex-col items-center justify-center gap-1 py-4 border-r border-devo-gray
+                               text-devo-orange active:bg-devo-orange/20 transition-colors touch-manipulation
+                               disabled:opacity-25 disabled:pointer-events-none">
+                        <i class="ph ph-arrow-left text-3xl"></i>
+                        <span class="text-xs font-bold">التالي</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes & Action -->
+        <div id="audit-bottom-actions" class="shrink-0 space-y-3 mt-2">
+            <textarea id="audit-notes" placeholder="ملاحظات حول إتمام عملية الجرد..." class="w-full bg-devo-dark border border-devo-gray rounded-xl p-3 text-white focus:border-devo-orange outline-none text-sm h-16 resize-none shadow-sm"></textarea>
+            
+            <div class="flex gap-2">
+                <button onclick="window.confirmRestartAudit()" class="flex-none px-4 py-3.5 rounded-xl bg-red-600/10 border border-red-500/30 text-red-500 active:bg-red-500/20 font-bold text-xs flex items-center gap-1 transition-all">
+                    <i class="ph ph-arrows-clockwise text-base"></i>
+                    إعادة البدء
+                </button>
+                <button onclick="window.saveAuditDraftProgress()" class="flex-1 py-3.5 rounded-xl bg-devo-gray active:bg-devo-gray/70 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md">
+                    <i class="ph ph-floppy-disk text-base"></i>
+                    حفظ كمسودة
+                </button>
+                <button onclick="submitAuditReport()" class="flex-1 py-3.5 rounded-xl bg-devo-orange active:bg-devo-orangeHover text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg">
+                    <i class="ph ph-paper-plane-tilt text-base"></i>
+                    تقديم وإتمام
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- BOTTOM NAVIGATION (Main screen toggle tabs) -->
+<!-- ============================================================ -->
+<nav id="wh-bottom-nav" class="fixed bottom-0 left-0 right-0 bg-devo-dark border-t border-devo-gray flex justify-around py-2.5 z-40 shadow-2xl">
+    <button onclick="switchWHScreen('orders')" id="nav-btn-orders" class="flex flex-col items-center gap-1 text-devo-orange transition-colors">
+        <i class="ph ph-package text-2xl"></i>
+        <span class="text-[10px] font-bold">التحضير</span>
+    </button>
+    <button onclick="switchWHScreen('audit')" id="nav-btn-audit" class="flex flex-col items-center gap-1 text-devo-muted hover:text-white transition-colors">
+        <i class="ph ph-magnifying-glass text-2xl"></i>
+        <span class="text-[10px] font-bold">الجرد الدوري</span>
+    </button>
+</nav>
+
+<!-- ============================================================ -->
 <!-- SCREEN 2: تحضير أوردر -->
 <!-- ============================================================ -->
 <div id="screen-preparation" class="screen flex-1 flex-col overflow-hidden">
 
     <!-- Sub-header: Order info + progress -->
-    <div class="bg-devo-dark border-b border-devo-gray px-4 py-3 shrink-0">
+    <div id="prep-header-info" class="bg-devo-dark border-b border-devo-gray px-4 py-3 shrink-0">
         <div class="flex items-center justify-between gap-3">
             <div class="flex-1 min-w-0">
                 <h3 class="font-black text-white text-base" id="prep-order-title">—</h3>
@@ -178,13 +396,25 @@
 
     <!-- CARD VIEW -->
     <div id="prep-card-view" class="hidden flex-1 flex-col overflow-hidden">
+        <!-- Top bar for Focus Mode -->
+        <div class="bg-devo-dark border-b border-devo-gray px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
+            <button onclick="goToOrderList()" class="py-2 px-3.5 bg-red-600/10 border border-red-500/30 text-red-500 rounded-xl text-xs font-bold flex items-center gap-1.5 active:bg-red-500/20 transition-all">
+                <i class="ph ph-sign-out text-base"></i>
+                <span>خروج من التحضير</span>
+            </button>
+            <button onclick="setViewMode('full')" class="py-2 px-3.5 bg-devo-gray text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-devo-gray/70 transition-all">
+                <i class="ph ph-list text-base"></i>
+                <span>خروج من وضع التركيز</span>
+            </button>
+        </div>
+
         <!-- Card content (scrollable, swipeable) -->
         <div class="flex-1 overflow-y-auto" id="prep-card-content" style="padding-bottom: 160px;">
             <!-- filled by JS -->
         </div>
 
         <!-- ★ LARGE bottom card navigation (mobile-first) ★ -->
-        <div class="fixed bottom-20 left-0 right-0 z-30 px-3">
+        <div id="prep-card-nav" class="fixed bottom-20 left-0 right-0 z-30 px-3 transition-all duration-300">
             <!-- Swipe hint -->
             <p id="card-swipe-hint" class="text-center text-xs text-devo-gray mb-2">← اسحب للتنقل →</p>
             <!-- Navigation row -->
@@ -215,18 +445,24 @@
     </div>
 
     <!-- Fixed bottom action bar (notes + finalize) -->
-    <div class="fixed bottom-0 left-0 right-0 bg-devo-dark border-t border-devo-gray px-3 py-2.5 flex gap-2 z-40">
+    <div id="prep-bottom-actions" class="fixed bottom-0 left-0 right-0 bg-devo-dark border-t border-devo-gray px-3 py-2.5 flex gap-2 z-40">
         <button onclick="openNotesSummary()"
-            class="flex-none px-4 py-3 rounded-xl bg-devo-gray active:bg-devo-gray/70 text-devo-muted text-sm
-                   flex items-center gap-2 transition-colors touch-manipulation">
-            <i class="ph ph-note-pencil text-lg"></i>
+            class="flex-none px-3 py-3 rounded-xl bg-devo-gray active:bg-devo-gray/70 text-devo-muted text-xs
+                   flex items-center gap-1 transition-colors touch-manipulation">
+            <i class="ph ph-note-pencil text-base"></i>
             <span>الملاحظات</span>
         </button>
+        <button onclick="window.confirmRestartPreparation()"
+            class="flex-none px-3 py-3 rounded-xl bg-red-600/10 border border-red-500/30 text-red-500 active:bg-red-500/20 text-xs
+                   flex items-center gap-1 transition-colors touch-manipulation">
+            <i class="ph ph-arrows-clockwise text-base"></i>
+            <span>إعادة البدء</span>
+        </button>
         <button onclick="finalizePreparation()"
-            class="flex-1 py-3 rounded-xl bg-devo-orange active:bg-devo-orangeHover text-white font-bold text-sm
-                   flex items-center justify-center gap-2 transition-colors shadow-lg touch-manipulation">
-            <i class="ph ph-floppy-disk text-lg"></i>
-            حفظ وإتمام التحضير
+            class="flex-1 py-3 rounded-xl bg-devo-orange active:bg-devo-orangeHover text-white font-bold text-xs
+                   flex items-center justify-center gap-1.5 transition-colors shadow-lg touch-manipulation">
+            <i class="ph ph-floppy-disk text-base"></i>
+            <span>حفظ وإتمام</span>
         </button>
     </div>
 </div>
@@ -254,7 +490,7 @@
 <!-- ============================================================ -->
 <!-- MODAL: حفظ وإتمام -->
 <!-- ============================================================ -->
-<div id="finalize-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex items-center justify-center p-4">
+<div id="finalize-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden">
     <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
         <h3 class="text-lg font-bold text-white text-center" id="finalize-modal-title">حفظ التحضير</h3>
         <p class="text-devo-muted text-sm text-center" id="finalize-modal-message"></p>
@@ -278,6 +514,141 @@
                 <option value="in_progress">جاري التحضير</option>
                 <option value="on_hold">موقوف (يوجد نقص)</option>
             </select>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: اختيار اللون والكمية للجرد -->
+<!-- ============================================================ -->
+<div id="audit-color-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[250] hidden">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div class="flex items-center justify-between border-b border-devo-gray pb-3">
+            <h3 class="text-base font-bold text-white" id="audit-modal-model-title">اسم الموديل</h3>
+            <button onclick="closeAuditColorModal()" class="text-devo-muted hover:text-white">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+        
+        <!-- Color Selector -->
+        <div>
+            <label class="block text-xs text-devo-muted mb-2">اختر اللون المتواجد بالرف:</label>
+            <div id="audit-modal-colors-grid" class="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-1 custom-scrollbar">
+                <!-- Filled dynamically by JS -->
+            </div>
+        </div>
+
+        <!-- Quantity Picker -->
+        <div class="space-y-2">
+            <label class="block text-xs text-devo-muted">الكمية الفعلية الموجودة (بالسيرية):</label>
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="adjustAuditModalQty(-1)" class="w-12 h-12 rounded-xl bg-devo-gray text-white flex items-center justify-center text-xl font-bold active:bg-devo-gray/70">
+                    <i class="ph ph-minus"></i>
+                </button>
+                <input type="number" id="audit-modal-qty-input" value="1" min="0" class="flex-1 bg-devo-black border border-devo-gray rounded-xl h-12 text-center text-white text-lg font-bold outline-none focus:border-devo-orange">
+                <button type="button" onclick="adjustAuditModalQty(1)" class="w-12 h-12 rounded-xl bg-devo-gray text-white flex items-center justify-center text-xl font-bold active:bg-devo-gray/70">
+                    <i class="ph ph-plus"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- System stock info badge -->
+        <div id="audit-modal-stock-info" class="text-center text-xs text-devo-muted py-1 bg-devo-black/40 rounded-lg">
+            الكمية بالسيستم حالياً: <span id="audit-modal-system-qty" class="text-white font-bold">—</span>
+        </div>
+
+        <!-- Save button -->
+        <button onclick="saveAuditItem()" class="w-full py-3.5 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg mt-2">
+            <i class="ph ph-check"></i>
+            تأكيد وإضافة للجرد
+        </button>
+    </div>
+</div>
+
+<!-- MODAL: تأكيد الخروج من التحضير -->
+<div id="exit-confirm-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[250] hidden">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
+        <h3 class="text-lg font-bold text-white text-center flex items-center justify-center gap-2">
+            <i class="ph ph-warning-circle text-yellow-500 text-2xl"></i>
+            خروج من التحضير
+        </h3>
+        <p class="text-devo-muted text-sm text-center">لقد أجريت بعض التغييرات في هذه الجلسة. كيف تريد المتابعة؟</p>
+        
+        <!-- Action Options -->
+        <div class="space-y-2 pt-2">
+            <button onclick="window.exitSavePrep()" class="w-full py-3 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+                <i class="ph ph-floppy-disk"></i> حفظ التغييرات والرجوع للقائمة
+            </button>
+            <button onclick="window.exitConfirmDiscardPrep()" class="w-full py-3 rounded-xl bg-red-600/10 border border-red-500/30 text-red-500 hover:bg-red-600 hover:text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+                <i class="ph ph-trash"></i> تجاهل التغييرات والرجوع
+            </button>
+            <button onclick="window.closeExitConfirmModal()" class="w-full py-3 rounded-xl bg-devo-gray text-devo-muted font-bold text-sm hover:bg-devo-gray/70 transition-colors">
+                إلغاء والعودة للتحضير
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: تأكيد تجاهل التغييرات للتحضير -->
+<div id="discard-confirm-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[260] hidden">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
+        <h3 class="text-lg font-bold text-red-500 text-center flex items-center justify-center gap-2">
+            <i class="ph ph-warning text-3xl"></i>
+            تأكيد تجاهل التغييرات
+        </h3>
+        <p class="text-devo-muted text-sm text-center">هل أنت متأكد تماماً من تجاهل جميع التغييرات التي قمت بها في هذه الجلسة؟ سيتم التراجع عن كل ما سجلته منذ الدخول.</p>
+        
+        <div class="grid grid-cols-2 gap-3 pt-2">
+            <button onclick="window.closeDiscardConfirmModal()" class="py-3 rounded-xl bg-devo-gray text-devo-muted font-bold text-sm hover:bg-devo-gray/70 transition-colors">
+                لا، العودة
+            </button>
+            <button onclick="window.exitDiscardPrep()" class="py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-all">
+                نعم، تجاهل التغييرات
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: تأكيد الخروج من الجرد -->
+<div id="audit-exit-confirm-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[250] hidden">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
+        <h3 class="text-lg font-bold text-white text-center flex items-center justify-center gap-2">
+            <i class="ph ph-warning-circle text-yellow-500 text-2xl"></i>
+            خروج من الجرد
+        </h3>
+        <p class="text-devo-muted text-sm text-center">لقد أجريت بعض التعديلات في أعداد الجرد. كيف تريد المتابعة؟</p>
+        
+        <!-- Action Options -->
+        <div class="space-y-2 pt-2">
+            <button onclick="window.exitSaveAudit()" class="w-full py-3 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+                <i class="ph ph-floppy-disk"></i> حفظ كمسودة والرجوع
+            </button>
+            <button onclick="window.exitConfirmDiscardAudit()" class="w-full py-3 rounded-xl bg-red-600/10 border border-red-500/30 text-red-500 hover:bg-red-600 hover:text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+                <i class="ph ph-trash"></i> تجاهل التعديلات والرجوع
+            </button>
+            <button onclick="window.closeAuditExitConfirmModal()" class="w-full py-3 rounded-xl bg-devo-gray text-devo-muted font-bold text-sm hover:bg-devo-gray/70 transition-colors">
+                إلغاء والعودة للجرد
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: تأكيد تجاهل التعديلات للجرد -->
+<div id="audit-discard-confirm-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[260] hidden">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-md p-6 space-y-4">
+        <h3 class="text-lg font-bold text-red-500 text-center flex items-center justify-center gap-2">
+            <i class="ph ph-warning text-3xl"></i>
+            تأكيد تجاهل التعديلات
+        </h3>
+        <p class="text-devo-muted text-sm text-center">هل أنت متأكد تماماً من تجاهل جميع التعديلات التي أجريتها في أعداد الجرد؟ سيتم التراجع عن التعديلات منذ فتح الجلسة.</p>
+        
+        <div class="grid grid-cols-2 gap-3 pt-2">
+            <button onclick="window.closeAuditDiscardConfirmModal()" class="py-3 rounded-xl bg-devo-gray text-devo-muted font-bold text-sm hover:bg-devo-gray/70 transition-colors">
+                لا، العودة
+            </button>
+            <button onclick="window.exitDiscardAudit()" class="py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-all">
+                نعم، تجاهل التعديلات
+            </button>
         </div>
     </div>
 </div>

@@ -50,7 +50,7 @@
 
     <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-devo-orange/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-    <div class="w-full max-w-md bg-devo-dark border border-devo-gray rounded-2xl p-8 shadow-2xl relative z-10">
+    <div id="login-container" class="w-full max-w-md bg-devo-dark border border-devo-gray rounded-2xl p-8 shadow-2xl relative z-10">
         
         <div class="text-center mb-10">
             <h1 class="text-5xl font-bold tracking-wider text-white mb-2">
@@ -87,10 +87,27 @@
         </form>
     </div>
 
+    <!-- بوابة اختيار الوجهة بعد تسجيل الدخول -->
+    <div id="destination-container" class="w-full max-w-md bg-devo-dark border border-devo-gray rounded-2xl p-8 shadow-2xl relative z-10 hidden opacity-0 transition-all duration-300">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-black text-white mb-2">اختر <span class="text-devo-orange">وجهتك</span></h1>
+            <p class="text-devo-muted text-xs font-medium">مرحباً بك، يرجى اختيار الوجهة المطلوبة للدخول</p>
+        </div>
+        
+        <div class="space-y-4" id="destination-buttons">
+            <!-- سيتم توليد الأزرار ديناميكياً هنا -->
+        </div>
+        
+        <button id="portal-logout-btn" class="w-full bg-devo-gray/50 hover:bg-devo-error/20 hover:text-devo-error text-devo-muted font-bold py-3 rounded-lg transition-colors flex justify-center items-center gap-2 mt-6 border border-devo-gray">
+            <span>تسجيل الخروج</span>
+            <i class="ph ph-sign-out text-lg"></i>
+        </button>
+    </div>
+
     <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
 
     <script type="module">
-        import { loginUser, getCurrentSession } from './src/js/services/auth.js';
+        import { loginUser, getCurrentSession, logoutUser } from './src/js/services/auth.js';
         import { showToast } from './src/js/components/toast.js';
 
         const form = document.getElementById('auth-form');
@@ -98,12 +115,88 @@
         const btnText = document.getElementById('btn-text');
         const btnIcon = document.getElementById('btn-icon');
 
+        // Logout handler for destination portal
+        window.handleLogout = () => {
+            logoutUser();
+        };
+
+        function handleUserRedirection(user) {
+            const role = user.role;
+            const workerJob = user.worker_job;
+            
+            const destinations = [];
+            
+            if (role === 'owner' || role === 'admin') {
+                destinations.push({
+                    name: 'لوحة الإدارة',
+                    url: 'admin.html',
+                    icon: 'ph-shield-check',
+                    color: 'bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white border border-blue-500/30'
+                });
+                destinations.push({
+                    name: 'صفحة العمال / المخزن',
+                    url: 'warehouse.html',
+                    icon: 'ph-hard-hat',
+                    color: 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30'
+                });
+                destinations.push({
+                    name: 'الصفحة الرئيسية (المعرض)',
+                    url: 'index.html',
+                    icon: 'ph-storefront',
+                    color: 'bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/30'
+                });
+            } else if (role === 'worker') {
+                if (workerJob === 'both') {
+                    destinations.push({
+                        name: 'صفحة العمال / المخزن',
+                        url: 'warehouse.html',
+                        icon: 'ph-hard-hat',
+                        color: 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30'
+                    });
+                    destinations.push({
+                        name: 'الصفحة الرئيسية (المعرض)',
+                        url: 'index.html',
+                        icon: 'ph-storefront',
+                        color: 'bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/30'
+                    });
+                } else if (workerJob === 'warehouse') {
+                    window.location.href = 'warehouse.html';
+                    return;
+                } else {
+                    window.location.href = 'index.html';
+                    return;
+                }
+            }
+            
+            if (destinations.length > 1) {
+                // Show selection screen
+                document.getElementById('login-container').classList.add('hidden');
+                const destContainer = document.getElementById('destination-container');
+                destContainer.classList.remove('hidden');
+                setTimeout(() => destContainer.classList.remove('opacity-0'), 10);
+                
+                const btnContainer = document.getElementById('destination-buttons');
+                btnContainer.innerHTML = destinations.map(d => `
+                    <a href="${d.url}" class="w-full flex items-center justify-between p-4 rounded-xl transition-all font-bold ${d.color} group shadow-md text-sm sm:text-base">
+                        <span class="flex items-center gap-3">
+                            <i class="ph ${d.icon} text-2xl group-hover:scale-110 transition-transform"></i>
+                            <span>${d.name}</span>
+                        </span>
+                        <i class="ph ph-arrow-left text-lg group-hover:-translate-x-1.5 transition-transform font-bold"></i>
+                    </a>
+                `).join('');
+            } else if (destinations.length === 1) {
+                window.location.href = destinations[0].url;
+            } else {
+                showToast('لا تملك صلاحية الوصول لأي جزء في النظام. راجع الإدارة.', 'error');
+            }
+        }
+
         // Check if already logged in
         document.addEventListener('DOMContentLoaded', () => {
             const { session } = getCurrentSession();
             if (session && session.user) {
-                const role = session.user.role;
-                window.location.href = (role === 'admin' || role === 'owner') ? 'admin.html' : 'index.html';
+                handleUserRedirection(session.user);
             }
         });
 
@@ -135,8 +228,7 @@
                 showToast('تم تسجيل الدخول بنجاح، جاري التوجيه...', 'success');
                 
                 setTimeout(() => {
-                    const role = user.role;
-                    window.location.href = (role === 'admin' || role === 'owner') ? 'admin.html' : 'index.html';
+                    handleUserRedirection(user);
                 }, 1000);
             }
         });

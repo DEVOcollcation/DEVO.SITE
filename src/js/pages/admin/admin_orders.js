@@ -148,6 +148,9 @@ function generateOrderRowHTML(o) {
     const isAssignedToMe = o.assigned_admin_name === currentUserProfile?.full_name;
     const canEdit = !o.is_locked || isAssignedToMe || isOwner;
 
+    const isOwnerOrAdmin = currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin';
+    const canReturn = (o.status === 'shipped' || o.status === 'delivered') && isOwnerOrAdmin;
+
     const lockIcon = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="${o.is_locked ? 'text-devo-error' : 'text-devo-success'} p-1 hover:bg-white/10 rounded transition-colors" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-lg"></i></button>`;
 
     const assignedHTML = o.assigned_admin_name 
@@ -179,6 +182,7 @@ function generateOrderRowHTML(o) {
             <td class="p-3">
                 <div class="flex items-center justify-center gap-1.5">
                     <button onclick="exportSingleOrderToExcel('${o.id}')" class="p-1.5 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded transition-colors" title="تصدير (Excel)"><i class="ph ph-file-xls text-lg"></i></button>
+                    ${canReturn ? `<button onclick="window.openCreateReturnModal('${o.id}')" class="p-1.5 bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500 hover:text-white rounded transition-colors" title="إنشاء مرتجع مبيعات"><i class="ph ph-arrow-counter-clockwise text-lg"></i></button>` : ''}
                     <button onclick="printAdminOrder('${o.id}', 'customer')" class="p-1.5 bg-gray-200 text-gray-800 hover:bg-white rounded transition-colors" title="طباعة فاتورة العميل"><i class="ph ph-receipt text-lg"></i></button>
                     <button onclick="printAdminOrder('${o.id}', 'detailed')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-lg"></i></button>
                     <button onclick="viewAdminOrderDetails('${o.id}')" class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="التفاصيل"><i class="ph ph-eye text-lg"></i></button>
@@ -274,8 +278,12 @@ window.updateOrderStatus = async (id, newStatus) => {
         assigned_admin_name: assignedAdmin 
     }).eq('id', id);
 
-    if (error) showToast('حدث خطأ أثناء تحديث الحالة', 'error');
-    else showToast('تم تحديث وتخصيص الأوردر بنجاح', 'success');
+    if (error) {
+        showToast(error.message || 'حدث خطأ أثناء تحديث الحالة', 'error');
+        await fetchAdminOrders(); // لإعادة الحالة إلى ما كانت عليه بالـ DB
+    } else {
+        showToast('تم تحديث وتخصيص الأوردر بنجاح', 'success');
+    }
 };
 
 window.toggleOrderLock = async (id, lockState) => {
@@ -724,4 +732,188 @@ window.customSortHandlers['admin-orders-table'] = (colIndex, direction) => {
     });
 
     window.applyAdminOrdersFilter();
+};
+
+// ==========================================
+// 🌟 6. إدارة المرتجعات والاستبدال 🌟
+// ==========================================
+let currentReturnOrderId = null;
+let currentOrderItemsMap = {};
+
+window.openCreateReturnModal = (orderId) => {
+    const o = allAdminOrders.find(x => x.id === orderId);
+    if (!o) return;
+
+    currentReturnOrderId = orderId;
+    currentOrderItemsMap = {};
+    
+    // Fill client info
+    document.getElementById('cr-customer-name').textContent = o.customer_name;
+    document.getElementById('cr-customer-phone').textContent = o.phone_1;
+    document.getElementById('cr-invoice-number').textContent = o.invoice_number;
+    document.getElementById('cr-seller-name').textContent = o.system_users?.full_name || '-';
+    
+    const remaining = o.total_price - (o.deposit || 0);
+    document.getElementById('cr-total-price').textContent = `${o.total_price} ج.م`;
+    document.getElementById('cr-deposit').textContent = `${o.deposit || 0} ج.م`;
+    document.getElementById('cr-remaining').textContent = `${remaining} ج.م`;
+    
+    document.getElementById('cr-notes').value = '';
+    document.getElementById('cr-refund-total').textContent = '0 ج.م';
+    document.getElementById('cr-modal-subtitle').textContent = `تحديد المنتجات المرتجعة للأوردر رقم ${o.invoice_number}`;
+    
+    // Fill items
+    const tbody = document.getElementById('cr-items-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    o.order_items.forEach(item => {
+        const modelId = item.model_id;
+        const colorId = item.color_id;
+        const key = `${modelId}_${colorId}`;
+        currentOrderItemsMap[key] = item;
+        
+        const code = item.models?.factory_code || item.models?.system_code || '';
+        const row = document.createElement('tr');
+        row.className = 'border-b border-devo-gray last:border-0 hover:bg-devo-black/50 transition-colors';
+        row.innerHTML = `
+            <td class="p-3 text-white text-xs font-bold">${item.models?.name || 'موديل محذوف'} <span class="text-devo-muted text-[10px] font-mono mr-1">(${code})</span></td>
+            <td class="p-3 text-devo-info text-xs">${item.colors?.name || '-'}</td>
+            <td class="p-3 text-center text-white font-bold">${item.quantity}</td>
+            <td class="p-3 text-center text-devo-muted">${item.price_per_series}</td>
+            <td class="p-3 text-center">
+                <input type="number" min="0" max="${item.quantity}" value="0" data-key="${key}" oninput="recalculateReturnRow(this)"
+                    class="w-20 bg-devo-dark border border-devo-gray rounded px-2 py-1 text-white font-bold text-center outline-none focus:border-devo-orange text-xs">
+            </td>
+            <td class="p-3 text-left text-devo-orange font-black text-sm" id="cr-row-total-${key}">0 ج.م</td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    const modal = document.getElementById('create-return-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+};
+
+window.closeCreateReturnModal = () => {
+    const modal = document.getElementById('create-return-modal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+    currentReturnOrderId = null;
+};
+
+window.recalculateReturnRow = (input) => {
+    const key = input.getAttribute('data-key');
+    const item = currentOrderItemsMap[key];
+    if (!item) return;
+
+    let qty = parseInt(input.value) || 0;
+    if (qty < 0) {
+        qty = 0;
+        input.value = 0;
+    }
+    if (qty > item.quantity) {
+        qty = item.quantity;
+        input.value = item.quantity;
+        showToast(`الكمية المرتجعة لا يمكن أن تتجاوز الكمية الأصلية وهي ${item.quantity}`, 'error');
+    }
+
+    const rowTotal = qty * Number(item.price_per_series);
+    const rowTotalEl = document.getElementById(`cr-row-total-${key}`);
+    if (rowTotalEl) rowTotalEl.textContent = `${rowTotal} ج.م`;
+
+    recalculateReturnTotals();
+};
+
+function recalculateReturnTotals() {
+    let totalRefund = 0;
+    let totalSeries = 0;
+
+    const inputs = document.querySelectorAll('#cr-items-tbody input[type="number"]');
+    inputs.forEach(input => {
+        const key = input.getAttribute('data-key');
+        const item = currentOrderItemsMap[key];
+        if (item) {
+            const qty = parseInt(input.value) || 0;
+            totalSeries += qty;
+            totalRefund += qty * Number(item.price_per_series);
+        }
+    });
+
+    document.getElementById('cr-refund-total').textContent = `${totalRefund} ج.م`;
+}
+
+window.saveReturnInvoice = async () => {
+    if (!currentReturnOrderId) return;
+
+    const saveBtn = document.getElementById('cr-btn-save');
+    const oldBtnHtml = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري الحفظ...`;
+
+    const inputs = document.querySelectorAll('#cr-items-tbody input[type="number"]');
+    const returnItems = [];
+    let totalRefund = 0;
+    let totalSeries = 0;
+
+    inputs.forEach(input => {
+        const key = input.getAttribute('data-key');
+        const item = currentOrderItemsMap[key];
+        if (item) {
+            const qty = parseInt(input.value) || 0;
+            if (qty > 0) {
+                totalSeries += qty;
+                const lineTotal = qty * Number(item.price_per_series);
+                totalRefund += lineTotal;
+                returnItems.push({
+                    model_id: item.model_id,
+                    color_id: item.color_id,
+                    qty: qty,
+                    price: Number(item.price_per_series),
+                    total: lineTotal
+                });
+            }
+        }
+    });
+
+    if (returnItems.length === 0) {
+        showToast('يرجى تحديد قطعة واحدة على الأقل لإرجاعها!', 'error');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = oldBtnHtml;
+        return;
+    }
+
+    const notes = document.getElementById('cr-notes').value.trim();
+    
+    // Get current logged-in user profile
+    const { session } = getCurrentSession();
+    const workerId = session?.user?.id || null;
+
+    const o = allAdminOrders.find(x => x.id === currentReturnOrderId);
+    const returnData = {
+        order_id: currentReturnOrderId,
+        customer_name: o.customer_name,
+        refund_amount: totalRefund,
+        total_series: totalSeries,
+        notes: notes,
+        worker_id: workerId
+    };
+
+    try {
+        const { data, error } = await supabase.rpc('process_return_transaction', {
+            p_return_data: returnData,
+            p_return_items: returnItems
+        });
+
+        if (error) throw error;
+
+        showToast(`تم إنشاء فاتورة المرتجع بنجاح برقم ${data.return_number}`, 'success');
+        closeCreateReturnModal();
+        await fetchAdminOrders(); // Refresh table & stats
+    } catch (e) {
+        showToast('خطأ أثناء حفظ المرتجع: ' + e.message, 'error');
+        console.error(e);
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = oldBtnHtml;
+    }
 };

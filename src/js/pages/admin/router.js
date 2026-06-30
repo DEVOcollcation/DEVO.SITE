@@ -3,6 +3,7 @@ import { showToast } from '../../components/toast.js';
 import { initHomeSettingsView } from './home_settings.js';
 // استيراد صفحة المستخدمين (كما كانت في كودك)
 import { initUsersView } from './users.js';
+import { initAuditsView } from './audits.js';
 
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
@@ -40,6 +41,26 @@ function updateUserProfileUI(profile) {
             usersLink.classList.remove('hidden'); // إظهار للمالك
         } else {
             usersLink.classList.add('hidden'); // إخفاء للمدير
+        }
+    }
+
+    // إخفاء/إظهار زر المرتجعات بناءً على صلاحية المدير أو المالك
+    const returnsLink = document.querySelector('[data-target="view-returns"]');
+    if (returnsLink) {
+        if (['owner', 'admin'].includes(profile.role)) {
+            returnsLink.classList.remove('hidden');
+        } else {
+            returnsLink.classList.add('hidden');
+        }
+    }
+
+    // إخفاء/إظهار زر مراجعة الجرد بناءً على صلاحية المدير أو المالك
+    const auditsLink = document.querySelector('[data-target="view-audits"]');
+    if (auditsLink) {
+        if (['owner', 'admin'].includes(profile.role)) {
+            auditsLink.classList.remove('hidden');
+        } else {
+            auditsLink.classList.add('hidden');
         }
     }
 }
@@ -89,6 +110,20 @@ async function loadViewLogic(targetId) {
         return; 
     }
 
+    if (targetId === 'view-returns' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return; 
+    }
+
+    if (targetId === 'view-audits' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return; 
+    }
+
     switch (targetId) {
             case 'view-dashboard':
             const { initDashboard } = await import('./dashboard.js');
@@ -123,6 +158,13 @@ async function loadViewLogic(targetId) {
         case 'view-preparation':
             const { initPreparationView } = await import('./preparation.js');
             await initPreparationView();
+            break;
+        case 'view-returns':
+            const { initReturnsView } = await import('./returns.js');
+            await initReturnsView();
+            break;
+        case 'view-audits':
+            await initAuditsView();
             break;
     }
 }

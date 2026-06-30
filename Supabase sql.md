@@ -136,6 +136,7 @@ is_active boolean DEFAULT true,
 created_at timestamp with time zone DEFAULT now(),
 login_count integer DEFAULT 0,
 invoice_count integer DEFAULT 0,
+worker_job text,
 CONSTRAINT system_users_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.home_settings (
@@ -449,3 +450,519 @@ END LOOP;
 END;
 ////////////////////////////////////////
 ////////////////////////////////////////
+
+////////////////////////////////////////
+////////////////////////////////////////
+-- Returns and Exchanges Schema
+
+-- 1. Sequence for Return Numbers
+-- CREATE SEQUENCE public.return_number_seq START WITH 1001;
+
+-- 2. Returns Table
+-- CREATE TABLE public.returns (
+--     id uuid NOT NULL DEFAULT gen_random_uuid(),
+--     return_number text NOT NULL UNIQUE,
+--     order_id uuid REFERENCES public.orders(id) ON DELETE SET NULL,
+--     customer_name text NOT NULL,
+--     refund_amount numeric NOT NULL DEFAULT 0,
+--     total_series integer NOT NULL DEFAULT 0,
+--     notes text,
+--     worker_id uuid REFERENCES public.system_users(id) ON DELETE SET NULL,
+--     created_at timestamp with time zone DEFAULT now(),
+--     CONSTRAINT returns_pkey PRIMARY KEY (id)
+-- );
+
+-- 3. Return Items Table
+-- CREATE TABLE public.return_items (
+--     id uuid NOT NULL DEFAULT gen_random_uuid(),
+--     return_id uuid REFERENCES public.returns(id) ON DELETE CASCADE,
+--     model_id uuid REFERENCES public.models(id) ON DELETE CASCADE,
+--     color_id uuid REFERENCES public.colors(id) ON DELETE CASCADE,
+--     quantity integer NOT NULL CHECK (quantity > 0),
+--     price_per_series numeric NOT NULL CHECK (price_per_series >= 0),
+--     total_price numeric NOT NULL CHECK (total_price >= 0),
+--     CONSTRAINT return_items_pkey PRIMARY KEY (id)
+-- );
+
+-- 4. Process Return Transaction Function
+-- CREATE OR REPLACE FUNCTION public.process_return_transaction(
+--     p_return_data jsonb,
+--     p_return_items jsonb
+-- )
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- AS $$
+-- DECLARE
+--     v_return_id uuid;
+--     v_return_number text;
+--     v_item record;
+-- BEGIN
+--     -- Pull the next return number
+--     v_return_number := 'RET-' || nextval('public.return_number_seq')::text;
+-- 
+--     -- Insert return master record
+--     INSERT INTO public.returns (
+--         return_number, order_id, customer_name, refund_amount, total_series, notes, worker_id
+--     ) VALUES (
+--         v_return_number,
+--         (p_return_data->>'order_id')::uuid,
+--         p_return_data->>'customer_name',
+--         (p_return_data->>'refund_amount')::numeric,
+--         (p_return_data->>'total_series')::integer,
+--         p_return_data->>'notes',
+--         (p_return_data->>'worker_id')::uuid
+--     ) RETURNING id INTO v_return_id;
+-- 
+--     -- Loop through return items
+--     FOR v_item IN SELECT * FROM jsonb_to_recordset(p_return_items) AS x(model_id uuid, color_id uuid, qty int, price numeric, total numeric)
+--     LOOP
+--         -- Insert return item
+--         INSERT INTO public.return_items (
+--             return_id, model_id, color_id, quantity, price_per_series, total_price
+--         ) VALUES (
+--             v_return_id, v_item.model_id, v_item.color_id, v_item.qty, v_item.price, v_item.total
+--         );
+-- 
+--         -- Add quantity back to inventory
+--         UPDATE public.model_inventory 
+--         SET available_series = available_series + v_item.qty
+--         WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
+-- 
+--         -- Record stock movement
+--         INSERT INTO public.stock_movements (
+--             model_id, color_id, movement_type, quantity, reference
+--         ) VALUES (
+SELECT available_series INTO v_current_stock FROM public.model_inventory
+WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
+
+    IF v_current_stock < v_item.qty THEN
+       RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+    END IF;
+
+    INSERT INTO public.order_items (order_id, model_id, color_id, quantity, price_per_series, total_price)
+    VALUES (v_order_id, v_item.model_id, v_item.color_id, v_item.qty, v_item.price, v_item.total);
+
+    UPDATE public.model_inventory SET available_series = available_series - v_item.qty
+    WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
+
+    -- 🌟 الإضافة: تسجيل حركة البيع في السجل 🌟
+    INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
+    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'فاتورة مبيعات: ' || v_invoice_number);
+
+END LOOP;
+
+RETURN jsonb_build_object('success', true, 'invoice_number', v_invoice_number, 'order_id', v_order_id);
+END;
+
+////////////////////////////////////////
+////////////////////////////////////////
+
+////////////////////////////////////////
+////////////////////////////////////////
+process_order_transaction
+
+DECLARE
+v_order_id uuid;
+v_invoice_number text;
+v_item record;
+v_current_stock int;
+BEGIN
+-- أ) التحقق من المخزون أولاً (Locking the rows to prevent race conditions)
+FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, model_name text)
+LOOP
+SELECT available_series INTO v_current_stock FROM public.model_inventory
+WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
+
+    IF v_current_stock < v_item.qty THEN
+       RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+    END IF;
+
+END LOOP;
+
+-- ب) 🌟 التعديل هنا: سحب الرقم التالي من العداد ليكون هو رقم الفاتورة (1, 2, 3...) 🌟
+v_invoice_number := nextval('public.invoice_number_seq')::text;
+
+-- ج) تسجيل الأوردر
+INSERT INTO public.orders (invoice_number, customer_name, phone_1, phone_2, address, deposit, deposit_receiver, notes, total_price, total_series, worker_id)
+VALUES (
+v_invoice_number, p_order_data->>'customer_name', p_order_data->>'phone_1', p_order_data->>'phone_2', p_order_data->>'address',
+(p_order_data->>'deposit')::numeric, p_order_data->>'deposit_receiver', p_order_data->>'notes',
+(p_order_data->>'total_price')::numeric, (p_order_data->>'total_series')::integer, (p_order_data->>'worker_id')::uuid
+) RETURNING id INTO v_order_id;
+
+-- د) تسجيل العناصر، خصم المخزون، وتسجيل حركة السحب
+FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, price numeric, total numeric)
+LOOP
+-- إدراج العنصر
+INSERT INTO public.order_items (order_id, model_id, color_id, quantity, price_per_series, total_price)
+VALUES (v_order_id, v_item.model_id, v_item.color_id, v_item.qty, v_item.price, v_item.total);
+
+    -- خصم المخزون
+    UPDATE public.model_inventory SET available_series = available_series - v_item.qty
+    WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
+
+    -- تسجيل حركة المخزون
+    INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
+    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'فاتورة مبيعات: ' || v_invoice_number);
+
+END LOOP;
+
+-- هـ) زيادة عدد فواتير الموظف
+UPDATE public.system_users SET invoice_count = COALESCE(invoice_count, 0) + 1
+WHERE id = (p_order_data->>'worker_id')::uuid;
+
+-- إرجاع النتيجة للواجهة الأمامية
+RETURN jsonb_build_object('success', true, 'invoice_number', v_invoice_number, 'order_id', v_order_id);
+END;
+
+////////////////////////////////////////
+////////////////////////////////////////
+
+rls_auto_enable
+
+DECLARE
+cmd record;
+BEGIN
+FOR cmd IN
+SELECT \*
+FROM pg_event_trigger_ddl_commands()
+WHERE command_tag IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+AND object_type IN ('table','partitioned table')
+LOOP
+IF cmd.schema_name IS NOT NULL AND cmd.schema_name IN ('public') AND cmd.schema_name NOT IN ('pg_catalog','information_schema') AND cmd.schema_name NOT LIKE 'pg_toast%' AND cmd.schema_name NOT LIKE 'pg_temp%' THEN
+BEGIN
+EXECUTE format('alter table if exists %s enable row level security', cmd.object_identity);
+RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+EXCEPTION
+WHEN OTHERS THEN
+RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+END;
+ELSE
+RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
+END IF;
+END LOOP;
+END;
+////////////////////////////////////////
+////////////////////////////////////////
+
+////////////////////////////////////////
+////////////////////////////////////////
+-- Returns and Exchanges Schema
+
+-- 1. Sequence for Return Numbers
+-- CREATE SEQUENCE public.return_number_seq START WITH 1001;
+
+-- 2. Returns Table
+-- CREATE TABLE public.returns (
+--     id uuid NOT NULL DEFAULT gen_random_uuid(),
+--     return_number text NOT NULL UNIQUE,
+--     order_id uuid REFERENCES public.orders(id) ON DELETE SET NULL,
+--     customer_name text NOT NULL,
+--     refund_amount numeric NOT NULL DEFAULT 0,
+--     total_series integer NOT NULL DEFAULT 0,
+--     notes text,
+--     worker_id uuid REFERENCES public.system_users(id) ON DELETE SET NULL,
+--     created_at timestamp with time zone DEFAULT now(),
+--     CONSTRAINT returns_pkey PRIMARY KEY (id)
+-- );
+
+-- 3. Return Items Table
+-- CREATE TABLE public.return_items (
+--     id uuid NOT NULL DEFAULT gen_random_uuid(),
+--     return_id uuid REFERENCES public.returns(id) ON DELETE CASCADE,
+--     model_id uuid REFERENCES public.models(id) ON DELETE CASCADE,
+--     color_id uuid REFERENCES public.colors(id) ON DELETE CASCADE,
+--     quantity integer NOT NULL CHECK (quantity > 0),
+--     price_per_series numeric NOT NULL CHECK (price_per_series >= 0),
+--     total_price numeric NOT NULL CHECK (total_price >= 0),
+--     CONSTRAINT return_items_pkey PRIMARY KEY (id)
+-- );
+
+-- 4. Process Return Transaction Function
+-- CREATE OR REPLACE FUNCTION public.process_return_transaction(
+--     p_return_data jsonb,
+--     p_return_items jsonb
+-- )
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- AS $$
+-- DECLARE
+--     v_return_id uuid;
+--     v_return_number text;
+--     v_item record;
+-- BEGIN
+--     -- Pull the next return number
+--     v_return_number := 'RET-' || nextval('public.return_number_seq')::text;
+-- 
+--     -- Insert return master record
+--     INSERT INTO public.returns (
+--         return_number, order_id, customer_name, refund_amount, total_series, notes, worker_id
+--     ) VALUES (
+--         v_return_number,
+--         (p_return_data->>'order_id')::uuid,
+--         p_return_data->>'customer_name',
+--         (p_return_data->>'refund_amount')::numeric,
+--         (p_return_data->>'total_series')::integer,
+--         p_return_data->>'notes',
+--         (p_return_data->>'worker_id')::uuid
+--     ) RETURNING id INTO v_return_id;
+-- 
+--     -- Loop through return items
+--     FOR v_item IN SELECT * FROM jsonb_to_recordset(p_return_items) AS x(model_id uuid, color_id uuid, qty int, price numeric, total numeric)
+--     LOOP
+--         -- Insert return item
+--         INSERT INTO public.return_items (
+--             return_id, model_id, color_id, quantity, price_per_series, total_price
+--         ) VALUES (
+--             v_return_id, v_item.model_id, v_item.color_id, v_item.qty, v_item.price, v_item.total
+--         );
+-- 
+--         -- Add quantity back to inventory
+--         UPDATE public.model_inventory 
+--         SET available_series = available_series + v_item.qty
+--         WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
+-- 
+--         -- Record stock movement
+--         INSERT INTO public.stock_movements (
+--             model_id, color_id, movement_type, quantity, reference
+--         ) VALUES (
+--             v_item.model_id, v_item.color_id, 'in', v_item.qty, 'مرتجع مبيعات: ' || v_return_number
+--         );
+--     END LOOP;
+-- 
+--     RETURN jsonb_build_object('success', true, 'return_number', v_return_number, 'return_id', v_return_id);
+-- END;
+-- $$;
+
+////////////////////////////////////////
+////////////////////////////////////////
+-- Order and Preparation Status Synchronization Trigger
+
+-- CREATE OR REPLACE FUNCTION public.sync_order_statuses()
+-- RETURNS trigger AS $$
+-- BEGIN
+--   -- 1. Check preparation validation if trying to mark as shipped or delivered
+--   IF NEW.status IN ('shipped', 'delivered') THEN
+--     IF NOT public.can_mark_order_prepared(NEW.id) THEN
+--       RAISE EXCEPTION 'لا يمكن شحن أو تسليم الأوردر: يوجد عناصر لم يتم تحضيرها بالكامل بعد في المخزن.';
+--     END IF;
+--   END IF;
+--
+--   -- 2. If preparation_status was changed
+--   IF NEW.preparation_status IS DISTINCT FROM OLD.preparation_status THEN
+--     IF NEW.preparation_status = 'in_progress' THEN
+--       NEW.status := 'preparing';
+--     ELSIF NEW.preparation_status = 'shipped' THEN
+--       NEW.status := 'shipped';
+--     ELSIF NEW.preparation_status = 'pending' AND NEW.status NOT IN ('created', 'in_progress', 'registered') THEN
+--       NEW.status := 'created';
+--     END IF;
+--   
+--   -- 3. If status was changed
+--   ELSIF NEW.status IS DISTINCT FROM OLD.status THEN
+--     IF NEW.status IN ('created', 'in_progress', 'registered') THEN
+--       NEW.preparation_status := 'pending';
+--     ELSIF NEW.status = 'preparing' AND NEW.preparation_status NOT IN ('in_progress', 'prepared', 'shipped') THEN
+--       NEW.preparation_status := 'in_progress';
+--     ELSIF NEW.status = 'shipped' THEN
+--       NEW.preparation_status := 'shipped';
+--     ELSIF NEW.status = 'delivered' THEN
+--       NEW.preparation_status := 'shipped';
+--     END IF;
+--   END IF;
+-- 
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- CREATE OR REPLACE TRIGGER trg_sync_order_statuses
+-- BEFORE UPDATE OF status, preparation_status ON public.orders
+-- FOR EACH ROW
+-- EXECUTE FUNCTION public.sync_order_statuses();
+
+////////////////////////////////////////
+////////////////////////////////////////
+-- Smart Inventory Audit Schema
+
+-- 1. Sequence for Audit Numbers
+-- CREATE SEQUENCE public.audit_number_seq START WITH 1001;
+
+-- 2. Inventory Audits Table
+-- CREATE TABLE public.inventory_audits (
+--     id uuid NOT NULL DEFAULT gen_random_uuid(),
+--     audit_number text NOT NULL UNIQUE,
+--     created_at timestamp with time zone DEFAULT now(),
+--     created_by uuid REFERENCES public.system_users(id) ON DELETE SET NULL,
+--     status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'confirmed', 'cancelled')),
+--     notes text,
+--     reviewed_by uuid REFERENCES public.system_users(id) ON DELETE SET NULL,
+--     reviewed_at timestamp with time zone,
+--     review_notes text,
+--     CONSTRAINT inventory_audits_pkey PRIMARY KEY (id)
+-- );
+
+-- 3. Inventory Audit Items Table
+-- CREATE TABLE public.inventory_audit_items (
+--     id uuid NOT NULL DEFAULT gen_random_uuid(),
+--     audit_id uuid NOT NULL REFERENCES public.inventory_audits(id) ON DELETE CASCADE,
+--     model_id uuid NOT NULL REFERENCES public.models(id) ON DELETE CASCADE,
+--     color_id uuid NOT NULL REFERENCES public.colors(id) ON DELETE CASCADE,
+--     system_qty integer NOT NULL DEFAULT 0,
+--     counted_qty integer NOT NULL DEFAULT 0,
+--     difference integer NOT NULL DEFAULT 0,
+--     CONSTRAINT inventory_audit_items_pkey PRIMARY KEY (id)
+-- );
+
+-- 4. Enable RLS and Create Policies
+-- ALTER TABLE public.inventory_audits ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.inventory_audit_items ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Enable all access for all users" ON public.inventory_audits FOR ALL USING (true) WITH CHECK (true);
+-- CREATE POLICY "Enable all access for all users" ON public.inventory_audit_items FOR ALL USING (true) WITH CHECK (true);
+
+-- 5. Submit Inventory Audit Function
+-- CREATE OR REPLACE FUNCTION public.submit_inventory_audit(
+--     p_worker_id uuid,
+--     p_notes text,
+--     p_items jsonb
+-- )
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- AS $$
+-- DECLARE
+--     v_audit_id uuid;
+--     v_audit_number text;
+--     v_item record;
+-- BEGIN
+--     v_audit_number := 'AUD-' || nextval('public.audit_number_seq')::text;
+--     
+--     INSERT INTO public.inventory_audits (
+--         audit_number, created_by, status, notes
+--     ) VALUES (
+--         v_audit_number, p_worker_id, 'submitted', p_notes
+--     ) RETURNING id INTO v_audit_id;
+--     
+--     FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(model_id uuid, color_id uuid, system_qty int, counted_qty int)
+--     LOOP
+--         INSERT INTO public.inventory_audit_items (
+--             audit_id, model_id, color_id, system_qty, counted_qty, difference
+--         ) VALUES (
+--             v_audit_id,
+--             v_item.model_id,
+--             v_item.color_id,
+--             v_item.system_qty,
+--             v_item.counted_qty,
+--             (v_item.counted_qty - v_item.system_qty)
+--         );
+--     END LOOP;
+--     
+--     RETURN jsonb_build_object('success', true, 'audit_number', v_audit_number, 'audit_id', v_audit_id);
+-- END;
+-- $$;
+
+-- 6. Confirm Inventory Audit Function
+-- CREATE OR REPLACE FUNCTION public.confirm_inventory_audit(
+--     p_audit_id uuid,
+--     p_admin_id uuid,
+--     p_notes text
+-- )
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- AS $$
+-- DECLARE
+--     v_audit_number text;
+--     v_status text;
+--     v_item record;
+--     v_diff integer;
+-- BEGIN
+--     SELECT audit_number, status INTO v_audit_number, v_status
+--     FROM public.inventory_audits WHERE id = p_audit_id;
+--     
+--     IF v_status IS NULL THEN
+--         RETURN jsonb_build_object('success', false, 'error', 'جلسة الجرد غير موجودة');
+--     END IF;
+--     
+--     IF v_status <> 'submitted' THEN
+--         RETURN jsonb_build_object('success', false, 'error', 'جلسة الجرد ليست في حالة انتظار المراجعة');
+--     END IF;
+--     
+--     FOR v_item IN SELECT * FROM public.inventory_audit_items WHERE audit_id = p_audit_id
+--     LOOP
+--         v_diff := v_item.difference;
+--         
+--         IF v_diff <> 0 THEN
+--             UPDATE public.model_inventory
+--             SET available_series = v_item.counted_qty
+--             WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
+--             
+--             INSERT INTO public.stock_movements (
+--                 model_id, color_id, movement_type, quantity, reference
+--             ) VALUES (
+--                 v_item.model_id,
+--                 v_item.color_id,
+--                 CASE WHEN v_diff > 0 THEN 'in' ELSE 'out' END,
+--                 ABS(v_diff),
+--                 'تسوية جرد دوري: ' || v_audit_number
+--             );
+--         END IF;
+--     END LOOP;
+--     
+--     UPDATE public.inventory_audits
+--     SET
+--         status = 'confirmed',
+--         reviewed_by = p_admin_id,
+--         reviewed_at = now(),
+--         review_notes = p_notes
+--     WHERE id = p_audit_id;
+--     
+--     RETURN jsonb_build_object('success', true);
+-- END;
+-- $$;
+
+-- 7. Create Inventory Audit Session (Admin Initiated)
+-- CREATE OR REPLACE FUNCTION public.create_inventory_audit(
+--     p_admin_id uuid,
+--     p_notes text,
+--     p_model_ids uuid[]
+-- )
+-- RETURNS jsonb
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- AS $$
+-- DECLARE
+--     v_audit_id uuid;
+--     v_audit_number text;
+--     v_model_id uuid;
+--     v_inv record;
+-- BEGIN
+--     v_audit_number := 'AUD-' || nextval('public.audit_number_seq')::text;
+--     
+--     INSERT INTO public.inventory_audits (
+--         audit_number, created_by, status, notes
+--     ) VALUES (
+--         v_audit_number, p_admin_id, 'draft', p_notes
+--     ) RETURNING id INTO v_audit_id;
+--     
+--     FOREACH v_model_id IN ARRAY p_model_ids
+--     LOOP
+--         FOR v_inv IN SELECT color_id, available_series FROM public.model_inventory WHERE model_id = v_model_id
+--         LOOP
+--             INSERT INTO public.inventory_audit_items (
+--                 audit_id, model_id, color_id, system_qty, counted_qty, difference
+--             ) VALUES (
+--                 v_audit_id,
+--                 v_model_id,
+--                 v_inv.color_id,
+--                 v_inv.available_series,
+--                 0,
+--                 -v_inv.available_series
+--             );
+--         END LOOP;
+--     END LOOP;
+--     
+--     RETURN jsonb_build_object('success', true, 'audit_id', v_audit_id, 'audit_number', v_audit_number);
+-- END;
+-- $$;

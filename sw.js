@@ -1,11 +1,14 @@
-const CACHE_NAME = 'devo-v2';
+const CACHE_NAME = 'devo-v3';
 const assets = [
   './',
   './index.html',
   './admin.html',
+  './warehouse.html',
   './auth.html',
   './src/assets/icons/dv.png',
-
+  './manifest-index.json',
+  './manifest-admin.json',
+  './manifest-warehouse.json'
 ];
 
 // تثبيت السيرفس وركر
