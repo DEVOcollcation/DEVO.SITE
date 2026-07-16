@@ -6,7 +6,7 @@ function getButtonClasses(select) {
     const buttonClasses = ['w-full', 'h-full', 'flex', 'items-center', 'justify-between', 'text-right'];
     
     originalClasses.forEach(cls => {
-        // Exclude layout-related classes that go to the container
+        // Exclude layout-related and visibility-related classes that go to the container
         if (cls &&
             !cls.startsWith('flex') && 
             !cls.startsWith('w-') && 
@@ -14,7 +14,11 @@ function getButtonClasses(select) {
             !cls.startsWith('col-') && 
             !cls.startsWith('md:') && 
             !cls.startsWith('lg:') && 
-            !cls.startsWith('sm:')) {
+            !cls.startsWith('sm:') &&
+            cls !== 'hidden' &&
+            cls !== 'block' &&
+            cls !== 'inline' &&
+            cls !== 'invisible') {
             buttonClasses.push(cls);
         }
     });
@@ -244,6 +248,21 @@ function wrapSelect(select) {
         const isHidden = dropdownMenu.classList.contains('hidden');
         if (isHidden) {
             dropdownMenu.classList.remove('hidden');
+            
+            // Check position and decide whether to open up or down
+            const rect = container.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            
+            // If there's less than 280px below and more space above, open up
+            if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+                dropdownMenu.classList.remove('mt-1', 'top-full');
+                dropdownMenu.classList.add('bottom-full', 'mb-1');
+            } else {
+                dropdownMenu.classList.remove('bottom-full', 'mb-1');
+                dropdownMenu.classList.add('top-full', 'mt-1');
+            }
+            
             caretIcon.classList.add('rotate-180');
             searchInput.focus();
         } else {

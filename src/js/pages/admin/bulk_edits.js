@@ -182,7 +182,8 @@ async function fetchBulkModels() {
                     categories(name), 
                     classes(name, class_sizes(size_id)),
                     model_sizes(size_id),
-                    model_inventory(color_id, available_series)
+                    model_inventory(color_id, available_series),
+                    model_images(image_url)
                 `)
                 .order('created_at', { ascending: false })
                 .range(from, from + step);
@@ -464,7 +465,7 @@ window.toggleSingleBulkCheck = (cb) => {
 
 function updateBulkActionBar() {
     const bar = document.getElementById('bulk-action-bar');
-    if (selectedModelIds.size > 0) {
+    if (selectedModelIds.size > 0 || lastSnapshot !== null) {
         bar.classList.remove('hidden');
         bar.classList.add('block');
     } else {
@@ -505,6 +506,10 @@ window.handleBulkActionChange = () => {
 };
 
 window.executeBulkEdit = async () => {
+    if (selectedModelIds.size === 0) {
+        return showToast('الرجاء تحديد موديل واحد على الأقل أولاً', 'warning');
+    }
+
     const action = document.getElementById('bulk-action-type').value;
     if (!action) return showToast('الرجاء اختيار الإجراء أولاً', 'warning');
 
@@ -538,6 +543,45 @@ window.executeBulkEdit = async () => {
         const CHUNK_SIZE = 300;
 
         if (isDelete) {
+            // 🌟 حفظ لقطة تراجع للحذف المجمع 🌟
+            lastSnapshot = {
+                actionType: 'delete',
+                models: modelsToEdit.map(m => ({
+                    id: m.id,
+                    system_code: m.system_code,
+                    factory_code: m.factory_code,
+                    name: m.name,
+                    price: m.price,
+                    category_id: m.category_id,
+                    class_id: m.class_id,
+                    is_active: m.is_active,
+                    image_url_1: m.image_url_1,
+                    image_url_2: m.image_url_2,
+                    image_url_3: m.image_url_3,
+                    created_at: m.created_at,
+                    updated_at: m.updated_at
+                })),
+                sizes: modelsToEdit.flatMap(m => 
+                    (m.model_sizes || []).map(ms => ({
+                        model_id: m.id,
+                        size_id: ms.size_id
+                    }))
+                ),
+                inventory: modelsToEdit.flatMap(m => 
+                    (m.model_inventory || []).map(mi => ({
+                        model_id: m.id,
+                        color_id: mi.color_id,
+                        available_series: mi.available_series
+                    }))
+                ),
+                images: modelsToEdit.flatMap(m => 
+                    (m.model_images || []).map(img => ({
+                        model_id: m.id,
+                        image_url: img.image_url
+                    }))
+                )
+            };
+
             // 🌟 خوارزمية الحذف المجمع 🌟
             const idsToDelete = Array.from(selectedModelIds);
             for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
@@ -548,11 +592,10 @@ window.executeBulkEdit = async () => {
             
             showToast(`تم حذف ${selectedModelIds.size} موديل بنجاح!`, 'success');
             
-            // نخفي زر التراجع لأن الحذف لا يمكن التراجع فيه
-            document.getElementById('btn-bulk-undo').classList.add('hidden');
-            document.getElementById('btn-bulk-undo').classList.remove('flex');
+            // إظهار زر التراجع للحذف
+            document.getElementById('btn-bulk-undo').classList.remove('hidden');
+            document.getElementById('btn-bulk-undo').classList.add('flex');
             selectedModelIds.clear();
-            lastSnapshot = null;
             
         } else {
             // 🌟 خوارزميات التعديل (النسب المئوية والأسعار) 🌟
@@ -605,9 +648,16 @@ window.executeBulkEdit = async () => {
 };
 
 window.undoBulkEdit = async () => {
-    if (!lastSnapshot || lastSnapshot.length === 0) return;
+    if (!lastSnapshot) return;
 
-    const confirmed = await confirmDialog({ title: 'تراجع عن التعديل', message: `هل تريد إرجاع ${lastSnapshot.length} موديل لحالتهم السابقة؟`, isDestructive: true });
+    const isDeleteUndo = lastSnapshot.actionType === 'delete';
+    const count = isDeleteUndo ? lastSnapshot.models.length : lastSnapshot.length;
+
+    const confirmed = await confirmDialog({ 
+        title: 'تراجع عن التعديل', 
+        message: `هل تريد إرجاع ${count} موديل لحالتهم السابقة؟`, 
+        isDestructive: true 
+    });
     if (!confirmed) return;
 
     const btn = document.getElementById('btn-bulk-undo');
@@ -616,10 +666,48 @@ window.undoBulkEdit = async () => {
 
     try {
         const CHUNK_SIZE = 300;
-        for (let i = 0; i < lastSnapshot.length; i += CHUNK_SIZE) {
-            const chunk = lastSnapshot.slice(i, i + CHUNK_SIZE);
-            const { error } = await supabase.from('models').upsert(chunk);
-            if (error) throw error;
+        
+        if (isDeleteUndo) {
+            // 1. Restore models table
+            for (let i = 0; i < lastSnapshot.models.length; i += CHUNK_SIZE) {
+                const chunk = lastSnapshot.models.slice(i, i + CHUNK_SIZE);
+                const { error } = await supabase.from('models').insert(chunk);
+                if (error) throw error;
+            }
+
+            // 2. Restore model_sizes table
+            if (lastSnapshot.sizes.length > 0) {
+                for (let i = 0; i < lastSnapshot.sizes.length; i += CHUNK_SIZE) {
+                    const chunk = lastSnapshot.sizes.slice(i, i + CHUNK_SIZE);
+                    const { error } = await supabase.from('model_sizes').insert(chunk);
+                    if (error) throw error;
+                }
+            }
+
+            // 3. Restore model_inventory table
+            if (lastSnapshot.inventory.length > 0) {
+                for (let i = 0; i < lastSnapshot.inventory.length; i += CHUNK_SIZE) {
+                    const chunk = lastSnapshot.inventory.slice(i, i + CHUNK_SIZE);
+                    const { error } = await supabase.from('model_inventory').insert(chunk);
+                    if (error) throw error;
+                }
+            }
+
+            // 4. Restore model_images table
+            if (lastSnapshot.images.length > 0) {
+                for (let i = 0; i < lastSnapshot.images.length; i += CHUNK_SIZE) {
+                    const chunk = lastSnapshot.images.slice(i, i + CHUNK_SIZE);
+                    const { error } = await supabase.from('model_images').insert(chunk);
+                    if (error) throw error;
+                }
+            }
+        } else {
+            // Restore updates (original logic)
+            for (let i = 0; i < lastSnapshot.length; i += CHUNK_SIZE) {
+                const chunk = lastSnapshot.slice(i, i + CHUNK_SIZE);
+                const { error } = await supabase.from('models').upsert(chunk);
+                if (error) throw error;
+            }
         }
 
         showToast('تم التراجع بنجاح وإعادة البيانات القديمة!', 'success');
@@ -632,10 +720,11 @@ window.undoBulkEdit = async () => {
 
     } catch (err) {
         console.error(err);
-        showToast('حدث خطأ أثناء محاولة التراجع', 'error');
+        showToast('حدث خطأ أثناء محاولة التراجع: ' + err.message, 'error');
     } finally {
         btn.disabled = false;
         btn.innerHTML = `<i class="ph ph-arrow-u-up-left text-lg"></i> تراجع (Undo)`;
+        updateBulkActionBar();
     }
 };
 
