@@ -102,9 +102,15 @@ export function initNavbar() {
         mobileLinks.innerHTML = `
             <button onclick="switchSiteView('view-home')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">الرئيسية</button>
             <button onclick="switchSiteView('view-gallery')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">المعرض</button>
+            <a href="auth.html" class="py-3 text-devo-orange hover:text-white border-b border-devo-gray flex items-center gap-2 font-bold"><i class="ph ph-sign-in"></i> تسجيل الدخول</a>
         `;
 
-        desktopUserArea.innerHTML = ``;
+        desktopUserArea.innerHTML = `
+            <a href="auth.html" class="px-4 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white border border-devo-orange/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                <i class="ph ph-sign-in text-base"></i>
+                <span>تسجيل الدخول</span>
+            </a>
+        `;
     }
 
     // زر القائمة الجانبية للموبايل

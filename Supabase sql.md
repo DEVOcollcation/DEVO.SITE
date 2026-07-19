@@ -964,5 +964,1064 @@ END;
 --     END LOOP;
 --     
 --     RETURN jsonb_build_object('success', true, 'audit_id', v_audit_id, 'audit_number', v_audit_number);
--- END;
 -- $$;
+
+-- =========================================================================
+-- 🌟 MIGRATION: ADD ASSIGNED_WORKER_ID TO ORDERS 🌟
+-- =========================================================================
+ALTER TABLE public.orders 
+ADD COLUMN IF NOT EXISTS assigned_worker_id uuid REFERENCES public.system_users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_orders_assigned_worker_id ON public.orders(assigned_worker_id);
+
+-- =========================================================================
+-- 🌟 MIGRATION: CREATE ORDER_LOGS TABLE 🌟
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS public.order_logs (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    order_id uuid REFERENCES public.orders(id) ON DELETE CASCADE,
+    user_id uuid REFERENCES public.system_users(id) ON DELETE SET NULL,
+    user_name text NOT NULL,
+    action_type text NOT NULL,
+    notes text NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT order_logs_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_logs_order_id ON public.order_logs(order_id);
+
+
+-- =========================================================================
+-- 🌟 MIGRATION: CREATE THEMES TABLE & SEED DEFAULT THEMES 🌟
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS public.themes (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text NOT NULL UNIQUE,
+    description text,
+    is_active boolean DEFAULT false,
+    is_system boolean DEFAULT false,
+    variables jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT themes_pkey PRIMARY KEY (id)
+);
+
+-- Index on is_active to fast-fetch the current active theme
+CREATE INDEX IF NOT EXISTS idx_themes_is_active ON public.themes(is_active);
+
+-- Enforce that at most one theme is active at a time
+CREATE UNIQUE INDEX IF NOT EXISTS idx_themes_only_one_active ON public.themes (is_active) WHERE (is_active = true);
+
+-- Enable RLS
+ALTER TABLE public.themes ENABLE ROW LEVEL SECURITY;
+
+-- Policies for public.themes:
+-- Anyone can read (since themes are applied on client pages)
+CREATE POLICY "Allow public read access to themes" ON public.themes
+    FOR SELECT USING (true);
+
+CREATE POLICY "Allow admin write access to themes" ON public.themes
+    FOR ALL USING (true) WITH CHECK (true);
+
+-- Seed default system themes if they don't exist
+INSERT INTO public.themes (name, description, is_active, is_system, variables)
+VALUES 
+(
+  'Dark Theme', 
+  'المظهر الداكن الافتراضي الخاص بالنظام بألوان برتقالية وسوداء متناسقة.', 
+  true, 
+  true, 
+  '{
+    "colors": {
+      "page": {
+        "bg": "#0a0a0a",
+        "bg_secondary": "#171717",
+        "surface": "#171717",
+        "text": "#f5f5f5",
+        "text_muted": "#a3a3a3",
+        "selection_bg": "#f97316",
+        "selection_text": "#ffffff"
+      },
+      "brand": {
+        "primary": "#f97316",
+        "primary_hover": "#ea580c",
+        "secondary": "#262626",
+        "secondary_hover": "#404040"
+      },
+      "top_nav": {
+        "bg": "#171717",
+        "border": "#262626",
+        "logo": "#f97316",
+        "text": "#f5f5f5",
+        "link_active": "#f97316",
+        "link_hover": "#ea580c",
+        "icons": "#a3a3a3",
+        "search_bg": "#0a0a0a",
+        "search_border": "#262626",
+        "search_text": "#f5f5f5"
+      },
+      "hero": {
+        "bg": "#0a0a0a",
+        "overlay": "linear-gradient(to bottom, rgba(10,10,10,0.4), rgba(10,10,10,1))",
+        "title": "#ffffff",
+        "subtitle": "#a3a3a3"
+      },
+      "buttons": {
+        "primary": { "bg": "#f97316", "text": "#ffffff", "border": "transparent", "hover_bg": "#ea580c", "hover_text": "#ffffff", "active_bg": "#c2410c", "disabled_bg": "#262626", "disabled_text": "#a3a3a3" },
+        "secondary": { "bg": "#262626", "text": "#f5f5f5", "border": "#404040", "hover_bg": "#404040", "hover_text": "#ffffff", "active_bg": "#525252", "disabled_bg": "#171717", "disabled_text": "#737373" },
+        "success": { "bg": "#10b981", "text": "#ffffff", "border": "transparent", "hover_bg": "#059669", "hover_text": "#ffffff", "active_bg": "#047857", "disabled_bg": "#262626", "disabled_text": "#a3a3a3" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff", "border": "transparent", "hover_bg": "#d97706", "hover_text": "#ffffff", "active_bg": "#b45309", "disabled_bg": "#262626", "disabled_text": "#a3a3a3" },
+        "danger": { "bg": "#ef4444", "text": "#ffffff", "border": "transparent", "hover_bg": "#dc2626", "hover_text": "#ffffff", "active_bg": "#b91c1c", "disabled_bg": "#262626", "disabled_text": "#a3a3a3" }
+      },
+      "product_cards": {
+        "bg": "#171717",
+        "border": "#262626",
+        "radius": "16px",
+        "title": "#f5f5f5",
+        "price": "#f97316",
+        "category": "#a3a3a3",
+        "shadow": "0 4px 20px rgba(0,0,0,0.4)",
+        "hover_effect": "scale",
+        "hover_shadow": "0 10px 30px rgba(249,115,22,0.15)",
+        "badge_bg": "#f97316",
+        "badge_text": "#ffffff"
+      },
+      "modal": {
+        "bg": "#171717",
+        "border": "#262626",
+        "image_border": "#262626",
+        "price": "#f97316",
+        "text": "#f5f5f5",
+        "text_secondary": "#a3a3a3",
+        "quantity_bg": "#262626",
+        "quantity_text": "#f5f5f5",
+        "size_active_bg": "#f97316",
+        "size_active_text": "#ffffff",
+        "size_inactive_bg": "#262626",
+        "size_inactive_text": "#a3a3a3",
+        "color_border_active": "#f97316"
+      },
+      "inputs": {
+        "bg": "#171717",
+        "border": "#262626",
+        "focus_border": "#f97316",
+        "focus_ring": "rgba(249,115,22,0.2)",
+        "placeholder": "#737373",
+        "text": "#f5f5f5",
+        "icons": "#a3a3a3"
+      },
+      "tables": {
+        "header_bg": "#171717",
+        "header_text": "#a3a3a3",
+        "row_bg": "#171717",
+        "row_alt_bg": "#1e1e1e",
+        "row_hover_bg": "#262626",
+        "border": "#262626",
+        "selected_bg": "rgba(249,115,22,0.1)",
+        "selected_text": "#f97316"
+      },
+      "sidebar": {
+        "bg": "#171717",
+        "border": "#262626",
+        "text": "#a3a3a3",
+        "text_hover": "#f5f5f5",
+        "text_active": "#f97316",
+        "bg_active": "rgba(249,115,22,0.1)",
+        "bg_hover": "#262626",
+        "icons": "#a3a3a3",
+        "icons_active": "#f97316"
+      },
+      "footer": {
+        "bg": "#0a0a0a",
+        "border": "#171717",
+        "text": "#a3a3a3",
+        "link": "#a3a3a3",
+        "link_hover": "#f97316",
+        "social_bg": "#171717",
+        "social_text": "#a3a3a3",
+        "social_hover_bg": "#f97316",
+        "social_hover_text": "#ffffff"
+      },
+      "gallery": {
+        "bg": "#0a0a0a",
+        "image_border": "#262626",
+        "hover_effect": "scale",
+        "overlay_bg": "rgba(10,10,10,0.6)",
+        "shadow": "0 4px 10px rgba(0,0,0,0.5)"
+      },
+      "cards": {
+        "product": { "bg": "#171717", "border": "#262626", "radius": "12px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "translate-y" },
+        "statistics": { "bg": "#171717", "border": "#262626", "radius": "16px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "none" },
+        "dashboard": { "bg": "#171717", "border": "#262626", "radius": "16px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "none" },
+        "order": { "bg": "#171717", "border": "#262626", "radius": "12px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "none" }
+      },
+      "alerts": {
+        "success": { "bg": "rgba(16,185,129,0.1)", "text": "#10b981", "border": "#10b981" },
+        "error": { "bg": "rgba(239,68,68,0.1)", "text": "#ef4444", "border": "#ef4444" },
+        "warning": { "bg": "rgba(245,158,11,0.1)", "text": "#f59e0b", "border": "#f59e0b" },
+        "info": { "bg": "rgba(59,130,246,0.1)", "text": "#3b82f6", "border": "#3b82f6" }
+      },
+      "badges": {
+        "orange": { "bg": "#f97316", "text": "#ffffff" },
+        "success": { "bg": "#10b981", "text": "#ffffff" },
+        "error": { "bg": "#ef4444", "text": "#ffffff" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff" },
+        "info": { "bg": "#3b82f6", "text": "#ffffff" }
+      },
+      "icons": {
+        "primary": "#f97316",
+        "muted": "#a3a3a3",
+        "white": "#ffffff"
+      },
+      "links": {
+        "normal": "#a3a3a3",
+        "hover": "#f97316",
+        "active": "#f97316",
+        "visited": "#a3a3a3"
+      },
+      "shadows": {
+        "color": "rgba(0,0,0,0.8)",
+        "size": "10px",
+        "blur": "40px"
+      },
+      "borders": {
+        "color": "#262626",
+        "width": "1px",
+        "radius": "12px"
+      },
+      "scrollbar": {
+        "track": "#0a0a0a",
+        "thumb": "#262626",
+        "thumb_hover": "#f97316"
+      },
+      "loading": {
+        "loader": "#f97316",
+        "spinner": "#262626"
+      },
+      "toasts": {
+        "bg": "#171717",
+        "border": "#262626",
+        "text": "#f5f5f5"
+      },
+      "cart": {
+        "bg": "#171717",
+        "border": "#262626",
+        "text": "#f5f5f5",
+        "totals_bg": "#0a0a0a",
+        "totals_text": "#f5f5f5"
+      }
+    },
+    "fonts": {
+      "family": "Tajawal, sans-serif",
+      "size_base": "16px"
+    },
+    "animations": {
+      "transition_speed": "0.3s",
+      "hover_effect": "ease-in-out"
+    },
+    "visuals": {
+      "glass_effect": false,
+      "blur_intensity": "0px"
+    }
+  }'::jsonb
+),
+(
+  'Light Theme', 
+  'مظهر فاتح ناصع بألوان برتقالية مميزة وتصميم مريح للعين في الإضاءة القوية.', 
+  false, 
+  true, 
+  '{
+    "colors": {
+      "page": {
+        "bg": "#f3f4f6",
+        "bg_secondary": "#ffffff",
+        "surface": "#ffffff",
+        "text": "#111827",
+        "text_muted": "#6b7280",
+        "selection_bg": "#f97316",
+        "selection_text": "#ffffff"
+      },
+      "brand": {
+        "primary": "#f97316",
+        "primary_hover": "#ea580c",
+        "secondary": "#e5e7eb",
+        "secondary_hover": "#d1d5db"
+      },
+      "top_nav": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "logo": "#f97316",
+        "text": "#111827",
+        "link_active": "#f97316",
+        "link_hover": "#ea580c",
+        "icons": "#4b5563",
+        "search_bg": "#f3f4f6",
+        "search_border": "#e5e7eb",
+        "search_text": "#111827"
+      },
+      "hero": {
+        "bg": "#ffffff",
+        "overlay": "linear-gradient(to bottom, rgba(255,255,255,0.4), rgba(255,255,255,1))",
+        "title": "#111827",
+        "subtitle": "#4b5563"
+      },
+      "buttons": {
+        "primary": { "bg": "#f97316", "text": "#ffffff", "border": "transparent", "hover_bg": "#ea580c", "hover_text": "#ffffff", "active_bg": "#c2410c", "disabled_bg": "#e5e7eb", "disabled_text": "#9ca3af" },
+        "secondary": { "bg": "#f3f4f6", "text": "#111827", "border": "#d1d5db", "hover_bg": "#e5e7eb", "hover_text": "#111827", "active_bg": "#d1d5db", "disabled_bg": "#f9fafb", "disabled_text": "#9ca3af" },
+        "success": { "bg": "#10b981", "text": "#ffffff", "border": "transparent", "hover_bg": "#059669", "hover_text": "#ffffff", "active_bg": "#047857", "disabled_bg": "#e5e7eb", "disabled_text": "#9ca3af" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff", "border": "transparent", "hover_bg": "#d97706", "hover_text": "#ffffff", "active_bg": "#b45309", "disabled_bg": "#e5e7eb", "disabled_text": "#9ca3af" },
+        "danger": { "bg": "#ef4444", "text": "#ffffff", "border": "transparent", "hover_bg": "#dc2626", "hover_text": "#ffffff", "active_bg": "#b91c1c", "disabled_bg": "#e5e7eb", "disabled_text": "#9ca3af" }
+      },
+      "product_cards": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "radius": "16px",
+        "title": "#111827",
+        "price": "#f97316",
+        "category": "#6b7280",
+        "shadow": "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
+        "hover_effect": "scale",
+        "hover_shadow": "0 10px 15px -3px rgba(249,115,22,0.1), 0 4px 6px -2px rgba(249,115,22,0.05)",
+        "badge_bg": "#f97316",
+        "badge_text": "#ffffff"
+      },
+      "modal": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "image_border": "#e5e7eb",
+        "price": "#f97316",
+        "text": "#111827",
+        "text_secondary": "#6b7280",
+        "quantity_bg": "#f3f4f6",
+        "quantity_text": "#111827",
+        "size_active_bg": "#f97316",
+        "size_active_text": "#ffffff",
+        "size_inactive_bg": "#f3f4f6",
+        "size_inactive_text": "#4b5563",
+        "color_border_active": "#f97316"
+      },
+      "inputs": {
+        "bg": "#ffffff",
+        "border": "#d1d5db",
+        "focus_border": "#f97316",
+        "focus_ring": "rgba(249,115,22,0.2)",
+        "placeholder": "#9ca3af",
+        "text": "#111827",
+        "icons": "#6b7280"
+      },
+      "tables": {
+        "header_bg": "#f9fafb",
+        "header_text": "#4b5563",
+        "row_bg": "#ffffff",
+        "row_alt_bg": "#f9fafb",
+        "row_hover_bg": "#f3f4f6",
+        "border": "#e5e7eb",
+        "selected_bg": "rgba(249,115,22,0.08)",
+        "selected_text": "#f97316"
+      },
+      "sidebar": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "text": "#4b5563",
+        "text_hover": "#111827",
+        "text_active": "#f97316",
+        "bg_active": "rgba(249,115,22,0.08)",
+        "bg_hover": "#f3f4f6",
+        "icons": "#6b7280",
+        "icons_active": "#f97316"
+      },
+      "footer": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "text": "#4b5563",
+        "link": "#4b5563",
+        "link_hover": "#f97316",
+        "social_bg": "#f3f4f6",
+        "social_text": "#4b5563",
+        "social_hover_bg": "#f97316",
+        "social_hover_text": "#ffffff"
+      },
+      "gallery": {
+        "bg": "#f3f4f6",
+        "image_border": "#e5e7eb",
+        "hover_effect": "scale",
+        "overlay_bg": "rgba(255,255,255,0.6)",
+        "shadow": "0 4px 6px -1px rgba(0,0,0,0.1)"
+      },
+      "cards": {
+        "product": { "bg": "#ffffff", "border": "#e5e7eb", "radius": "12px", "shadow": "0 2px 5px rgba(0,0,0,0.05)", "hover_anim": "translate-y" },
+        "statistics": { "bg": "#ffffff", "border": "#e5e7eb", "radius": "16px", "shadow": "0 2px 5px rgba(0,0,0,0.05)", "hover_anim": "none" },
+        "dashboard": { "bg": "#ffffff", "border": "#e5e7eb", "radius": "16px", "shadow": "0 2px 5px rgba(0,0,0,0.05)", "hover_anim": "none" },
+        "order": { "bg": "#ffffff", "border": "#e5e7eb", "radius": "12px", "shadow": "0 2px 5px rgba(0,0,0,0.05)", "hover_anim": "none" }
+      },
+      "alerts": {
+        "success": { "bg": "#ecfdf5", "text": "#065f46", "border": "#a7f3d0" },
+        "error": { "bg": "#fef2f2", "text": "#991b1b", "border": "#fca5a5" },
+        "warning": { "bg": "#fffbeb", "text": "#92400e", "border": "#fde68a" },
+        "info": { "bg": "#eff6ff", "text": "#1e40af", "border": "#bfdbfe" }
+      },
+      "badges": {
+        "orange": { "bg": "#f97316", "text": "#ffffff" },
+        "success": { "bg": "#10b981", "text": "#ffffff" },
+        "error": { "bg": "#ef4444", "text": "#ffffff" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff" },
+        "info": { "bg": "#3b82f6", "text": "#ffffff" }
+      },
+      "icons": {
+        "primary": "#f97316",
+        "muted": "#6b7280",
+        "white": "#111827"
+      },
+      "links": {
+        "normal": "#4b5563",
+        "hover": "#f97316",
+        "active": "#f97316",
+        "visited": "#4b5563"
+      },
+      "shadows": {
+        "color": "rgba(0,0,0,0.05)",
+        "size": "4px",
+        "blur": "10px"
+      },
+      "borders": {
+        "color": "#e5e7eb",
+        "width": "1px",
+        "radius": "12px"
+      },
+      "scrollbar": {
+        "track": "#f3f4f6",
+        "thumb": "#d1d5db",
+        "thumb_hover": "#f97316"
+      },
+      "loading": {
+        "loader": "#f97316",
+        "spinner": "#e5e7eb"
+      },
+      "toasts": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "text": "#111827"
+      },
+      "cart": {
+        "bg": "#ffffff",
+        "border": "#e5e7eb",
+        "text": "#111827",
+        "totals_bg": "#f3f4f6",
+        "totals_text": "#111827"
+      }
+    },
+    "fonts": {
+      "family": "Tajawal, sans-serif",
+      "size_base": "16px"
+    },
+    "animations": {
+      "transition_speed": "0.3s",
+      "hover_effect": "ease-in-out"
+    },
+    "visuals": {
+      "glass_effect": false,
+      "blur_intensity": "0px"
+    }
+  }'::jsonb
+),
+(
+  'Modern Theme', 
+  'مظهر حديث وعصري يعتمد على درجات اللون البنفسجي والنيلي ولمسات جمالية مميزة.', 
+  false, 
+  true, 
+  '{
+    "colors": {
+      "page": {
+        "bg": "#0b0f19",
+        "bg_secondary": "#161e2e",
+        "surface": "#161e2e",
+        "text": "#f9fafb",
+        "text_muted": "#9ca3af",
+        "selection_bg": "#6366f1",
+        "selection_text": "#ffffff"
+      },
+      "brand": {
+        "primary": "#6366f1",
+        "primary_hover": "#4f46e5",
+        "secondary": "#1f2937",
+        "secondary_hover": "#374151"
+      },
+      "top_nav": {
+        "bg": "#111827",
+        "border": "#1f2937",
+        "logo": "#6366f1",
+        "text": "#f9fafb",
+        "link_active": "#6366f1",
+        "link_hover": "#818cf8",
+        "icons": "#9ca3af",
+        "search_bg": "#0b0f19",
+        "search_border": "#1f2937",
+        "search_text": "#f9fafb"
+      },
+      "hero": {
+        "bg": "#0b0f19",
+        "overlay": "linear-gradient(to bottom, rgba(11,15,25,0.4), rgba(11,15,25,1))",
+        "title": "#ffffff",
+        "subtitle": "#9ca3af"
+      },
+      "buttons": {
+        "primary": { "bg": "#6366f1", "text": "#ffffff", "border": "transparent", "hover_bg": "#4f46e5", "hover_text": "#ffffff", "active_bg": "#4338ca", "disabled_bg": "#1f2937", "disabled_text": "#9ca3af" },
+        "secondary": { "bg": "#1f2937", "text": "#f3f4f6", "border": "#374151", "hover_bg": "#374151", "hover_text": "#ffffff", "active_bg": "#4b5563", "disabled_bg": "#111827", "disabled_text": "#4b5563" },
+        "success": { "bg": "#10b981", "text": "#ffffff", "border": "transparent", "hover_bg": "#059669", "hover_text": "#ffffff", "active_bg": "#047857", "disabled_bg": "#1f2937", "disabled_text": "#9ca3af" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff", "border": "transparent", "hover_bg": "#d97706", "hover_text": "#ffffff", "active_bg": "#b45309", "disabled_bg": "#1f2937", "disabled_text": "#9ca3af" },
+        "danger": { "bg": "#ef4444", "text": "#ffffff", "border": "transparent", "hover_bg": "#dc2626", "hover_text": "#ffffff", "active_bg": "#b91c1c", "disabled_bg": "#1f2937", "disabled_text": "#9ca3af" }
+      },
+      "product_cards": {
+        "bg": "#161e2e",
+        "border": "#1f2937",
+        "radius": "16px",
+        "title": "#f9fafb",
+        "price": "#6366f1",
+        "category": "#9ca3af",
+        "shadow": "0 4px 20px rgba(0,0,0,0.4)",
+        "hover_effect": "scale",
+        "hover_shadow": "0 10px 30px rgba(99,102,241,0.15)",
+        "badge_bg": "#6366f1",
+        "badge_text": "#ffffff"
+      },
+      "modal": {
+        "bg": "#161e2e",
+        "border": "#1f2937",
+        "image_border": "#1f2937",
+        "price": "#6366f1",
+        "text": "#f9fafb",
+        "text_secondary": "#9ca3af",
+        "quantity_bg": "#1f2937",
+        "quantity_text": "#f9fafb",
+        "size_active_bg": "#6366f1",
+        "size_active_text": "#ffffff",
+        "size_inactive_bg": "#1f2937",
+        "size_inactive_text": "#9ca3af",
+        "color_border_active": "#6366f1"
+      },
+      "inputs": {
+        "bg": "#161e2e",
+        "border": "#1f2937",
+        "focus_border": "#6366f1",
+        "focus_ring": "rgba(99,102,241,0.2)",
+        "placeholder": "#4b5563",
+        "text": "#f9fafb",
+        "icons": "#9ca3af"
+      },
+      "tables": {
+        "header_bg": "#161e2e",
+        "header_text": "#9ca3af",
+        "row_bg": "#161e2e",
+        "row_alt_bg": "#1b2436",
+        "row_hover_bg": "#1f2937",
+        "border": "#1f2937",
+        "selected_bg": "rgba(99,102,241,0.1)",
+        "selected_text": "#6366f1"
+      },
+      "sidebar": {
+        "bg": "#161e2e",
+        "border": "#1f2937",
+        "text": "#9ca3af",
+        "text_hover": "#f9fafb",
+        "text_active": "#6366f1",
+        "bg_active": "rgba(99,102,241,0.1)",
+        "bg_hover": "#1f2937",
+        "icons": "#9ca3af",
+        "icons_active": "#6366f1"
+      },
+      "footer": {
+        "bg": "#0b0f19",
+        "border": "#161e2e",
+        "text": "#9ca3af",
+        "link": "#9ca3af",
+        "link_hover": "#6366f1",
+        "social_bg": "#161e2e",
+        "social_text": "#9ca3af",
+        "social_hover_bg": "#6366f1",
+        "social_hover_text": "#ffffff"
+      },
+      "gallery": {
+        "bg": "#0b0f19",
+        "image_border": "#1f2937",
+        "hover_effect": "scale",
+        "overlay_bg": "rgba(11,15,25,0.6)",
+        "shadow": "0 4px 10px rgba(0,0,0,0.5)"
+      },
+      "cards": {
+        "product": { "bg": "#161e2e", "border": "#1f2937", "radius": "12px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "translate-y" },
+        "statistics": { "bg": "#161e2e", "border": "#1f2937", "radius": "16px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "none" },
+        "dashboard": { "bg": "#161e2e", "border": "#1f2937", "radius": "16px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "none" },
+        "order": { "bg": "#161e2e", "border": "#1f2937", "radius": "12px", "shadow": "0 4px 15px rgba(0,0,0,0.3)", "hover_anim": "none" }
+      },
+      "alerts": {
+        "success": { "bg": "rgba(16,185,129,0.1)", "text": "#10b981", "border": "#10b981" },
+        "error": { "bg": "rgba(239,68,68,0.1)", "text": "#ef4444", "border": "#ef4444" },
+        "warning": { "bg": "rgba(245,158,11,0.1)", "text": "#f59e0b", "border": "#f59e0b" },
+        "info": { "bg": "rgba(99,102,241,0.1)", "text": "#6366f1", "border": "#6366f1" }
+      },
+      "badges": {
+        "orange": { "bg": "#6366f1", "text": "#ffffff" },
+        "success": { "bg": "#10b981", "text": "#ffffff" },
+        "error": { "bg": "#ef4444", "text": "#ffffff" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff" },
+        "info": { "bg": "#3b82f6", "text": "#ffffff" }
+      },
+      "icons": {
+        "primary": "#6366f1",
+        "muted": "#9ca3af",
+        "white": "#ffffff"
+      },
+      "links": {
+        "normal": "#9ca3af",
+        "hover": "#6366f1",
+        "active": "#6366f1",
+        "visited": "#9ca3af"
+      },
+      "shadows": {
+        "color": "rgba(0,0,0,0.6)",
+        "size": "8px",
+        "blur": "30px"
+      },
+      "borders": {
+        "color": "#1f2937",
+        "width": "1px",
+        "radius": "12px"
+      },
+      "scrollbar": {
+        "track": "#0b0f19",
+        "thumb": "#1f2937",
+        "thumb_hover": "#6366f1"
+      },
+      "loading": {
+        "loader": "#6366f1",
+        "spinner": "#1f2937"
+      },
+      "toasts": {
+        "bg": "#161e2e",
+        "border": "#1f2937",
+        "text": "#f9fafb"
+      },
+      "cart": {
+        "bg": "#161e2e",
+        "border": "#1f2937",
+        "text": "#f9fafb",
+        "totals_bg": "#0b0f19",
+        "totals_text": "#f9fafb"
+      }
+    },
+    "fonts": {
+      "family": "Tajawal, sans-serif",
+      "size_base": "16px"
+    },
+    "animations": {
+      "transition_speed": "0.3s",
+      "hover_effect": "ease-in-out"
+    },
+    "visuals": {
+      "glass_effect": false,
+      "blur_intensity": "0px"
+    }
+  }'::jsonb
+),
+(
+  'Luxury Theme', 
+  'تصميم فخم يعتمد على درجات الأسود الملكي مع لمسات ذهبية راقية تضفي طابع التميز والجاذبية.', 
+  false, 
+  true, 
+  '{
+    "colors": {
+      "page": {
+        "bg": "#09090b",
+        "bg_secondary": "#18181b",
+        "surface": "#18181b",
+        "text": "#f4f4f5",
+        "text_muted": "#a1a1aa",
+        "selection_bg": "#d4af37",
+        "selection_text": "#000000"
+      },
+      "brand": {
+        "primary": "#d4af37",
+        "primary_hover": "#aa8c2c",
+        "secondary": "#27272a",
+        "secondary_hover": "#3f3f46"
+      },
+      "top_nav": {
+        "bg": "#121214",
+        "border": "#27272a",
+        "logo": "#d4af37",
+        "text": "#f4f4f5",
+        "link_active": "#d4af37",
+        "link_hover": "#e5c158",
+        "icons": "#a1a1aa",
+        "search_bg": "#09090b",
+        "search_border": "#27272a",
+        "search_text": "#f4f4f5"
+      },
+      "hero": {
+        "bg": "#09090b",
+        "overlay": "linear-gradient(to bottom, rgba(9,9,11,0.5), rgba(9,9,11,1))",
+        "title": "#ffffff",
+        "subtitle": "#a1a1aa"
+      },
+      "buttons": {
+        "primary": { "bg": "#d4af37", "text": "#000000", "border": "transparent", "hover_bg": "#aa8c2c", "hover_text": "#000000", "active_bg": "#8c7220", "disabled_bg": "#27272a", "disabled_text": "#71717a" },
+        "secondary": { "bg": "#27272a", "text": "#f4f4f5", "border": "#3f3f46", "hover_bg": "#3f3f46", "hover_text": "#ffffff", "active_bg": "#52525b", "disabled_bg": "#18181b", "disabled_text": "#71717a" },
+        "success": { "bg": "#10b981", "text": "#ffffff", "border": "transparent", "hover_bg": "#059669", "hover_text": "#ffffff", "active_bg": "#047857", "disabled_bg": "#27272a", "disabled_text": "#71717a" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff", "border": "transparent", "hover_bg": "#d97706", "hover_text": "#ffffff", "active_bg": "#b45309", "disabled_bg": "#27272a", "disabled_text": "#71717a" },
+        "danger": { "bg": "#ef4444", "text": "#ffffff", "border": "transparent", "hover_bg": "#dc2626", "hover_text": "#ffffff", "active_bg": "#b91c1c", "disabled_bg": "#27272a", "disabled_text": "#71717a" }
+      },
+      "product_cards": {
+        "bg": "#18181b",
+        "border": "#27272a",
+        "radius": "12px",
+        "title": "#f4f4f5",
+        "price": "#d4af37",
+        "category": "#a1a1aa",
+        "shadow": "0 4px 20px rgba(0,0,0,0.6)",
+        "hover_effect": "scale",
+        "hover_shadow": "0 10px 30px rgba(212,175,55,0.12)",
+        "badge_bg": "#d4af37",
+        "badge_text": "#000000"
+      },
+      "modal": {
+        "bg": "#18181b",
+        "border": "#27272a",
+        "image_border": "#27272a",
+        "price": "#d4af37",
+        "text": "#f4f4f5",
+        "text_secondary": "#a1a1aa",
+        "quantity_bg": "#27272a",
+        "quantity_text": "#f4f4f5",
+        "size_active_bg": "#d4af37",
+        "size_active_text": "#000000",
+        "size_inactive_bg": "#27272a",
+        "size_inactive_text": "#a1a1aa",
+        "color_border_active": "#d4af37"
+      },
+      "inputs": {
+        "bg": "#18181b",
+        "border": "#27272a",
+        "focus_border": "#d4af37",
+        "focus_ring": "rgba(212,175,55,0.2)",
+        "placeholder": "#52525b",
+        "text": "#f4f4f5",
+        "icons": "#a1a1aa"
+      },
+      "tables": {
+        "header_bg": "#18181b",
+        "header_text": "#a1a1aa",
+        "row_bg": "#18181b",
+        "row_alt_bg": "#1f1f23",
+        "row_hover_bg": "#27272a",
+        "border": "#27272a",
+        "selected_bg": "rgba(212,175,55,0.1)",
+        "selected_text": "#d4af37"
+      },
+      "sidebar": {
+        "bg": "#18181b",
+        "border": "#27272a",
+        "text": "#a1a1aa",
+        "text_hover": "#f4f4f5",
+        "text_active": "#d4af37",
+        "bg_active": "rgba(212,175,55,0.08)",
+        "bg_hover": "#27272a",
+        "icons": "#a1a1aa",
+        "icons_active": "#d4af37"
+      },
+      "footer": {
+        "bg": "#09090b",
+        "border": "#18181b",
+        "text": "#a1a1aa",
+        "link": "#a1a1aa",
+        "link_hover": "#d4af37",
+        "social_bg": "#18181b",
+        "social_text": "#a1a1aa",
+        "social_hover_bg": "#d4af37",
+        "social_hover_text": "#000000"
+      },
+      "gallery": {
+        "bg": "#09090b",
+        "image_border": "#27272a",
+        "hover_effect": "scale",
+        "overlay_bg": "rgba(9,9,11,0.6)",
+        "shadow": "0 4px 10px rgba(0,0,0,0.6)"
+      },
+      "cards": {
+        "product": { "bg": "#18181b", "border": "#27272a", "radius": "8px", "shadow": "0 4px 15px rgba(0,0,0,0.5)", "hover_anim": "translate-y" },
+        "statistics": { "bg": "#18181b", "border": "#27272a", "radius": "12px", "shadow": "0 4px 15px rgba(0,0,0,0.5)", "hover_anim": "none" },
+        "dashboard": { "bg": "#18181b", "border": "#27272a", "radius": "12px", "shadow": "0 4px 15px rgba(0,0,0,0.5)", "hover_anim": "none" },
+        "order": { "bg": "#18181b", "border": "#27272a", "radius": "8px", "shadow": "0 4px 15px rgba(0,0,0,0.5)", "hover_anim": "none" }
+      },
+      "alerts": {
+        "success": { "bg": "rgba(16,185,129,0.1)", "text": "#10b981", "border": "#10b981" },
+        "error": { "bg": "rgba(239,68,68,0.1)", "text": "#ef4444", "border": "#ef4444" },
+        "warning": { "bg": "rgba(245,158,11,0.1)", "text": "#f59e0b", "border": "#f59e0b" },
+        "info": { "bg": "rgba(212,175,55,0.1)", "text": "#d4af37", "border": "#d4af37" }
+      },
+      "badges": {
+        "orange": { "bg": "#d4af37", "text": "#000000" },
+        "success": { "bg": "#10b981", "text": "#ffffff" },
+        "error": { "bg": "#ef4444", "text": "#ffffff" },
+        "warning": { "bg": "#f59e0b", "text": "#ffffff" },
+        "info": { "bg": "#3b82f6", "text": "#ffffff" }
+      },
+      "icons": {
+        "primary": "#d4af37",
+        "muted": "#a1a1aa",
+        "white": "#ffffff"
+      },
+      "links": {
+        "normal": "#a1a1aa",
+        "hover": "#d4af37",
+        "active": "#d4af37",
+        "visited": "#a1a1aa"
+      },
+      "shadows": {
+        "color": "rgba(0,0,0,0.8)",
+        "size": "10px",
+        "blur": "45px"
+      },
+      "borders": {
+        "color": "#27272a",
+        "width": "1px",
+        "radius": "8px"
+      },
+      "scrollbar": {
+        "track": "#09090b",
+        "thumb": "#27272a",
+        "thumb_hover": "#d4af37"
+      },
+      "loading": {
+        "loader": "#d4af37",
+        "spinner": "#27272a"
+      },
+      "toasts": {
+        "bg": "#18181b",
+        "border": "#27272a",
+        "text": "#f4f4f5"
+      },
+      "cart": {
+        "bg": "#18181b",
+        "border": "#27272a",
+        "text": "#f4f4f5",
+        "totals_bg": "#09090b",
+        "totals_text": "#f4f4f5"
+      }
+    },
+    "fonts": {
+      "family": "Tajawal, sans-serif",
+      "size_base": "16px"
+    },
+    "animations": {
+      "transition_speed": "0.3s",
+      "hover_effect": "ease-in-out"
+    },
+    "visuals": {
+      "glass_effect": false,
+      "blur_intensity": "0px"
+    }
+  }'::jsonb
+),
+(
+  'Minimal Theme', 
+  'تصميم هادئ وبسيط للغاية، خالي من التكلف والتعقيد، باللونين الأبيض والأسود النقي.', 
+  false, 
+  true, 
+  '{
+    "colors": {
+      "page": {
+        "bg": "#ffffff",
+        "bg_secondary": "#fafafa",
+        "surface": "#ffffff",
+        "text": "#171717",
+        "text_muted": "#737373",
+        "selection_bg": "#000000",
+        "selection_text": "#ffffff"
+      },
+      "brand": {
+        "primary": "#000000",
+        "primary_hover": "#262626",
+        "secondary": "#e5e5e5",
+        "secondary_hover": "#d4d4d4"
+      },
+      "top_nav": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "logo": "#000000",
+        "text": "#171717",
+        "link_active": "#000000",
+        "link_hover": "#404040",
+        "icons": "#737373",
+        "search_bg": "#fafafa",
+        "search_border": "#e5e5e5",
+        "search_text": "#171717"
+      },
+      "hero": {
+        "bg": "#ffffff",
+        "overlay": "",
+        "title": "#000000",
+        "subtitle": "#737373"
+      },
+      "buttons": {
+        "primary": { "bg": "#000000", "text": "#ffffff", "border": "transparent", "hover_bg": "#262626", "hover_text": "#ffffff", "active_bg": "#171717", "disabled_bg": "#e5e5e5", "disabled_text": "#a3a3a3" },
+        "secondary": { "bg": "#ffffff", "text": "#171717", "border": "#e5e5e5", "hover_bg": "#fafafa", "hover_text": "#171717", "active_bg": "#f5f5f5", "disabled_bg": "#fafafa", "disabled_text": "#d4d4d4" },
+        "success": { "bg": "#171717", "text": "#ffffff", "border": "transparent", "hover_bg": "#262626", "hover_text": "#ffffff", "active_bg": "#000000", "disabled_bg": "#e5e5e5", "disabled_text": "#a3a3a3" },
+        "warning": { "bg": "#404040", "text": "#ffffff", "border": "transparent", "hover_bg": "#525252", "hover_text": "#ffffff", "active_bg": "#262626", "disabled_bg": "#e5e5e5", "disabled_text": "#a3a3a3" },
+        "danger": { "bg": "#737373", "text": "#ffffff", "border": "transparent", "hover_bg": "#525252", "hover_text": "#ffffff", "active_bg": "#404040", "disabled_bg": "#e5e5e5", "disabled_text": "#a3a3a3" }
+      },
+      "product_cards": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "radius": "4px",
+        "title": "#171717",
+        "price": "#000000",
+        "category": "#737373",
+        "shadow": "none",
+        "hover_effect": "none",
+        "hover_shadow": "none",
+        "badge_bg": "#000000",
+        "badge_text": "#ffffff"
+      },
+      "modal": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "image_border": "#e5e5e5",
+        "price": "#000000",
+        "text": "#171717",
+        "text_secondary": "#737373",
+        "quantity_bg": "#fafafa",
+        "quantity_text": "#171717",
+        "size_active_bg": "#000000",
+        "size_active_text": "#ffffff",
+        "size_inactive_bg": "#ffffff",
+        "size_inactive_text": "#737373",
+        "color_border_active": "#000000"
+      },
+      "inputs": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "focus_border": "#000000",
+        "focus_ring": "rgba(0,0,0,0.05)",
+        "placeholder": "#a3a3a3",
+        "text": "#171717",
+        "icons": "#737373"
+      },
+      "tables": {
+        "header_bg": "#fafafa",
+        "header_text": "#737373",
+        "row_bg": "#ffffff",
+        "row_alt_bg": "#ffffff",
+        "row_hover_bg": "#fafafa",
+        "border": "#e5e5e5",
+        "selected_bg": "#f5f5f5",
+        "selected_text": "#000000"
+      },
+      "sidebar": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "text": "#737373",
+        "text_hover": "#171717",
+        "text_active": "#000000",
+        "bg_active": "#f5f5f5",
+        "bg_hover": "#fafafa",
+        "icons": "#737373",
+        "icons_active": "#000000"
+      },
+      "footer": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "text": "#737373",
+        "link": "#737373",
+        "link_hover": "#000000",
+        "social_bg": "#fafafa",
+        "social_text": "#737373",
+        "social_hover_bg": "#000000",
+        "social_hover_text": "#ffffff"
+      },
+      "gallery": {
+        "bg": "#ffffff",
+        "image_border": "#e5e5e5",
+        "hover_effect": "none",
+        "overlay_bg": "rgba(255,255,255,0.8)",
+        "shadow": "none"
+      },
+      "cards": {
+        "product": { "bg": "#ffffff", "border": "#e5e5e5", "radius": "4px", "shadow": "none", "hover_anim": "none" },
+        "statistics": { "bg": "#ffffff", "border": "#e5e5e5", "radius": "4px", "shadow": "none", "hover_anim": "none" },
+        "dashboard": { "bg": "#ffffff", "border": "#e5e5e5", "radius": "4px", "shadow": "none", "hover_anim": "none" },
+        "order": { "bg": "#ffffff", "border": "#e5e5e5", "radius": "4px", "shadow": "none", "hover_anim": "none" }
+      },
+      "alerts": {
+        "success": { "bg": "#fafafa", "text": "#171717", "border": "#e5e5e5" },
+        "error": { "bg": "#fafafa", "text": "#171717", "border": "#e5e5e5" },
+        "warning": { "bg": "#fafafa", "text": "#171717", "border": "#e5e5e5" },
+        "info": { "bg": "#fafafa", "text": "#171717", "border": "#e5e5e5" }
+      },
+      "badges": {
+        "orange": { "bg": "#000000", "text": "#ffffff" },
+        "success": { "bg": "#171717", "text": "#ffffff" },
+        "error": { "bg": "#404040", "text": "#ffffff" },
+        "warning": { "bg": "#737373", "text": "#ffffff" },
+        "info": { "bg": "#a3a3a3", "text": "#ffffff" }
+      },
+      "icons": {
+        "primary": "#000000",
+        "muted": "#737373",
+        "white": "#171717"
+      },
+      "links": {
+        "normal": "#737373",
+        "hover": "#000000",
+        "active": "#000000",
+        "visited": "#737373"
+      },
+      "shadows": {
+        "color": "rgba(0,0,0,0)",
+        "size": "0px",
+        "blur": "0px"
+      },
+      "borders": {
+        "color": "#e5e5e5",
+        "width": "1px",
+        "radius": "4px"
+      },
+      "scrollbar": {
+        "track": "#ffffff",
+        "thumb": "#e5e5e5",
+        "thumb_hover": "#000000"
+      },
+      "loading": {
+        "loader": "#000000",
+        "spinner": "#e5e5e5"
+      },
+      "toasts": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "text": "#171717"
+      },
+      "cart": {
+        "bg": "#ffffff",
+        "border": "#e5e5e5",
+        "text": "#171717",
+        "totals_bg": "#fafafa",
+        "totals_text": "#171717"
+      }
+    },
+    "fonts": {
+      "family": "Tajawal, sans-serif",
+      "size_base": "16px"
+    },
+    "animations": {
+      "transition_speed": "0.15s",
+      "hover_effect": "linear"
+    },
+    "visuals": {
+      "glass_effect": false,
+      "blur_intensity": "0px"
+    }
+  }'::jsonb
+)
+ON CONFLICT (name) DO NOTHING;
+
+

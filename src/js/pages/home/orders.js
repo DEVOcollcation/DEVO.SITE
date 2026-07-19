@@ -24,16 +24,19 @@ export async function initOrdersView() {
 // 🌟 الرادار اللحظي لمنع التعديل عند القفل 🌟
 function setupOrdersRealtime() {
     supabase.channel('worker_orders_sync')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `worker_id=eq.${currentUser.id}` }, (payload) => {
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
+            if (payload.new.worker_id !== currentUser.id && payload.new.assigned_worker_id !== currentUser.id) return;
+            
             const idx = allOrders.findIndex(o => o.id === payload.new.id);
             if (idx > -1) {
                 allOrders[idx] = { ...allOrders[idx], ...payload.new };
                 renderOrders();
                 
-                // إذا كان يحاول تعديله وقامت الإدارة بقفله
-                if (orderToEdit && orderToEdit.id === payload.new.id && payload.new.is_locked) {
+                // إذا كان يحاول تعديله وقام مستخدم آخر بقفله
+                const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || '';
+                if (orderToEdit && orderToEdit.id === payload.new.id && payload.new.is_locked && payload.new.assigned_admin_name !== myName) {
                     closeEditWarningModal();
-                    showToast('قامت الإدارة بقفل هذا الأوردر للتو، لا يمكن تعديله الآن!', 'error');
+                    showToast('قامت الإدارة أو مستخدم آخر بقفل هذا الأوردر للتو، لا يمكن تعديله الآن!', 'error');
                 }
             }
         })
@@ -74,7 +77,7 @@ async function fetchMyOrders() {
                 colors (name)
             )
         `)
-        .eq('worker_id', currentUser.id)
+        .or(`worker_id.eq.${currentUser.id},assigned_worker_id.eq.${currentUser.id}`)
         .order('created_at', { ascending: false });
         
     if (error) {
@@ -137,11 +140,15 @@ function renderOrders() {
         const dateStr = new Date(o.created_at).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
         
         const lockIcon = o.is_locked ? `<i class="ph ph-lock text-devo-error" title="مقفل بواسطة الإدارة"></i>` : '';
+        const isEditable = o.status === 'created' && !o.is_locked;
         let actionButtons = `
             <div class="flex items-center justify-center gap-2">
                 <button onclick="viewOrderDetails('${o.id}')" class="p-2 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded text-white transition-colors" title="عرض"><i class="ph ph-eye"></i></button>
                 <button onclick="reprintOrder('${o.id}')" class="p-2 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="طباعة"><i class="ph ph-printer"></i></button>
-                ${!o.is_locked ? `<button onclick="confirmEditOrder('${o.id}')" class="p-2 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple"></i></button>` : `<button disabled class="p-2 bg-devo-gray/20 text-devo-muted rounded cursor-not-allowed" title="هذا الأوردر قيد العمل من قبل الإدارة حالياً"><i class="ph ph-lock"></i></button>`}
+                ${isEditable 
+                    ? `<button onclick="confirmEditOrder('${o.id}')" class="p-2 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple"></i></button>` 
+                    : `<button disabled class="p-2 bg-devo-gray/20 text-devo-muted rounded cursor-not-allowed" title="${o.is_locked ? 'هذا الأوردر قيد العمل من قبل الإدارة حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله'}"><i class="ph ph-lock text-devo-muted"></i></button>`
+                }
                 <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="p-2 bg-devo-black border border-devo-gray hover:border-devo-orange rounded text-devo-muted hover:text-white transition-colors" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'}"></i></button>
             </div>
         `;
@@ -180,7 +187,7 @@ function renderOrders() {
     });
 }
 
-window.viewOrderDetails = (id) => {
+window.viewOrderDetails = async (id) => {
     const o = allOrders.find(x => x.id === id);
     if (!o) return;
 
@@ -198,13 +205,15 @@ window.viewOrderDetails = (id) => {
 
         const colorWithQty = `${qty} ${colorName}`;
 
+        const piecePrice = item.price_per_series / sizesCount;
+
         if (!groupedItems[modelId]) {
             groupedItems[modelId] = {
                 modelName: item.models?.name,
                 colorsList: [colorWithQty],
                 totalQty: qty,
                 totalPieces: pieces, 
-                price: item.price_per_series,
+                price: piecePrice,
                 totalPrice: item.total_price
             };
         } else {
@@ -227,6 +236,48 @@ window.viewOrderDetails = (id) => {
             <td class="py-3 text-devo-orange font-black text-left text-lg">${item.totalPrice}</td>
         </tr>
     `).join('');
+
+    // جلب سجل الحركات بقاعدة البيانات للأوردر
+    let logsHtml = '';
+    try {
+        const { data: logs, error: logsError } = await supabase
+            .from('order_logs')
+            .select('*')
+            .eq('order_id', id)
+            .order('created_at', { ascending: false });
+
+        if (logsError) throw logsError;
+
+        if (logs && logs.length > 0) {
+            logsHtml = `
+                <div class="mt-6 border-t border-devo-gray pt-4">
+                    <h5 class="text-xs text-devo-orange font-bold mb-3 flex items-center gap-1.5"><i class="ph ph-clock-counter-clockwise"></i> سجل حركات وتعديلات الأوردر</h5>
+                    <div class="space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar text-xs">
+                        ${logs.map(log => {
+                            const logDate = new Date(log.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            return `
+                                <div class="flex gap-2.5 items-start">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-devo-orange mt-1.5 shrink-0 shadow-sm shadow-devo-orange/50"></div>
+                                    <div class="flex-1 text-white/90">
+                                        <span class="font-normal">${log.notes}</span>
+                                        <span class="text-[10px] text-devo-muted mr-1.5 font-mono">(${logDate})</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        } else {
+            logsHtml = `
+                <div class="mt-4 border-t border-devo-gray pt-3 text-xs text-devo-muted">
+                    <i class="ph ph-info mr-1"></i> لا توجد حركات مسجلة لهذا الأوردر بعد.
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.error('Error fetching logs:', e);
+    }
 
     document.getElementById('order-details-content').innerHTML = `
         <div class="bg-devo-black p-4 rounded-xl border border-devo-gray mb-6 flex justify-between items-center">
@@ -265,6 +316,9 @@ window.viewOrderDetails = (id) => {
                 <span class="text-devo-orange font-black text-lg">${remaining} ج.م</span>
             </div>
         </div>
+
+        <!-- سجل حركات الأوردر -->
+        ${logsHtml}
     `;
 
     const modal = document.getElementById('order-details-modal');
@@ -294,7 +348,7 @@ window.reprintOrder = (id) => {
             color_name: i.colors?.name,
             qty: i.quantity,
             pieces: i.quantity * sizesCount,
-            price: i.price_per_series,
+            price: i.price_per_series / sizesCount,
             total: i.total_price
         };
     });
@@ -344,16 +398,34 @@ window.closeEditWarningModal = () => {
     orderToEdit = null;
 };
 
-document.getElementById('btn-confirm-edit')?.addEventListener('click', () => {
-    if (!orderToEdit) return;
+document.getElementById('btn-confirm-edit')?.addEventListener('click', async () => {
+    // حفظ نسخة محليّة من الأوردر المختار لتفادي تفريغه أو تعيينه بـ null بسبب أحداث الرادار اللحظية المتزامنة
+    const targetOrder = orderToEdit;
+    if (!targetOrder) return;
 
     const btn = document.getElementById('btn-confirm-edit');
     const originalText = btn.innerHTML;
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري التجهيز...`;
     btn.disabled = true;
 
+    // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن
+    const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+    const { error } = await supabase.from('orders').update({
+        is_locked: true,
+        assigned_admin_name: userName
+    }).eq('id', targetOrder.id);
+
+    if (error) {
+        showToast('فشل قفل الأوردر للتعديل: ' + error.message, 'error');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        return;
+    }
+
+    await logOrderAction(targetOrder.id, 'cart_edit_start', `بدأ الموظف ${userName} تعديل الأوردر بالسلة (المعرض)`);
+
     // 🌟 الإصلاح الجذري لمعادلة الأسعار والصور عند إرسالها للسلة 🌟
-    const newCart = orderToEdit.order_items.map(item => {
+    const newCart = targetOrder.order_items.map(item => {
         let imgUrl = './src/assets/icons/devo.jpeg';
         if (item.models?.model_images && item.models.model_images.length > 0) {
             imgUrl = resolveImageUrl(item.models.model_images[0].image_url);
@@ -377,19 +449,21 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', () => {
 
     localStorage.setItem('devo_cart', JSON.stringify(newCart));
     
-const orderData = {
-        id: orderToEdit.id,
-        invoice_number: orderToEdit.invoice_number,
-        customer_name: orderToEdit.customer_name,
-        phone_1: orderToEdit.phone_1, phone_2: orderToEdit.phone_2,
-        address: orderToEdit.address, deposit: orderToEdit.deposit,
-        deposit_receiver: orderToEdit.deposit_receiver, notes: orderToEdit.notes,
-        original_items: orderToEdit.order_items // 🌟 السطر السحري: تمرير ما يملكه الأوردر للسلة 🌟
+    const orderData = {
+        id: targetOrder.id,
+        invoice_number: targetOrder.invoice_number,
+        customer_name: targetOrder.customer_name,
+        phone_1: targetOrder.phone_1, phone_2: targetOrder.phone_2,
+        address: targetOrder.address, deposit: targetOrder.deposit,
+        deposit_receiver: targetOrder.deposit_receiver, notes: targetOrder.notes,
+        original_items: targetOrder.order_items // 🌟 السطر السحري: تمرير ما يملكه الأوردر للسلة 🌟
     };
     localStorage.setItem('devo_edit_order_data', JSON.stringify(orderData));
     
     btn.innerHTML = originalText;
     btn.disabled = false;
+    
+    // إغلاق مودال التنبيه وتصفير المتغير العام بعد انتهاء العمليات بأمان
     closeEditWarningModal();
     showToast('تم تحميل بيانات الأوردر للسلة لتعديله', 'info');
 
@@ -438,3 +512,24 @@ window.customSortHandlers['customer-orders-table'] = (colIndex, direction) => {
 
     renderOrders();
 };
+
+// دالة لتسجيل حركات وتعديلات الأوردرات بسجل الملاحظات (للموظفين)
+async function logOrderAction(orderId, actionType, notes) {
+    try {
+        const userId = currentUser?.id || null;
+        const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+        
+        const { error } = await supabase.from('order_logs').insert([{
+            order_id: orderId,
+            user_id: userId,
+            user_name: userName,
+            action_type: actionType,
+            notes: notes
+        }]);
+        if (error) {
+            console.error('Database error inserting order log:', error);
+        }
+    } catch (err) {
+        console.error('Error logging order action:', err);
+    }
+}

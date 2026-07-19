@@ -27,19 +27,72 @@
   }
 </script>
     <script>
+        // Prevent FOUC: load and apply theme variables from LocalStorage immediately
+        (function() {
+            try {
+                const savedTheme = localStorage.getItem('devo_active_theme');
+                if (savedTheme) {
+                    const theme = JSON.parse(savedTheme);
+                    const colors = theme.colors;
+                    if (colors) {
+                        const styleEl = document.createElement('style');
+                        styleEl.id = 'devo-theme-styles-early';
+                        let cssText = `
+                            :root {
+                                --devo-black: ${colors.page?.bg || '#0a0a0a'};
+                                --devo-dark: ${colors.page?.bg_secondary || colors.page?.surface || '#171717'};
+                                --devo-gray: ${colors.borders?.color || '#262626'};
+                                --devo-gray-hover: ${colors.brand?.secondary_hover || '#404040'};
+                                --devo-orange: ${colors.brand?.primary || '#f97316'};
+                                --devo-orange-hover: ${colors.brand?.primary_hover || '#ea580c'};
+                                --devo-text: ${colors.page?.text || '#f5f5f5'};
+                                --devo-muted: ${colors.page?.text_muted || '#a3a3a3'};
+                                --devo-success: ${colors.alerts?.success?.text || '#10b981'};
+                                --devo-error: ${colors.alerts?.error?.text || '#ef4444'};
+                                --devo-warning: ${colors.alerts?.warning?.text || '#f59e0b'};
+                                --devo-info: ${colors.alerts?.info?.text || '#3b82f6'};
+                                --selection-bg: ${colors.page?.selection_bg || '#f97316'};
+                                --selection-text: ${colors.page?.selection_text || '#ffffff'};
+                                --border-color: ${colors.borders?.color || '#262626'};
+                                --border-width: ${colors.borders?.width || '1px'};
+                                --border-radius-base: ${colors.borders?.radius || '12px'};
+                                --shadow-color: ${colors.shadows?.color || 'rgba(0,0,0,0.8)'};
+                                --shadow-size: ${colors.shadows?.size || '10px'};
+                                --shadow-blur: ${colors.shadows?.blur || '40px'};
+                                --scrollbar-track: ${colors.scrollbar?.track || '#0a0a0a'};
+                                --scrollbar-thumb: ${colors.scrollbar?.thumb || '#262626'};
+                                --scrollbar-thumb-hover: ${colors.scrollbar?.thumb_hover || '#f97316'};
+                            }
+                        `;
+                        styleEl.innerHTML = cssText;
+                        document.head.appendChild(styleEl);
+                    }
+                }
+            } catch(e) { console.error('Theme early load error:', e); }
+        })();
+    </script>
+    <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
                         devo: {
-                            black: '#0a0a0a', dark: '#171717', gray: '#262626',
-                            orange: '#f97316', orangeHover: '#ea580c',
-                            text: '#f5f5f5', muted: '#a3a3a3',
-                            success: '#10b981', error: '#ef4444', info: '#3b82f6'
+                            black: 'var(--devo-black, #0a0a0a)',
+                            dark: 'var(--devo-dark, #171717)',
+                            gray: 'var(--devo-gray, #262626)',
+                            grayHover: 'var(--devo-gray-hover, #404040)',
+                            orange: 'var(--devo-orange, #f97316)',
+                            orangeHover: 'var(--devo-orange-hover, #ea580c)',
+                            text: 'var(--devo-text, #f5f5f5)',
+                            muted: 'var(--devo-muted, #a3a3a3)',
+                            success: 'var(--devo-success, #10b981)',
+                            error: 'var(--devo-error, #ef4444)',
+                            warning: 'var(--devo-warning, #f59e0b)',
+                            info: 'var(--devo-info, #3b82f6)'
                         }
                     },
                     fontFamily: { sans: ['Tajawal', 'sans-serif'] },
-                    boxShadow: { 'devo-float': '0 10px 40px -10px rgba(0,0,0,0.8)' }
+                    boxShadow: { 'devo-float': 'var(--shadow-devo-float, 0 10px 40px -10px rgba(0,0,0,0.8))' }
                 }
             }
         }

@@ -294,9 +294,9 @@ function generateGalleryCardHTML(m) {
     return `
     <div id="gallery-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
         ${stockBadge}
-        <div class="h-64 sm:h-72 bg-devo-black relative overflow-hidden">
+        <div class="h-64 sm:h-72 bg-black relative overflow-hidden">
             <img src="${mainImg}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='./src/assets/icons/devo.jpeg'" loading="lazy">
-            <div class="absolute inset-0 bg-gradient-to-t from-devo-black via-devo-black/20 to-transparent opacity-90"></div>
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-90"></div>
         </div>
         <div class="p-4 flex flex-col flex-1 justify-end z-10 -mt-16 relative">
             <p class="text-devo-muted text-[10px] font-mono tracking-wider mb-1">${m.factory_code || m.system_code}</p>

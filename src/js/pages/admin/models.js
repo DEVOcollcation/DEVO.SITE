@@ -794,8 +794,20 @@ async function handleSaveModel(e) {
 window.handleDeleteModel = async (id) => {
     const confirmed = await confirmDialog({ title: 'حذف الموديل', message: 'تأكيد الحذف النهائي؟', isDestructive: true });
     if (confirmed) {
-        await supabase.from('models').delete().eq('id', id);
-        showToast('تم الحذف'); 
+        try {
+            const { error } = await supabase.from('models').delete().eq('id', id);
+            if (error) {
+                if (error.code === '23503') {
+                    showToast('لا يمكن حذف الموديل لارتباطه بفواتير أو عمليات في السيستم. يمكنك تعطيل حالته بدلاً من حذفه.', 'error');
+                } else {
+                    showToast(`حدث خطأ أثناء الحذف: ${error.message}`, 'error');
+                }
+                return;
+            }
+            showToast('تم حذف الموديل بنجاح', 'success');
+        } catch (err) {
+            showToast('حدث خطأ غير متوقع أثناء محاولة الحذف', 'error');
+        }
     }
 };
 

@@ -1,4 +1,5 @@
 import { supabase } from '../../config/supabase.js';
+import { syncActiveTheme } from '../../services/theme.js';
 
 // ============================================================
 // State
@@ -41,6 +42,9 @@ let originalAuditStates = new Map(); // id -> counted_qty
 // Boot
 // ============================================================
 document.addEventListener('DOMContentLoaded', async () => {
+    // تزامن المظهر النشط من قاعدة البيانات
+    syncActiveTheme();
+
     const sessionStr = localStorage.getItem('devo_session');
     if (!sessionStr) { window.location.href = 'auth.html'; return; }
     try { currentUser = JSON.parse(sessionStr); }

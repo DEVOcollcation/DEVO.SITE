@@ -2,12 +2,14 @@ import { supabase } from '../../config/supabase.js';
 import { getCurrentSession } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js'; 
+import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
 
 let currentUser = null;
 let cartItems = [];
 let itemToDeleteIndex = null;
 let editingOrderId = null; 
 let cartRealtimeChannel = null;
+let lastOrderForPrinting = null;
 
 export function initCart() {
     const { session } = getCurrentSession();
@@ -261,6 +263,17 @@ window.clearEntireCart = async () => {
     });
     
     if (confirmed) {
+        if (editingOrderId) {
+            const finalEditingOrderId = editingOrderId;
+            await supabase.from('orders').update({
+                is_locked: false,
+                assigned_admin_name: null
+            }).eq('id', finalEditingOrderId);
+
+            const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+            await logOrderAction(finalEditingOrderId, 'cart_edit_cancel', `تم إلغاء تعديل الأوردر وإفراغ السلة بواسطة (${userName})`);
+        }
+
         cartItems = [];
         editingOrderId = null;
         localStorage.removeItem('devo_cart');
@@ -363,17 +376,24 @@ async function handleCheckout(e) {
         let oldOrderItems = []; 
 
         if (editingOrderId) {
-            const { data: checkOrder } = await supabase.from('orders').select('is_locked').eq('id', editingOrderId).single();
+            const { data: checkOrder } = await supabase.from('orders').select('is_locked, assigned_admin_name').eq('id', editingOrderId).single();
             if (checkOrder && checkOrder.is_locked) {
-                showToast('عفواً، لقد قامت الإدارة بقفل هذا الأوردر ولا يمكن تعديله الآن!', 'error');
-                btn.disabled = false;
-                btn.innerHTML = `حفظ التعديلات وإصدار الفاتورة`;
-                return;
+                const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || '';
+                // السماح بالحفظ فقط إذا كان حائز القفل هو نفس المستخدم الحالي
+                if (checkOrder.assigned_admin_name !== myName) {
+                    showToast('عفواً، لقد قامت الإدارة أو مستخدم آخر بقفل هذا الأوردر ولا يمكن تعديله الآن!', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = `حفظ التعديلات وإصدار الفاتورة`;
+                    return;
+                }
             }
 
             const { data: oldItemsData } = await supabase.from('order_items').select('*').eq('order_id', editingOrderId);
             oldOrderItems = oldItemsData || [];
 
+            orderData.assigned_worker_id = null; // Clear assignment on successful edit save
+            orderData.is_locked = false; // Release lock on checkout save
+            orderData.assigned_admin_name = null; // Clear admin lock holder name
             const { data: order, error: orderError } = await supabase.from('orders').update(orderData).eq('id', editingOrderId).select().single();
             if (orderError) throw orderError;
             
@@ -475,8 +495,16 @@ async function handleCheckout(e) {
         e.target.reset();
         document.getElementById('c-receiver').required = false;
         
+        const finalEditingOrderId = editingOrderId;
         editingOrderId = null;
         localStorage.removeItem('devo_edit_order_data');
+
+        const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+        if (finalEditingOrderId) {
+            await logOrderAction(orderIdToPrint, 'edited_in_cart', `تم تعديل أصناف الأوردر وإعادة حفظه من السلة بواسطة (${userName})`);
+        } else {
+            await logOrderAction(orderIdToPrint, 'created', `تم إنشاء الأوردر بواسطة (${userName})`);
+        }
 
         document.getElementById('checkout-modal')?.classList.add('opacity-0');
         setTimeout(() => {
@@ -542,42 +570,112 @@ function updateFloatingCart() {
     }
 }
 
-function showInvoiceModal(order, items) {
+async function showInvoiceModal(order, items) {
     const modalContent = document.querySelector('#invoice-modal .bg-white');
     if (modalContent) modalContent.scrollTop = 0;
 
-    document.getElementById('inv-number').textContent = order.invoice_number || order.id;
-    document.getElementById('inv-date').textContent = new Date(order.created_at).toLocaleDateString('ar-EG');
-    document.getElementById('inv-cust-name').textContent = order.customer_name;
-    document.getElementById('inv-cust-phone').textContent = order.phone_1;
+    // Fetch the complete order with nested relations to ensure address, cashier name, model names and color names are perfectly accurate
+    try {
+        const { data: o, error } = await supabase
+            .from('orders')
+            .select(`
+                *,
+                system_users!worker_id (full_name),
+                order_items (
+                    *,
+                    models (
+                        name,
+                        factory_code,
+                        system_code,
+                        model_sizes (size_id),
+                        classes (
+                            class_sizes (size_id)
+                        )
+                    ),
+                    colors (
+                        id,
+                        name,
+                        color_code
+                    )
+                )
+            `)
+            .eq('id', order.id)
+            .single();
+            
+        if (!error && o) {
+            lastOrderForPrinting = o;
+        } else {
+            lastOrderForPrinting = order;
+        }
+    } catch (e) {
+        lastOrderForPrinting = order;
+    }
+
+    const oToUse = lastOrderForPrinting;
+
+    document.getElementById('inv-number').textContent = oToUse.invoice_number || oToUse.id;
+    document.getElementById('inv-date').textContent = new Date(oToUse.created_at).toLocaleDateString('ar-EG');
+    document.getElementById('inv-cust-name').textContent = oToUse.customer_name;
+    document.getElementById('inv-cust-phone').textContent = oToUse.phone_1;
+    
     const addressEl = document.getElementById('inv-cust-address');
-    if (addressEl) addressEl.textContent = order.address || '';
+    if (addressEl) addressEl.textContent = oToUse.address || '-';
+
+    const workerEl = document.getElementById('inv-worker');
+    if (workerEl) {
+        workerEl.parentElement.classList.remove('hidden');
+        workerEl.textContent = oToUse.system_users?.full_name || 'غير معروف';
+    }
 
     const tbody = document.getElementById('inv-items-body');
     if (tbody) {
         tbody.innerHTML = '';
-        items.forEach((item, idx) => {
-            const cachedItem = JSON.parse(localStorage.getItem('devo_edit_order_data_cache') || '[]').find(i => i.modelId === item.model_id && i.colorId === item.color_id);
-            const row = `
-                <tr class="text-xs sm:text-sm">
-                    <td class="border border-gray-300 p-1 sm:p-2">${idx + 1}</td>
-                    <td class="border border-gray-300 p-1 sm:p-2 font-bold">${cachedItem?.modelName || 'موديل'}</td>
-                    <td class="border border-gray-300 p-1 sm:p-2 text-gray-600">${cachedItem?.colorName || 'لون'}</td>
-                    <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${item.quantity}</td>
-                    <td class="border border-gray-300 p-1 sm:p-2 text-center">${item.price_per_series}</td>
-                    <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50">${item.total_price}</td>
-                </tr>
-            `;
-            tbody.innerHTML += row;
-        });
+        if (oToUse.order_items && oToUse.order_items.length > 0) {
+            oToUse.order_items.forEach((item, idx) => {
+                const classSizes = item.models?.classes?.class_sizes || [];
+                const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+                const pieces = item.quantity * sizesCount;
+                const piecePrice = item.price_per_series / sizesCount;
+                
+                const row = `
+                    <tr class="text-xs sm:text-sm">
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center">${idx + 1}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold">${item.models?.name || 'موديل'}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center text-gray-600">${item.colors?.name || 'لون'}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${pieces}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center">${piecePrice}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50">${item.total_price}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        } else {
+            // Fallback if order_items are not fetched
+            items.forEach((item, idx) => {
+                const cachedItem = JSON.parse(localStorage.getItem('devo_edit_order_data_cache') || '[]').find(i => i.modelId === item.model_id && i.colorId === item.color_id);
+                const pieces = item.pieces || item.quantity * (item.sizesCount || 1) || item.qty * (item.sizesCount || 1);
+                const priceVal = item.price || item.price_per_series;
+                const row = `
+                    <tr class="text-xs sm:text-sm">
+                        <td class="border border-gray-300 p-1 sm:p-2">${idx + 1}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold">${cachedItem?.modelName || item.model_name || 'موديل'}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-gray-600">${cachedItem?.colorName || item.color_name || 'لون'}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${pieces}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center">${priceVal}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50">${item.total_price || item.total}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
     }
 
     const invTotal = document.getElementById('inv-total-price');
-    if (invTotal) invTotal.textContent = order.total_price;
+    if (invTotal) invTotal.textContent = oToUse.total_price;
     const invDeposit = document.getElementById('inv-deposit');
-    if (invDeposit) invDeposit.textContent = order.deposit;
+    if (invDeposit) invDeposit.textContent = oToUse.deposit;
     const invRem = document.getElementById('inv-remaining');
-    if (invRem) invRem.textContent = order.total_price - order.deposit;
+    if (invRem) invRem.textContent = oToUse.total_price - oToUse.deposit;
 
     const modal = document.getElementById('invoice-modal');
     if (modal) {
@@ -599,17 +697,34 @@ window.finishOrderAndRedirect = () => {
 };
 
 window.executeInvoicePrint = () => {
-    const custName = document.getElementById('inv-cust-name')?.innerText.trim() || 'Client';
-    const d = new Date();
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const originalTitle = document.title;
-    
-    document.title = `${custName}_${dateStr}`;
-    window.print();
-    setTimeout(() => { document.title = originalTitle; }, 500);
+    if (lastOrderForPrinting) {
+        printOrderCustomerInvoice(lastOrderForPrinting);
+    } else {
+        showToast('لا توجد بيانات فاتورة صالحة للطباعة', 'error');
+    }
 };
 
 window.addEventListener('beforeunload', () => {
     if(cartItems.length > 0) localStorage.setItem('devo_edit_order_data_cache', JSON.stringify(cartItems));
 });
-if(cartItems.length > 0) localStorage.setItem('devo_edit_order_data_cache', JSON.stringify(cartItems));
+
+// دالة لتسجيل حركات وتعديلات الأوردرات بسجل الملاحظات (للسلة والمبيعات)
+async function logOrderAction(orderId, actionType, notes) {
+    try {
+        const userId = currentUser?.id || null;
+        const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+        
+        const { error } = await supabase.from('order_logs').insert([{
+            order_id: orderId,
+            user_id: userId,
+            user_name: userName,
+            action_type: actionType,
+            notes: notes
+        }]);
+        if (error) {
+            console.error('Database error inserting order log:', error);
+        }
+    } catch (err) {
+        console.error('Error logging order action:', err);
+    }
+}

@@ -14,16 +14,7 @@ export async function initUsersView() {
         document.getElementById(id)?.addEventListener('input', applyUserFilters);
     });
 
-    document.getElementById('u-role')?.addEventListener('change', (e) => {
-        const container = document.getElementById('worker-job-container');
-        if (container) {
-            if (e.target.value === 'worker') {
-                container.classList.remove('hidden');
-            } else {
-                container.classList.add('hidden');
-            }
-        }
-    });
+    // u-role and job logic are merged, no extra listener needed
 
     await loadUsers();
     isInitialized = true;
@@ -229,22 +220,20 @@ window.openUserModal = (id = null) => {
         passHint.classList.remove('hidden');
 
         if(user.role === 'owner') {
-            roleSelect.innerHTML = `<option value="owner">مالك (Owner)</option>`;
+            roleSelect.innerHTML = `<option value="owner">مالك (صلاحيات كاملة)</option>`;
         } else {
             roleSelect.innerHTML = `
-                <option value="worker">عامل (مبيعات فقط)</option>
+                <option value="worker_showroom">بائع بالمعرض (مبيعات فقط)</option>
+                <option value="worker_warehouse">عامل بالمخزن (مخازن فقط)</option>
+                <option value="worker_both">بائع بالمعرض وعامل بالمخزن معاً</option>
                 <option value="admin">مشرف (إدارة جزئية)</option>
                 <option value="owner">مالك (صلاحيات كاملة)</option>
             `;
-            roleSelect.value = user.role;
-        }
-
-        const workerJobContainer = document.getElementById('worker-job-container');
-        if (user.role === 'worker') {
-            workerJobContainer.classList.remove('hidden');
-            document.getElementById('u-worker-job').value = user.worker_job || 'showroom';
-        } else {
-            workerJobContainer.classList.add('hidden');
+            let roleVal = user.role;
+            if (user.role === 'worker') {
+                roleVal = `worker_${user.worker_job || 'showroom'}`;
+            }
+            roleSelect.value = roleVal;
         }
 
     } else {
@@ -252,13 +241,13 @@ window.openUserModal = (id = null) => {
         document.getElementById('u-status').checked = true;
         
         roleSelect.innerHTML = `
-            <option value="worker">عامل (مبيعات فقط)</option>
+            <option value="worker_showroom">بائع بالمعرض (مبيعات فقط)</option>
+            <option value="worker_warehouse">عامل بالمخزن (مخازن فقط)</option>
+            <option value="worker_both">بائع بالمعرض وعامل بالمخزن معاً</option>
             <option value="admin">مشرف (إدارة جزئية)</option>
             <option value="owner">مالك (صلاحيات كاملة)</option>
         `;
-        roleSelect.value = 'worker';
-        document.getElementById('worker-job-container').classList.remove('hidden');
-        document.getElementById('u-worker-job').value = 'showroom';
+        roleSelect.value = 'worker_showroom';
 
         passInput.required = true;
         passReq.classList.remove('hidden');
@@ -284,18 +273,22 @@ async function handleSaveUser(e) {
     const id = document.getElementById('u-id').value;
     const password = document.getElementById('u-password').value;
 
+    const selectedRole = document.getElementById('u-role').value;
+    let role = selectedRole;
+    let worker_job = null;
+
+    if (selectedRole.startsWith('worker_')) {
+        role = 'worker';
+        worker_job = selectedRole.replace('worker_', '');
+    }
+
     const userData = {
         full_name: document.getElementById('u-name').value.trim(),
         username: document.getElementById('u-username').value.trim().toLowerCase(),
-        role: document.getElementById('u-role').value,
+        role: role,
+        worker_job: worker_job,
         is_active: document.getElementById('u-status').checked
     };
-
-    if (userData.role === 'worker') {
-        userData.worker_job = document.getElementById('u-worker-job').value;
-    } else {
-        userData.worker_job = null;
-    }
 
     if (password) {
         userData.password = password; 

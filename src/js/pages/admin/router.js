@@ -4,6 +4,7 @@ import { initHomeSettingsView } from './home_settings.js';
 // استيراد صفحة المستخدمين (كما كانت في كودك)
 import { initUsersView } from './users.js';
 import { initAuditsView } from './audits.js';
+import { syncActiveTheme } from '../../services/theme.js';
 
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
@@ -61,6 +62,16 @@ function updateUserProfileUI(profile) {
             auditsLink.classList.remove('hidden');
         } else {
             auditsLink.classList.add('hidden');
+        }
+    }
+
+    // إخفاء/إظهار زر إدارة المظاهر بناءً على صلاحية المدير أو المالك
+    const themeManagerLink = document.querySelector('[data-target="view-theme-manager"]');
+    if (themeManagerLink) {
+        if (['owner', 'admin'].includes(profile.role)) {
+            themeManagerLink.classList.remove('hidden');
+        } else {
+            themeManagerLink.classList.add('hidden');
         }
     }
 }
@@ -124,6 +135,13 @@ async function loadViewLogic(targetId) {
         return; 
     }
 
+    if (targetId === 'view-theme-manager' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return; 
+    }
+
     switch (targetId) {
             case 'view-dashboard':
             const { initDashboard } = await import('./dashboard.js');
@@ -166,10 +184,17 @@ async function loadViewLogic(targetId) {
         case 'view-audits':
             await initAuditsView();
             break;
+        case 'view-theme-manager':
+            const { initThemeManagerView } = await import('./theme_manager.js');
+            await initThemeManagerView();
+            break;
     }
 }
 // --- Event Listeners Initialization ---
 async function initRouter() {
+    // تزامن المظهر النشط من قاعدة البيانات
+    syncActiveTheme();
+
     // Wait for authentication before rendering anything
     const isAuth = await authenticateAdmin();
     if (!isAuth) return;

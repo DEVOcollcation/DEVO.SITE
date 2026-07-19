@@ -2,10 +2,14 @@ import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { getCurrentSession } from '../../services/auth.js';
+import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
 
 let isInitialized = false;
 let allAdminOrders = [];
 let currentUserProfile = null;
+let currentEditingOrderId = null;
+let localEditingItems = [];
+let isLocalEditMode = false;
 
 const statusConfig = {
     'created': { text: 'تم إنشاء الأوردر', color: 'bg-devo-gray text-white border-devo-gray' },
@@ -151,6 +155,14 @@ function generateOrderRowHTML(o) {
     const isOwnerOrAdmin = currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin';
     const canReturn = (o.status === 'shipped' || o.status === 'delivered') && isOwnerOrAdmin;
 
+    // الحماية والتأكد من إمكانية التعديل
+    const isEditable = o.status === 'created' && !o.is_locked;
+    const editBtnHtml = isOwnerOrAdmin
+        ? (isEditable 
+            ? `<button onclick="openEditOrderChoices('${o.id}')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple text-lg"></i></button>`
+            : `<button disabled class="p-1.5 bg-devo-gray/30 text-devo-muted rounded cursor-not-allowed opacity-50" title="${o.is_locked ? 'الأوردر مقفل أو قيد التعديل حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله'}"><i class="ph ph-lock text-lg text-devo-muted"></i></button>`)
+        : '';
+
     const lockIcon = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="${o.is_locked ? 'text-devo-error' : 'text-devo-success'} p-1 hover:bg-white/10 rounded transition-colors" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-lg"></i></button>`;
 
     const assignedHTML = o.assigned_admin_name 
@@ -185,6 +197,7 @@ function generateOrderRowHTML(o) {
                     ${canReturn ? `<button onclick="window.openCreateReturnModal('${o.id}')" class="p-1.5 bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500 hover:text-white rounded transition-colors" title="إنشاء مرتجع مبيعات"><i class="ph ph-arrow-counter-clockwise text-lg"></i></button>` : ''}
                     <button onclick="printAdminOrder('${o.id}', 'customer')" class="p-1.5 bg-gray-200 text-gray-800 hover:bg-white rounded transition-colors" title="طباعة فاتورة العميل"><i class="ph ph-receipt text-lg"></i></button>
                     <button onclick="printAdminOrder('${o.id}', 'detailed')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-lg"></i></button>
+                    ${editBtnHtml}
                     <button onclick="viewAdminOrderDetails('${o.id}')" class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="التفاصيل"><i class="ph ph-eye text-lg"></i></button>
                     ${isOwner ? `<button onclick="deleteOrder('${o.id}')" class="p-1.5 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded transition-colors" title="حذف وإرجاع المخزون"><i class="ph ph-trash text-lg"></i></button>` : ''}
                 </div>
@@ -283,6 +296,8 @@ window.updateOrderStatus = async (id, newStatus) => {
         await fetchAdminOrders(); // لإعادة الحالة إلى ما كانت عليه بالـ DB
     } else {
         showToast('تم تحديث وتخصيص الأوردر بنجاح', 'success');
+        const statusText = statusConfig[newStatus]?.text || newStatus;
+        await logOrderAction(id, 'status_changed', `تم تغيير حالة الأوردر إلى (${statusText}) بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
     }
 };
 
@@ -305,11 +320,14 @@ window.toggleOrderLock = async (id, lockState) => {
         assigned_admin_name: o.assigned_admin_name
     }).eq('id', id);
 
-    if (!error) showToast(lockState ? 'تم قفل الأوردر واستلامه' : 'تم فتح الأوردر للجميع', 'success');
+    if (!error) {
+        showToast(lockState ? 'تم قفل الأوردر واستلامه' : 'تم فتح الأوردر للجميع', 'success');
+        await logOrderAction(id, lockState ? 'locked' : 'unlocked', lockState ? `تم قفل واستلام الأوردر بواسطة الإداري ${currentUserProfile?.full_name || ''}` : `تم إلغاء قفل الأوردر وإتاحته للجميع بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
+    }
 };
 
 
-window.viewAdminOrderDetails = (id) => {
+window.viewAdminOrderDetails = async (id) => {
     const o = allAdminOrders.find(x => x.id === id);
     if (!o) return;
 
@@ -326,6 +344,7 @@ window.viewAdminOrderDetails = (id) => {
         const classSizes = item.models?.classes?.class_sizes || [];
         const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1); 
         const pieces = qty * sizesCount;
+        const piecePrice = item.price_per_series / sizesCount;
         
         const colorWithQty = `${qty} ${colorName}`;
 
@@ -334,7 +353,7 @@ window.viewAdminOrderDetails = (id) => {
                 modelName: item.models?.name, code: code,
                 colorsList: [colorWithQty],
                 totalQty: qty, totalPieces: pieces, 
-                price: item.price_per_series, totalPrice: item.total_price
+                price: piecePrice, totalPrice: item.total_price
             };
         } else {
             groupedItems[modelId].colorsList.push(colorWithQty);
@@ -356,6 +375,48 @@ window.viewAdminOrderDetails = (id) => {
             <td class="py-2.5 px-3 text-devo-orange font-black text-left text-base">${item.totalPrice}</td>
         </tr>
     `).join('');
+
+    // جلب سجل الحركات بقاعدة البيانات للأوردر
+    let logsHtml = '';
+    try {
+        const { data: logs, error: logsError } = await supabase
+            .from('order_logs')
+            .select('*')
+            .eq('order_id', id)
+            .order('created_at', { ascending: false });
+
+        if (logsError) throw logsError;
+
+        if (logs && logs.length > 0) {
+            logsHtml = `
+                <div class="mt-4 border-t border-devo-gray pt-4 shrink-0">
+                    <h5 class="text-xs text-devo-orange font-bold mb-3 flex items-center gap-1.5"><i class="ph ph-clock-counter-clockwise"></i> سجل حركات وتعديلات الأوردر</h5>
+                    <div class="space-y-2.5 max-h-[160px] overflow-y-auto custom-scrollbar text-xs">
+                        ${logs.map(log => {
+                            const logDate = new Date(log.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            return `
+                                <div class="flex gap-2.5 items-start">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-devo-orange mt-1.5 shrink-0 shadow-sm shadow-devo-orange/50"></div>
+                                    <div class="flex-1 text-white/90">
+                                        <span class="font-normal">${log.notes}</span>
+                                        <span class="text-[10px] text-devo-muted mr-1.5 font-mono">(${logDate})</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        } else {
+            logsHtml = `
+                <div class="mt-4 border-t border-devo-gray pt-3 shrink-0 text-xs text-devo-muted">
+                    <i class="ph ph-info mr-1"></i> لا توجد حركات مسجلة لهذا الأوردر بعد.
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.error('Error fetching logs:', e);
+    }
 
     document.getElementById('ao-details-content').innerHTML = `
         <div class="flex flex-col gap-4 h-full">
@@ -383,7 +444,7 @@ window.viewAdminOrderDetails = (id) => {
                     class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
             </div>
 
-            <div class="flex-1 overflow-hidden border border-devo-gray rounded-xl bg-devo-black flex flex-col max-h-[45vh]">
+            <div class="flex-1 overflow-hidden border border-devo-gray rounded-xl bg-devo-black flex flex-col max-h-[30vh]">
                 <div class="overflow-y-auto custom-scrollbar flex-1">
                     <table class="w-full text-right text-sm">
                         <thead class="text-xs text-devo-muted bg-devo-dark sticky top-0 shadow-sm z-10">
@@ -395,6 +456,9 @@ window.viewAdminOrderDetails = (id) => {
                     </table>
                 </div>
             </div>
+
+            <!-- سجل حركات الأوردر -->
+            ${logsHtml}
         </div>
     `;
 
@@ -414,7 +478,12 @@ window.filterModalTable = (term) => {
 window.closeAdminOrderDetails = () => {
     const modal = document.getElementById('ao-details-modal');
     modal.classList.add('opacity-0');
-    setTimeout(() => modal.classList.add('hidden'), 300);
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        currentEditingOrderId = null;
+        isLocalEditMode = false;
+        localEditingItems = [];
+    }, 300);
 };
 
 function printHtmlInIframe(htmlContent) {
@@ -440,6 +509,11 @@ window.printAdminOrder = (id, type) => {
     const o = allAdminOrders.find(x => x.id === id);
     if(!o) return;
     
+    if (type === 'customer') {
+        printOrderCustomerInvoice(o);
+        return;
+    }
+
     showToast('جاري تحضير الفاتورة للطباعة...', 'info');
     const remaining = o.total_price - (o.deposit || 0);
     const printDate = new Date(o.created_at);
@@ -456,14 +530,14 @@ window.printAdminOrder = (id, type) => {
         const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1); 
         const pieces = qty * sizesCount;
         
-        const colorWithQty = type === 'detailed' ? `${colorName} ${qty}` : colorName; 
+        const colorWithQty = `${colorName} ${qty}`; 
+
+        const piecePrice = item.price_per_series / sizesCount;
 
         if (!groupedItems[modelId]) {
-            groupedItems[modelId] = { modelName: item.models?.name, code: code, colorsList: [colorWithQty], totalQty: qty, totalPieces: pieces, price: item.price_per_series, totalPrice: item.total_price };
+            groupedItems[modelId] = { modelName: item.models?.name, code: code, colorsList: [colorWithQty], totalQty: qty, totalPieces: pieces, price: piecePrice, totalPrice: item.total_price };
         } else {
-            if (type === 'customer' && !groupedItems[modelId].colorsList.includes(colorWithQty)) groupedItems[modelId].colorsList.push(colorWithQty);
-            else if (type === 'detailed') groupedItems[modelId].colorsList.push(colorWithQty);
-            
+            groupedItems[modelId].colorsList.push(colorWithQty);
             groupedItems[modelId].totalQty += qty;
             groupedItems[modelId].totalPieces += pieces;
             groupedItems[modelId].totalPrice += item.total_price;
@@ -532,62 +606,6 @@ window.printAdminOrder = (id, type) => {
             </body>
             </html>
         `;
-
-    } else if (type === 'customer') {
-        let custHtml = Object.values(groupedItems).map((item, idx) => `
-            <tr>
-                <td style="padding: 2px 4px; border: 1px solid #ccc; text-align: center;">${idx + 1}</td>
-                <td style="padding: 2px 4px; border: 1px solid #ccc; font-weight: bold;">
-                    ${item.modelName} ${item.code ? `<span style="font-size:10px; color:#555; font-family: monospace; margin-right: 4px;">(${item.code})</span>` : ''}
-                </td>
-                <td style="padding: 2px 4px; border: 1px solid #ccc; text-align: center; font-size:10px;">${item.colorsList.join('، ')}</td>
-                <td style="padding: 2px 4px; border: 1px solid #ccc; text-align: center; font-weight: bold;">${item.totalPieces}</td>
-                <td style="padding: 2px 4px; border: 1px solid #ccc; text-align: center;">${item.price}</td>
-                <td style="padding: 2px 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; background: #f9f9f9 !important; -webkit-print-color-adjust: exact;">${item.totalPrice}</td>
-            </tr>
-        `).join('');
-
-        finalHtml = `
-            <!DOCTYPE html>
-            <html lang="ar" dir="rtl">
-            <head>
-                <meta charset="UTF-8">
-                <title>${pdfFileName}</title>
-                <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
-                    @page { margin: 0.5cm; }
-                    body { font-family: 'Tajawal', sans-serif; background: white; margin: 0; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                </style>
-            </head>
-            <body>
-            <div style="border-bottom:4px solid black; padding-bottom:6px; margin-bottom:10px;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="background:#c7d7e5; padding:3px 10px; font-size:16px; font-weight:700; letter-spacing:2px;">Collection</span>
-                    <span style="font-size:28px; font-weight:900; letter-spacing:1px;">DEVO</span>
-                </div>
-                <div style="font-size:14px; font-weight:600; margin-top:4px;">Phone: +20 12 12751111</div>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px;">
-                <div><b>رقم:</b> <span style="color:red; font-family:monospace; font-size:16px;">${o.invoice_number}</span></div>
-                <div>التاريخ: ${new Date(o.created_at).toLocaleDateString('ar-EG')}</div>
-                <div>الكاشير: ${o.system_users?.full_name}</div>
-            </div>
-            <div style="background: #f3f4f6; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; font-size: 12px;"><b>العميل:</b> ${o.customer_name} &nbsp;|&nbsp; <b>هاتف:</b> <span dir="ltr">${o.phone_1}</span></div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; border: 1px solid black;">
-                <thead style="background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><tr><th style="padding: 6px;">م</th><th style="padding: 6px;">الموديل</th><th style="padding: 6px;">اللون</th><th style="padding: 6px;">الكمية (ق)</th><th style="padding: 6px;">السعر</th><th style="padding: 6px;">الإجمالي</th></tr></thead>
-                <tbody>${custHtml}</tbody>
-            </table>
-            <div style="display: flex; justify-content: flex-end; page-break-inside: avoid;">
-                <div style="border: 2px solid black; width: 250px; border-radius: 4px; overflow: hidden;">
-                    <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px;"><span>الإجمالي:</span> <b>${o.total_price}</b></div>
-                    <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px; background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><span>المدفوع:</span> <b style="color: green;">${o.deposit}</b></div>
-                    <div style="padding: 8px; display: flex; justify-content: space-between; font-size: 14px; background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><span>المتبقي:</span> <b>${remaining} ج.م</b></div>
-                </div>
-            </div>
-            <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">Engineered by Ahmed M. Attia</div>
-            </body>
-            </html>
-        `;
     }
 
     printHtmlInIframe(finalHtml);
@@ -627,7 +645,7 @@ window.exportOrdersToExcel = () => {
                 'اللون': i.colors?.name,
                 'عدد السيريّات': i.quantity,
                 'إجمالي القطع': i.quantity * sizesCount,
-                'سعر القطعة': i.price_per_series,
+                'سعر القطعة': i.price_per_series / sizesCount,
                 'إجمالي الصنف': i.total_price,
                 'حالة الأوردر': statusConfig[o.status]?.text || ''
             });
@@ -664,7 +682,7 @@ window.exportSingleOrderToExcel = (id) => {
             'Series Size': sizesCount,
             'Series Qty': i.quantity,
             'Pieces Qty': i.quantity * sizesCount,
-            'Unit Price': i.price_per_series, 
+            'Unit Price': i.price_per_series / sizesCount, 
             'Total': i.total_price
         };
     });
@@ -917,3 +935,545 @@ window.saveReturnInvoice = async () => {
         saveBtn.innerHTML = oldBtnHtml;
     }
 };
+
+// =========================================================================
+// 🌟 6. خيارات وإجراءات تعديل الأوردرات (الخيارات الثلاثة) 🌟
+// =========================================================================
+
+window.openEditOrderChoices = (orderId) => {
+    currentEditingOrderId = orderId;
+    const o = allAdminOrders.find(x => x.id === orderId);
+    if (!o) return;
+
+    // إعادة تعيين خطوات المودال
+    document.getElementById('eoc-step-select').classList.remove('hidden');
+    document.getElementById('eoc-step-assign').classList.add('hidden');
+    
+    // عرض رقم الفاتورة في العنوان
+    document.getElementById('eoc-order-number').textContent = `(#${o.invoice_number})`;
+
+    // إظهار المودال
+    const modal = document.getElementById('edit-order-choices-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+};
+
+window.closeEditOrderChoices = (keepOrderContext = false) => {
+    const modal = document.getElementById('edit-order-choices-modal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        if (!keepOrderContext) {
+            currentEditingOrderId = null;
+        }
+    }, 300);
+};
+
+window.showSelectChoicesStep = () => {
+    document.getElementById('eoc-step-select').classList.remove('hidden');
+    document.getElementById('eoc-step-assign').classList.add('hidden');
+};
+
+window.showAssignWorkerStep = async () => {
+    document.getElementById('eoc-step-select').classList.add('hidden');
+    document.getElementById('eoc-step-assign').classList.remove('hidden');
+
+    const select = document.getElementById('eoc-worker-select');
+    select.innerHTML = '<option value="">-- اختر الموظف --</option>';
+
+    try {
+        const { data: users, error } = await supabase
+            .from('system_users')
+            .select('id, full_name, role, worker_job')
+            .eq('is_active', true)
+            .order('full_name', { ascending: true });
+
+        if (error) throw error;
+
+        if (users) {
+            users.forEach(u => {
+                let jobLabel = u.role === 'owner' ? 'مالك' : (u.role === 'admin' ? 'مشرف' : '');
+                if (u.role === 'worker') {
+                    if (u.worker_job === 'showroom') jobLabel = 'مبيعات المعرض';
+                    else if (u.worker_job === 'warehouse') jobLabel = 'أمين مخزن';
+                    else jobLabel = 'مبيعات + مخزن';
+                }
+                const option = document.createElement('option');
+                option.value = u.id;
+                option.textContent = `${u.full_name} (${jobLabel})`;
+                select.appendChild(option);
+            });
+        }
+    } catch (e) {
+        showToast('خطأ أثناء جلب الموظفين: ' + e.message, 'error');
+    }
+};
+
+// --- الخيار الأول: التعديل المحلي ---
+window.triggerLocalEdit = async () => {
+    if (!currentEditingOrderId) return;
+    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    if (!o) return;
+
+    if (o.is_locked && o.assigned_admin_name && o.assigned_admin_name !== currentUserProfile?.full_name && currentUserProfile?.role !== 'owner') {
+        return showToast('هذا الأوردر مغلق بواسطة إداري آخر!', 'error');
+    }
+
+    // قفل الأوردر بقاعدة البيانات فوراً لمنع التعديل المتزامن
+    const { error } = await supabase.from('orders').update({
+        is_locked: true,
+        assigned_admin_name: currentUserProfile?.full_name || 'أدمن'
+    }).eq('id', o.id);
+
+    if (error) {
+        return showToast('فشل قفل الأوردر للتعديل: ' + error.message, 'error');
+    }
+
+    o.is_locked = true;
+    o.assigned_admin_name = currentUserProfile?.full_name;
+    const row = document.getElementById(`admin-order-row-${o.id}`);
+    if (row) row.outerHTML = generateOrderRowHTML(o);
+
+    await logOrderAction(o.id, 'local_edit_start', `بدأ الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر محلياً`);
+
+    closeEditOrderChoices(true);
+    
+    isLocalEditMode = true;
+    localEditingItems = o.order_items.map(item => ({
+        ...item,
+        isDeleted: false
+    }));
+
+    renderLocalEditModal(o);
+};
+
+async function renderLocalEditModal(o) {
+    const remaining = calculateLocalRemaining(o);
+    const totalPrice = calculateLocalTotalPrice();
+
+    // حفظ قيمة البحث الحالية لإعادة تطبيقها بعد إعادة الرسم لمنع فقدان التركيز والكتابة
+    const searchInput = document.getElementById('ao-local-search-input');
+    const term = searchInput ? searchInput.value : '';
+
+    let itemsHtml = localEditingItems.map((item, index) => {
+        if (item.isDeleted) return '';
+
+        const code = item.models?.factory_code || item.models?.system_code || '';
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+        const pieces = item.quantity * sizesCount;
+        
+        // حساب سعر الفئة (سعر القطعة) بدلاً من سعر السيريه
+        const piecePrice = item.price_per_series / sizesCount;
+        const itemTotal = item.quantity * item.price_per_series;
+
+        return `
+            <tr class="border-b border-devo-gray last:border-0 hover:bg-devo-black/50 transition-colors">
+                <td class="py-2.5 px-3 text-white text-sm font-bold search-target">${item.models?.name || 'موديل محذوف'} <span class="text-devo-muted text-[10px] font-mono mr-1">(${code})</span></td>
+                <td class="py-2.5 px-3 text-devo-info text-xs">${item.colors?.name || '-'}</td>
+                <td class="py-2.5 px-3 text-center">
+                    <div class="flex items-center justify-center bg-devo-black border border-devo-gray rounded-lg overflow-hidden h-8 w-28 mx-auto">
+                        <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity - 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-minus"></i></button>
+                        <input type="number" onchange="updateLocalItemQty(${index}, parseInt(this.value) || 0)" value="${item.quantity}" class="w-10 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray">
+                        <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity + 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-plus"></i></button>
+                    </div>
+                    <span class="text-[10px] text-devo-muted font-normal block mt-1">(${pieces} قطعة)</span>
+                </td>
+                <td class="py-2.5 px-3 text-devo-muted text-center">${piecePrice}</td>
+                <td class="py-2.5 px-3 text-devo-orange font-black text-left text-base">${itemTotal} ج.م</td>
+                <td class="py-2.5 px-3 text-center">
+                    <button type="button" onclick="deleteLocalItem(${index})" class="text-devo-error hover:bg-devo-error/25 p-1.5 rounded transition-colors" title="حذف الصنف"><i class="ph ph-trash text-lg"></i></button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (itemsHtml.trim() === '') {
+        itemsHtml = `<tr><td colspan="6" class="p-6 text-center text-devo-muted">تم حذف جميع الأصناف من الفاتورة.</td></tr>`;
+    }
+
+    // جلب سجل الحركات بقاعدة البيانات للأوردر
+    let logsHtml = '';
+    try {
+        const { data: logs, error: logsError } = await supabase
+            .from('order_logs')
+            .select('*')
+            .eq('order_id', o.id)
+            .order('created_at', { ascending: false });
+
+        if (logsError) throw logsError;
+
+        if (logs && logs.length > 0) {
+            logsHtml = `
+                <div class="mt-4 border-t border-devo-gray pt-4 shrink-0">
+                    <h5 class="text-xs text-devo-orange font-bold mb-3 flex items-center gap-1.5"><i class="ph ph-clock-counter-clockwise"></i> سجل حركات وتعديلات الأوردر</h5>
+                    <div class="space-y-2.5 max-h-[160px] overflow-y-auto custom-scrollbar text-xs">
+                        ${logs.map(log => {
+                            const logDate = new Date(log.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            return `
+                                <div class="flex gap-2.5 items-start">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-devo-orange mt-1.5 shrink-0 shadow-sm shadow-devo-orange/50"></div>
+                                    <div class="flex-1 text-white/90">
+                                        <span class="font-normal">${log.notes}</span>
+                                        <span class="text-[10px] text-devo-muted mr-1.5 font-mono">(${logDate})</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        } else {
+            logsHtml = `
+                <div class="mt-4 border-t border-devo-gray pt-3 shrink-0 text-xs text-devo-muted">
+                    <i class="ph ph-info mr-1"></i> لا توجد حركات مسجلة لهذا الأوردر بعد.
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.error('Error fetching logs:', e);
+    }
+
+    document.getElementById('ao-details-content').innerHTML = `
+        <div class="flex flex-col gap-4 h-full">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
+                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
+                    <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-user"></i> بيانات العميل</span>
+                    <h4 class="text-white font-bold text-sm truncate">${o.customer_name}</h4>
+                    <span class="text-xs text-devo-info font-mono mt-0.5" dir="ltr">${o.phone_1}</span>
+                </div>
+                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
+                    <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-receipt"></i> معلومات الأوردر</span>
+                    <h4 class="text-devo-orange font-mono font-bold text-sm truncate">${o.invoice_number}</h4>
+                    <span class="text-[11px] text-devo-muted mt-0.5">البائع: <span class="text-white">${o.system_users?.full_name || '-'}</span></span>
+                </div>
+                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center space-y-1">
+                    <div class="flex justify-between text-xs"><span class="text-devo-muted">الإجمالي الجديد:</span> <span class="text-white font-bold" id="local-edit-total-price">${totalPrice}</span></div>
+                    <div class="flex justify-between text-xs"><span class="text-devo-muted">المدفوع:</span> <span class="text-devo-success font-bold">${o.deposit}</span></div>
+                    <div class="flex justify-between text-sm border-t border-devo-gray pt-1 mt-1"><span class="text-white font-bold">المتبقي للدفع:</span> <span class="text-devo-orange font-black" id="local-edit-remaining">${remaining}</span></div>
+                </div>
+            </div>
+
+            <!-- حقل البحث المماثل للتفاصيل -->
+            <div class="relative shrink-0">
+                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                <input type="text" id="ao-local-search-input" oninput="filterModalTable(this.value)" placeholder="بحث داخل الأوردر باسم الموديل أو الكود..." value="${term}"
+                    class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
+            </div>
+
+            <div class="flex-1 overflow-hidden border border-devo-gray rounded-xl bg-devo-black flex flex-col max-h-[30vh]">
+                <div class="overflow-y-auto custom-scrollbar flex-1">
+                    <table class="w-full text-right text-sm">
+                        <thead class="text-xs text-devo-muted bg-devo-dark sticky top-0 shadow-sm z-10">
+                            <tr>
+                                <th class="p-3">الموديل</th>
+                                <th class="p-3">اللون</th>
+                                <th class="p-3 text-center">الكمية</th>
+                                <th class="p-3 text-center">السعر</th>
+                                <th class="p-3 text-left">الإجمالي</th>
+                                <th class="p-3 text-center">حذف</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modal-items-tbody" class="divide-y divide-devo-gray">
+                            ${itemsHtml}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- سجل حركات الأوردر -->
+            ${logsHtml}
+
+            <div class="flex justify-end gap-3 pt-2 shrink-0 border-t border-devo-gray">
+                <button id="ao-local-save-btn" onclick="saveLocalOrderEdits('${o.id}')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-md flex items-center gap-2 text-sm">
+                    <i class="ph ph-check-circle text-lg"></i> حفظ التعديلات
+                </button>
+                <button onclick="cancelLocalEdit('${o.id}')" class="bg-devo-gray hover:bg-white/10 text-white px-5 py-2.5 rounded-xl font-bold transition-colors text-sm">
+                    إلغاء التعديل
+                </button>
+            </div>
+        </div>
+    `;
+
+    // تفعيل الفلترة إذا كان هناك نص بحث نشط مسبقاً
+    if (term) {
+        filterModalTable(term);
+    }
+
+    const modal = document.getElementById('ao-details-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+}
+
+function calculateLocalTotalSeries() {
+    return localEditingItems.reduce((sum, item) => item.isDeleted ? sum : sum + item.quantity, 0);
+}
+
+function calculateLocalTotalPrice() {
+    return localEditingItems.reduce((sum, item) => item.isDeleted ? sum : sum + (item.quantity * item.price_per_series), 0);
+}
+
+function calculateLocalRemaining(o) {
+    const total = calculateLocalTotalPrice();
+    return total - (o.deposit || 0);
+}
+
+window.updateLocalItemQty = async (index, newQty) => {
+    if (newQty < 1) return;
+    localEditingItems[index].quantity = newQty;
+    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    if (o) await renderLocalEditModal(o);
+};
+
+window.deleteLocalItem = async (index) => {
+    localEditingItems[index].isDeleted = true;
+    localEditingItems[index].quantity = 0;
+    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    if (o) await renderLocalEditModal(o);
+};
+
+window.cancelLocalEdit = async (orderId) => {
+    isLocalEditMode = false;
+    localEditingItems = [];
+
+    // إلغاء قفل الأوردر بقاعدة البيانات وإتاحته
+    const { error } = await supabase.from('orders').update({
+        is_locked: false,
+        assigned_admin_name: null
+    }).eq('id', orderId);
+
+    if (error) {
+        showToast('فشل إلغاء قفل الأوردر: ' + error.message, 'error');
+    } else {
+        const o = allAdminOrders.find(x => x.id === orderId);
+        if (o) {
+            o.is_locked = false;
+            o.assigned_admin_name = null;
+            const row = document.getElementById(`admin-order-row-${orderId}`);
+            if (row) row.outerHTML = generateOrderRowHTML(o);
+        }
+        await logOrderAction(orderId, 'local_edit_cancel', `ألغى الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر محلياً`);
+    }
+
+    viewAdminOrderDetails(orderId);
+};
+
+window.saveLocalOrderEdits = async (orderId) => {
+    const o = allAdminOrders.find(x => x.id === orderId);
+    if (!o) return;
+
+    const activeItems = localEditingItems.filter(item => !item.isDeleted && item.quantity > 0);
+    if (activeItems.length === 0) {
+        return showToast('عفواً، لا يمكن حفظ الأوردر فارغاً بالكامل! يرجى حذف الأوردر نهائياً بدلاً من ذلك.', 'error');
+    }
+
+    const saveBtn = document.getElementById('ao-local-save-btn');
+    if (!saveBtn) return;
+    const oldBtnHtml = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري الحفظ...`;
+
+    try {
+        // 1. التحقق من توافر المخزون للزيادات
+        const modelIds = [...new Set(activeItems.map(i => i.model_id))];
+        const { data: dbInv, error: dbInvError } = await supabase
+            .from('model_inventory')
+            .select('model_id, color_id, available_series')
+            .in('model_id', modelIds);
+
+        if (dbInvError) throw dbInvError;
+
+        let hasStockErrors = false;
+        activeItems.forEach(item => {
+            const originalItem = o.order_items.find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
+            const originalQty = originalItem ? originalItem.quantity : 0;
+            const diff = item.quantity - originalQty;
+
+            if (diff > 0) {
+                const inv = dbInv.find(x => x.model_id === item.model_id && x.color_id === item.color_id);
+                const available = inv ? inv.available_series : 0;
+                if (available < diff) {
+                    showToast(`المخزون غير كافي للموديل ${item.models?.name}. المطلوب زيادة: ${diff}، المتاح بالمخزن: ${available}`, 'error');
+                    hasStockErrors = true;
+                }
+            }
+        });
+
+        if (hasStockErrors) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = oldBtnHtml;
+            return;
+        }
+
+        // 2. تحديث البيانات
+        const orderData = {
+            customer_name: o.customer_name,
+            phone_1: o.phone_1,
+            phone_2: o.phone_2,
+            address: o.address,
+            deposit: o.deposit,
+            deposit_receiver: o.deposit_receiver,
+            notes: o.notes,
+            total_price: calculateLocalTotalPrice(),
+            total_series: calculateLocalTotalSeries()
+        };
+
+        const orderItemsData = activeItems.map(item => ({
+            model_id: item.model_id,
+            color_id: item.color_id,
+            qty: item.quantity,
+            model_name: item.models?.name || '',
+            price: item.price_per_series,
+            total: item.quantity * item.price_per_series
+        }));
+
+        const { data, error: rpcError } = await supabase.rpc('process_order_transaction', {
+            p_order_id: orderId,
+            p_order_data: orderData,
+            p_order_items: orderItemsData
+        });
+
+        if (rpcError) throw rpcError;
+
+        // إزالة الإسناد وإلغاء القفل بعد الحفظ الناجح
+        await supabase.from('orders').update({ 
+            assigned_worker_id: null,
+            is_locked: false,
+            assigned_admin_name: null
+        }).eq('id', orderId);
+
+        await logOrderAction(orderId, 'edited_locally', `تم تعديل الأصناف محلياً وحفظ الفروقات بالمخزن بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
+
+        showToast('تم تعديل الأوردر وحفظ الفروقات بالمخزن بنجاح!', 'success');
+        closeAdminOrderDetails();
+        await fetchAdminOrders();
+
+    } catch (e) {
+        showToast('فشل حفظ التعديلات: ' + e.message, 'error');
+        console.error(e);
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = oldBtnHtml;
+    }
+};
+
+// --- الخيار الثاني: التعديل بالمعرض (السلة) ---
+window.triggerCartEdit = async () => {
+    if (!currentEditingOrderId) return;
+    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    if (!o) return;
+
+    if (o.is_locked && o.assigned_admin_name && o.assigned_admin_name !== currentUserProfile?.full_name && currentUserProfile?.role !== 'owner') {
+        return showToast('هذا الأوردر مغلق بواسطة إداري آخر!', 'error');
+    }
+
+    // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن
+    const { error } = await supabase.from('orders').update({
+        is_locked: true,
+        assigned_admin_name: currentUserProfile?.full_name || 'أدمن'
+    }).eq('id', o.id);
+
+    if (error) {
+        return showToast('فشل قفل الأوردر للتعديل: ' + error.message, 'error');
+    }
+
+    await logOrderAction(o.id, 'cart_edit_start', `بدأ الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر بالسلة (المعرض)`);
+
+    showToast('جاري تجهيز السلة والتحويل للمعرض...', 'info');
+
+    const newCart = o.order_items.map(item => {
+        const imgUrl = item.models?.image_url_1 || './src/assets/icons/devo.jpeg';
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+
+        return {
+            modelId: item.model_id,
+            factoryCode: item.models?.factory_code || item.models?.system_code || '',
+            colorId: item.color_id,
+            modelName: item.models?.name,
+            colorName: item.colors?.name,
+            price: item.price_per_series / sizesCount,
+            image: imgUrl,
+            qty: item.quantity,
+            sizesCount: sizesCount
+        };
+    });
+
+    localStorage.setItem('devo_cart', JSON.stringify(newCart));
+
+    const orderData = {
+        id: o.id,
+        invoice_number: o.invoice_number,
+        customer_name: o.customer_name,
+        phone_1: o.phone_1,
+        phone_2: o.phone_2,
+        address: o.address,
+        deposit: o.deposit,
+        deposit_receiver: o.deposit_receiver,
+        notes: o.notes,
+        original_items: o.order_items.map(oi => ({
+            model_id: oi.model_id,
+            color_id: oi.color_id,
+            quantity: oi.quantity
+        }))
+    };
+    localStorage.setItem('devo_edit_order_data', JSON.stringify(orderData));
+
+    closeEditOrderChoices(true);
+    window.location.href = 'index.html';
+};
+
+// --- الخيار الثالث: إسناد الأوردر لموظف آخر ---
+window.executeOrderAssignment = async () => {
+    if (!currentEditingOrderId) return;
+    const workerId = document.getElementById('eoc-worker-select').value;
+    if (!workerId) return showToast('يرجى اختيار الموظف أولاً', 'warning');
+
+    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    if (!o) return;
+
+    showToast('جاري إسناد الأوردر...', 'info');
+
+    try {
+        const { error } = await supabase
+            .from('orders')
+            .update({
+                assigned_worker_id: workerId,
+                is_locked: false
+            })
+            .eq('id', currentEditingOrderId);
+
+        if (error) throw error;
+
+        const workerSelect = document.getElementById('eoc-worker-select');
+        const workerName = workerSelect.options[workerSelect.selectedIndex]?.text || 'موظف';
+        await logOrderAction(currentEditingOrderId, 'assigned', `تم إسناد الأوردر للتعديل إلى الموظف (${workerName}) بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
+
+        showToast('تم إسناد وتعيين الأوردر بنجاح للموظف!', 'success');
+        closeEditOrderChoices();
+        await fetchAdminOrders();
+    } catch (e) {
+        showToast('خطأ أثناء إسناد الأوردر: ' + e.message, 'error');
+    }
+};
+
+// دالة لتسجيل حركات وتعديلات الأوردرات بسجل الملاحظات
+async function logOrderAction(orderId, actionType, notes) {
+    try {
+        const { session } = getCurrentSession();
+        const userId = session?.user?.id || null;
+        const userName = currentUserProfile?.full_name || 'نظام DEVO';
+        
+        const { error } = await supabase.from('order_logs').insert([{
+            order_id: orderId,
+            user_id: userId,
+            user_name: userName,
+            action_type: actionType,
+            notes: notes
+        }]);
+        if (error) {
+            console.error('Database error inserting order log:', error);
+        }
+    } catch (err) {
+        console.error('Error logging order action:', err);
+    }
+}

@@ -41,12 +41,16 @@ window.viewReturnDetails = (id) => {
 
     let itemsHtml = r.return_items.map(item => {
         const code = item.models?.factory_code || item.models?.system_code || '';
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+        const pieces = item.quantity * sizesCount;
+        const piecePrice = item.price_per_series / sizesCount;
         return `
             <tr class="border-b border-devo-gray last:border-0 hover:bg-devo-black/50 transition-colors">
                 <td class="py-2.5 px-3 text-white text-sm font-bold">${item.models?.name || 'موديل محذوف'} <span class="text-devo-muted text-[10px] font-mono mr-1">(${code})</span></td>
                 <td class="py-2.5 px-3 text-devo-info text-xs">${item.colors?.name || '-'}</td>
-                <td class="py-2.5 px-3 text-white font-black text-center">${item.quantity}</td>
-                <td class="py-2.5 px-3 text-devo-muted text-center">${item.price_per_series}</td>
+                <td class="py-2.5 px-3 text-white font-black text-center">${pieces} <span class="text-[10px] text-devo-muted font-normal">(${item.quantity} سرية)</span></td>
+                <td class="py-2.5 px-3 text-devo-muted text-center">${piecePrice}</td>
                 <td class="py-2.5 px-3 text-devo-orange font-black text-left text-base">${item.total_price}</td>
             </tr>
         `;
@@ -82,7 +86,7 @@ window.viewReturnDetails = (id) => {
             <div class="border border-devo-gray rounded-xl bg-devo-black max-h-[45vh] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-right text-sm">
                     <thead class="text-xs text-devo-muted bg-devo-dark sticky top-0 z-10">
-                        <tr><th class="p-3">الموديل</th><th class="p-3">اللون</th><th class="p-3 text-center">الكمية</th><th class="p-3 text-center">سعر السرية</th><th class="p-3 text-left">إجمالي المرتجع</th></tr>
+                        <tr><th class="p-3">الموديل</th><th class="p-3">اللون</th><th class="p-3 text-center">الكمية (ق)</th><th class="p-3 text-center">سعر الفئة</th><th class="p-3 text-left">إجمالي المرتجع</th></tr>
                     </thead>
                     <tbody class="divide-y divide-devo-gray">
                         ${itemsHtml}
@@ -230,13 +234,17 @@ function printReturnInvoice(r) {
 
     let itemsHtml = r.return_items.map((item, idx) => {
         const code = item.models?.factory_code || item.models?.system_code || '';
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+        const pieces = item.quantity * sizesCount;
+        const piecePrice = item.price_per_series / sizesCount;
         return `
             <tr>
                 <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
                 <td style="font-weight: bold;">${item.models?.name || 'موديل محذوف'} ${code ? `<span class="code-span">(${code})</span>` : ''}</td>
                 <td style="font-size: 11px; text-align: center;">${item.colors?.name || '-'}</td>
-                <td style="text-align: center; font-weight: bold;">${item.quantity}</td>
-                <td style="text-align: center;">${item.price_per_series}</td>
+                <td style="text-align: center; font-weight: bold;">${pieces}</td>
+                <td style="text-align: center;">${piecePrice}</td>
                 <td style="text-align: center; font-weight: 900; background-color: #f5f5f5 !important; -webkit-print-color-adjust: exact;">${item.total_price}</td>
             </tr>
         `;
@@ -302,8 +310,8 @@ function printReturnInvoice(r) {
                         <th style="width: 30px;">م</th>
                         <th>الموديل</th>
                         <th style="width: 100px;">اللون</th>
-                        <th style="width: 70px;">الكمية (سرايات)</th>
-                        <th style="width: 80px;">سعر السرية</th>
+                        <th style="width: 70px;">الكمية (قطع)</th>
+                        <th style="width: 80px;">سعر الفئة</th>
                         <th style="width: 90px;">الإجمالي</th>
                     </tr>
                 </thead>
