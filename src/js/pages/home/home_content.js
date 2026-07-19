@@ -52,12 +52,12 @@ async function loadHeroSettings() {
 
         // الصورة الافتراضية هي الموبايل، وتتغير في الشاشات الأكبر من 768px للديسكتوب
         styleTag.innerHTML = `
-            .hero-bg {
-                background-image: linear-gradient(to bottom, rgba(10,10,10,0.5), rgba(10,10,10,1)), url('${mobileImg || desktopImg}');
+            :root {
+                --hero-bg-url: url('${mobileImg || desktopImg}');
             }
             @media (min-width: 768px) {
-                .hero-bg {
-                    background-image: linear-gradient(to bottom, rgba(10,10,10,0.5), rgba(10,10,10,1)), url('${desktopImg || mobileImg}');
+                :root {
+                    --hero-bg-url: url('${desktopImg || mobileImg}');
                 }
             }
         `;

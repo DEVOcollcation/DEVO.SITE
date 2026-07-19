@@ -314,85 +314,19 @@ window.triggerResetSystemTheme = async function(id, name) {
 
 // --- Theme Variable Customizer Modal Logic ---
 
+// --- Theme Variable Customizer Modal Logic ---
+
 const FIELD_MAP = {
-  // 1. General & Page Tab
   'theme-page-bg': 'colors.page.bg',
   'theme-page-bg-secondary': 'colors.page.bg_secondary',
   'theme-page-text': 'colors.page.text',
   'theme-page-text-muted': 'colors.page.text_muted',
-  'theme-page-selection-bg': 'colors.page.selection_bg',
-  'theme-page-selection-text': 'colors.page.selection_text',
   'theme-brand-primary': 'colors.brand.primary',
-  'theme-brand-primary-hover': 'colors.brand.primary_hover',
-  
-  // 2. Navigation & Hero Tab
-  'theme-topnav-bg': 'colors.top_nav.bg',
-  'theme-topnav-border': 'colors.top_nav.border',
-  'theme-topnav-logo': 'colors.top_nav.logo',
-  'theme-topnav-text': 'colors.top_nav.text',
-  'theme-topnav-link-active': 'colors.top_nav.link_active',
-  'theme-topnav-link-hover': 'colors.top_nav.link_hover',
-  'theme-topnav-search-bg': 'colors.top_nav.search_bg',
-  'theme-hero-bg': 'colors.hero.bg',
-  'theme-hero-title': 'colors.hero.title',
-  'theme-hero-subtitle': 'colors.hero.subtitle',
-  'theme-hero-overlay': 'colors.hero.overlay',
-
-  // 3. Buttons Tab
-  'theme-btn-primary-bg': 'colors.buttons.primary.bg',
-  'theme-btn-primary-text': 'colors.buttons.primary.text',
-  'theme-btn-primary-hover-bg': 'colors.buttons.primary.hover_bg',
-  'theme-btn-primary-disabled-bg': 'colors.buttons.primary.disabled_bg',
-  
-  'theme-btn-secondary-bg': 'colors.buttons.secondary.bg',
-  'theme-btn-secondary-text': 'colors.buttons.secondary.text',
-  'theme-btn-secondary-hover-bg': 'colors.buttons.secondary.hover_bg',
-  'theme-btn-secondary-border': 'colors.buttons.secondary.border',
-
-  'theme-btn-success-bg': 'colors.buttons.success.bg',
-  'theme-btn-success-hover-bg': 'colors.buttons.success.hover_bg',
-  
-  'theme-btn-warning-bg': 'colors.buttons.warning.bg',
-  'theme-btn-warning-hover-bg': 'colors.buttons.warning.hover_bg',
-  
-  'theme-btn-danger-bg': 'colors.buttons.danger.bg',
-  'theme-btn-danger-hover-bg': 'colors.buttons.danger.hover_bg',
-
-  // 4. Cards & Modals Tab
-  'theme-pcard-bg': 'colors.product_cards.bg',
-  'theme-pcard-border': 'colors.product_cards.border',
-  'theme-pcard-price': 'colors.product_cards.price',
-  'theme-pcard-title': 'colors.product_cards.title',
-  'theme-pcard-radius': 'colors.product_cards.radius',
-  'theme-pcard-hover-effect': 'colors.product_cards.hover_effect',
-  'theme-modal-bg': 'colors.modal.bg',
-  'theme-modal-price': 'colors.modal.price',
-
-  // 5. Tables & Inputs Tab
-  'theme-table-header-bg': 'colors.tables.header_bg',
-  'theme-table-row-bg': 'colors.tables.row_bg',
-  'theme-table-row-hover-bg': 'colors.tables.row_hover_bg',
-  
-  'theme-input-bg': 'colors.inputs.bg',
-  'theme-input-border': 'colors.inputs.border',
-  'theme-input-focus-border': 'colors.inputs.focus_border',
-
-  // 6. Sidebar & Footer Tab
-  'theme-sidebar-bg': 'colors.sidebar.bg',
-  'theme-sidebar-bg-active': 'colors.sidebar.bg_active',
-  'theme-sidebar-text-active': 'colors.sidebar.text_active',
-  
-  'theme-footer-bg': 'colors.footer.bg',
-  'theme-footer-text': 'colors.footer.text',
-  'theme-footer-link-hover': 'colors.footer.link_hover',
-
-  // 7. Others Tab
+  'theme-buttons-style': 'colors.buttons.style_preset',
+  'theme-cards-style': 'colors.product_cards.style_preset',
   'theme-font-family': 'fonts.family',
-  'theme-transition-speed': 'animations.transition_speed',
-  'theme-shadows-color': 'colors.shadows.color',
-  'theme-shadows-size': 'colors.shadows.size',
-  'theme-scrollbar-thumb': 'colors.scrollbar.thumb',
-  'theme-loader-color': 'colors.loading.loader'
+  'theme-hero-show-image': 'visuals.show_hero_image',
+  'theme-hero-image-blend': 'visuals.hero_image_blend'
 };
 
 function getNestedValue(obj, path) {
@@ -409,6 +343,48 @@ function setNestedValue(obj, path, value) {
   parent[last] = value;
 }
 
+function isHexColorLight(hex) {
+  if (!hex || hex[0] !== '#') return false;
+  let fullHex = hex;
+  if (hex.length === 4) {
+    fullHex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  }
+  const r = parseInt(fullHex.substring(1, 3), 16) || 0;
+  const g = parseInt(fullHex.substring(3, 5), 16) || 0;
+  const b = parseInt(fullHex.substring(5, 7), 16) || 0;
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 128;
+}
+
+function adjustColorBrightness(hex, percent) {
+  if (!hex || hex[0] !== '#') return hex;
+  let fullHex = hex;
+  if (hex.length === 4) {
+    fullHex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  }
+  let R = parseInt(fullHex.substring(1, 3), 16) || 0;
+  let G = parseInt(fullHex.substring(3, 5), 16) || 0;
+  let B = parseInt(fullHex.substring(5, 7), 16) || 0;
+
+  R = parseInt(R * (100 + percent) / 100);
+  G = parseInt(G * (100 + percent) / 100);
+  B = parseInt(B * (100 + percent) / 100);
+
+  R = (R < 255) ? R : 255;
+  G = (G < 255) ? G : 255;
+  B = (B < 255) ? B : 255;
+
+  R = (R > 0) ? R : 0;
+  G = (G > 0) ? G : 0;
+  B = (B > 0) ? B : 0;
+
+  const rHex = R.toString(16).padStart(2, '0');
+  const gHex = G.toString(16).padStart(2, '0');
+  const bHex = B.toString(16).padStart(2, '0');
+
+  return `#${rHex}${gHex}${bHex}`;
+}
+
 window.triggerOpenCustomizer = function(id) {
   const theme = allThemes.find(t => t.id === id);
   if (!theme) return;
@@ -416,6 +392,7 @@ window.triggerOpenCustomizer = function(id) {
   document.getElementById('customizer-theme-id').value = id;
   document.getElementById('customizer-theme-name').textContent = theme.name;
   document.getElementById('customizer-theme-desc').textContent = theme.description || 'لا يوجد وصف متوفر لهذا المظهر.';
+  document.getElementById('theme-custom-desc').value = theme.description || '';
   
   const footerInfo = document.getElementById('customizer-theme-info-footer');
   if (footerInfo) {
@@ -451,15 +428,6 @@ window.triggerOpenCustomizer = function(id) {
     }
   }
 
-  // Glass effect mapping specifically
-  const glassCheck = document.getElementById('theme-glass-effect');
-  if (glassCheck) {
-    glassCheck.checked = !!(variables.visuals?.glass_effect);
-  }
-
-  // Switch to default General Tab
-  switchThemeTab('tab-general');
-
   // Display Customizer modal
   const modal = document.getElementById('theme-customizer-modal');
   modal.classList.remove('hidden');
@@ -478,73 +446,206 @@ window.closeThemeCustomizerModal = function() {
   }, 300);
 };
 
-window.switchThemeTab = function(tabId) {
-  // Hide all tab contents
-  document.querySelectorAll('.theme-tab-content').forEach(content => {
-    content.classList.add('hidden');
-  });
-
-  // Show selected tab content
-  document.getElementById(tabId)?.classList.remove('hidden');
-
-  // Manage navigation button styling
-  document.querySelectorAll('#theme-tabs-nav button').forEach(btn => {
-    btn.className = "theme-tab-btn px-4 py-2 rounded-lg text-xs font-bold text-devo-muted hover:text-white transition-colors whitespace-nowrap";
-  });
-
-  const activeBtn = document.getElementById(`btn-${tabId}`);
-  if (activeBtn) {
-    activeBtn.className = "theme-tab-btn px-4 py-2 rounded-lg text-xs font-bold text-devo-orange bg-devo-orange/10 transition-colors whitespace-nowrap active";
-  }
-};
-
 async function saveThemeCustomizations() {
   const id = document.getElementById('customizer-theme-id').value;
   const theme = allThemes.find(t => t.id === id);
   if (!theme) return;
 
-  // Build variables object based on base theme configs to preserve missing variables
-  const variables = JSON.parse(JSON.stringify(theme.variables || DEFAULT_THEMES["Dark Theme"]));
-  
-  // Gather fields
-  for (const [fieldId, path] of Object.entries(FIELD_MAP)) {
-    const el = document.getElementById(fieldId);
-    if (el) {
-      let val = el.type === 'checkbox' ? el.checked : el.value;
-      setNestedValue(variables, path, val);
+  const pageBg = document.getElementById('theme-page-bg').value;
+  const pageBgSec = document.getElementById('theme-page-bg-secondary').value;
+  const pageText = document.getElementById('theme-page-text').value;
+  const pageTextMuted = document.getElementById('theme-page-text-muted').value;
+  const brandPrimary = document.getElementById('theme-brand-primary').value;
+  const btnStylePreset = document.getElementById('theme-buttons-style').value;
+  const cardStylePreset = document.getElementById('theme-cards-style').value;
+  const fontFamily = document.getElementById('theme-font-family').value;
+  const showHeroImg = document.getElementById('theme-hero-show-image').value === 'true';
+  const heroImgBlend = document.getElementById('theme-hero-image-blend').value;
+  const newDescription = document.getElementById('theme-custom-desc').value;
+
+  const isLight = isHexColorLight(pageBg);
+  const darkAlpha = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
+  const darkAlphaFocus = isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)';
+
+  // Build a complete theme variables structure derived from the inputs
+  const variables = {
+    colors: {
+      page: {
+        bg: pageBg,
+        bg_secondary: pageBgSec,
+        surface: pageBgSec,
+        text: pageText,
+        text_muted: pageTextMuted,
+        selection_bg: brandPrimary,
+        selection_text: '#ffffff'
+      },
+      brand: {
+        primary: brandPrimary,
+        primary_hover: adjustColorBrightness(brandPrimary, -12)
+      },
+      top_nav: {
+        bg: pageBgSec,
+        border: darkAlpha,
+        logo: brandPrimary,
+        text: pageText,
+        link_active: brandPrimary,
+        link_hover: brandPrimary,
+        search_bg: pageBg,
+        search_border: darkAlpha,
+        search_text: pageText,
+        icons: pageTextMuted,
+        icons_active: brandPrimary
+      },
+      hero: {
+        bg: pageBgSec,
+        title: pageText,
+        subtitle: pageTextMuted,
+        overlay: isLight ? 'linear-gradient(rgba(255,255,255,0.7), rgba(255,255,255,0.95))' : 'linear-gradient(rgba(10,10,10,0.6), rgba(10,10,10,0.95))'
+      },
+      buttons: {
+        style_preset: btnStylePreset,
+        primary: {
+          bg: brandPrimary,
+          text: '#ffffff',
+          hover_bg: adjustColorBrightness(brandPrimary, -12),
+          disabled_bg: isLight ? '#e5e5e5' : '#262626',
+          disabled_text: isLight ? '#a3a3a3' : '#737373'
+        },
+        secondary: {
+          bg: pageBg,
+          text: pageText,
+          border: darkAlphaFocus,
+          hover_bg: pageBgSec
+        },
+        success: {
+          bg: '#10b981',
+          text: '#ffffff',
+          hover_bg: '#059669'
+        },
+        warning: {
+          bg: '#f59e0b',
+          text: '#ffffff',
+          hover_bg: '#d97706'
+        },
+        danger: {
+          bg: '#ef4444',
+          text: '#ffffff',
+          hover_bg: '#dc2626'
+        }
+      },
+      inputs: {
+        bg: pageBg,
+        border: darkAlphaFocus,
+        text: pageText,
+        focus_border: brandPrimary
+      },
+      cards: {
+        product: {
+          bg: pageBgSec,
+          border: darkAlpha,
+          radius: cardStylePreset === 'rounded-pill' ? '24px' : '16px',
+          shadow: cardStylePreset === 'shadowed' ? (isLight ? '0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.01)' : '0 10px 30px rgba(0,0,0,0.4)') : 'none',
+          hover_anim: 'translate-y'
+        },
+        statistics: {
+          bg: pageBgSec,
+          border: darkAlpha,
+          radius: cardStylePreset === 'rounded-pill' ? '24px' : '16px',
+          shadow: cardStylePreset === 'shadowed' ? (isLight ? '0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.01)' : '0 10px 30px rgba(0,0,0,0.4)') : 'none'
+        },
+        dashboard: {
+          bg: pageBgSec,
+          border: darkAlpha,
+          radius: cardStylePreset === 'rounded-pill' ? '24px' : '16px',
+          shadow: cardStylePreset === 'shadowed' ? (isLight ? '0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.01)' : '0 10px 30px rgba(0,0,0,0.4)') : 'none'
+        },
+        order: {
+          bg: pageBgSec,
+          border: darkAlpha,
+          radius: cardStylePreset === 'rounded-pill' ? '24px' : '16px',
+          shadow: cardStylePreset === 'shadowed' ? (isLight ? '0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.01)' : '0 10px 30px rgba(0,0,0,0.4)') : 'none'
+        }
+      },
+      product_cards: {
+        style_preset: cardStylePreset,
+        bg: pageBgSec,
+        border: darkAlpha,
+        radius: cardStylePreset === 'rounded-pill' ? '24px' : '16px',
+        shadow: cardStylePreset === 'shadowed' ? (isLight ? '0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.01)' : '0 10px 30px rgba(0,0,0,0.4)') : 'none',
+        title: pageText,
+        price: brandPrimary,
+        category: pageTextMuted,
+        hover_shadow: '0 15px 35px rgba(0,0,0,0.2)',
+        hover_effect: 'translate-y'
+      },
+      modal: {
+        bg: pageBgSec,
+        border: darkAlphaFocus,
+        radius: cardStylePreset === 'rounded-pill' ? '24px' : '16px',
+        shadow: isLight ? '0 20px 50px rgba(0,0,0,0.1)' : '0 20px 50px rgba(0,0,0,0.6)'
+      },
+      tables: {
+        border: darkAlpha,
+        header_bg: pageBg,
+        header_text: pageTextMuted,
+        row_bg: pageBgSec,
+        row_hover_bg: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)'
+      },
+      sidebar: {
+        bg: pageBg,
+        border: darkAlpha,
+        text: pageTextMuted,
+        text_hover: pageText,
+        bg_hover: pageBgSec,
+        bg_active: brandPrimary + '1a',
+        text_active: brandPrimary,
+        icons: pageTextMuted,
+        icons_active: brandPrimary
+      },
+      footer: {
+        bg: pageBg,
+        border: darkAlpha,
+        text: pageTextMuted,
+        social_bg: pageBgSec,
+        social_text: pageTextMuted,
+        social_hover_bg: brandPrimary,
+        social_hover_text: '#ffffff',
+        link_hover: brandPrimary
+      },
+      scrollbar: {
+        track: pageBg,
+        thumb: isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)',
+        thumb_hover: brandPrimary
+      },
+      shadows: {
+        color: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.5)',
+        size: '10px',
+        blur: '40px'
+      },
+      loading: {
+        loader: brandPrimary,
+        spinner: pageBgSec
+      }
+    },
+    fonts: {
+      family: fontFamily,
+      size_base: '16px'
+    },
+    animations: {
+      transition_speed: '0.3s'
+    },
+    visuals: {
+      glass_effect: cardStylePreset === 'glass',
+      blur_intensity: cardStylePreset === 'glass' ? '12px' : '0px',
+      show_hero_image: showHeroImg,
+      hero_image_blend: heroImgBlend
     }
-  }
-
-  // Handle glass effect specifically
-  const glassCheck = document.getElementById('theme-glass-effect');
-  if (glassCheck) {
-    if (!variables.visuals) variables.visuals = {};
-    variables.visuals.glass_effect = glassCheck.checked;
-    variables.visuals.blur_intensity = glassCheck.checked ? '8px' : '0px';
-  }
-
-  // Built-in shadow variables updates
-  const shadowColor = document.getElementById('theme-shadows-color').value;
-  const shadowSize = document.getElementById('theme-shadows-size').value || '10px';
-  if (!variables.colors.shadows) variables.colors.shadows = {};
-  variables.colors.shadows.color = shadowColor;
-  variables.colors.shadows.size = shadowSize;
-  variables.colors.shadows.blur = (parseInt(shadowSize) * 4) + 'px';
-
-  // Apply button borders & hovers fallbacks automatically for convenience
-  const btnTypes = ['primary', 'secondary', 'success', 'warning', 'danger'];
-  btnTypes.forEach(type => {
-    const btn = variables.colors.buttons[type];
-    if (btn) {
-      if (!btn.hover_text) btn.hover_text = btn.text;
-      if (!btn.active_bg) btn.active_bg = btn.hover_bg;
-    }
-  });
+  };
 
   showToast('جاري حفظ التغييرات وتحديث المظهر...', 'info');
 
   try {
-    await updateTheme(id, variables, theme.description);
+    await updateTheme(id, variables, newDescription);
     showToast('تم حفظ تعديلات المظهر وتطبيقها بنجاح ✓', 'success');
     closeThemeCustomizerModal();
     
@@ -571,6 +672,7 @@ async function saveThemeCustomizations() {
     showToast('خطأ في حفظ المظهر: ' + error.message, 'error');
   }
 }
+
 window.saveThemeCustomizations = saveThemeCustomizations;
 
 // Setup dual bindings for color input pickers <-> text hex displays

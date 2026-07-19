@@ -1,38 +1,48 @@
 import { getCurrentSession, logoutUser } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
+import { renderHeader, attachMobileMenuToggle } from './header_layouts.js';
+import { supabase } from '../../config/supabase.js';
 
-export function initNavbar() {
+export async function initNavbar() {
     const { session } = getCurrentSession();
     const user = session ? session.user : null;
-    const isWorker = user && user.role === 'worker';
-    const isAdmin = user && (user.role === 'admin' || user.role === 'owner');
-    const hasWarehouseAccess = user && (user.role === 'owner' || user.role === 'admin' || user.worker_job === 'warehouse' || user.worker_job === 'both');
-    const hasAdminAccess = user && (user.role === 'owner' || user.role === 'admin');
 
-    const desktopLinks = document.getElementById('desktop-nav-links');
-    const mobileLinks = document.getElementById('mobile-nav-links');
-    const desktopUserArea = document.getElementById('desktop-user-area');
+    // جلب إعدادات الهيدر من Supabase
+    let settings = {};
+    try {
+        const { data } = await supabase.from('home_settings').select('*');
+        if (data) {
+            data.forEach(item => settings[item.setting_key] = item.setting_value);
+        }
+    } catch (e) {
+        console.warn('[Navbar] Could not load header settings, using defaults.');
+    }
 
-    if (!desktopLinks || !mobileLinks || !desktopUserArea) return;
+    const layoutId = settings.header_layout || 'classic';
 
+    // تطبيق الـ Layout
+    renderHeader(layoutId, user, settings);
+
+    // تسجيل الخروج
+    window.handleLogout = () => { logoutUser(); };
+
+    // تسجيل تحذير الزائر
     window.alertVisitor = () => {
-        showToast('يجب ان تكون من ضمن فريق العمل  للوصول لهذه الميزة', 'warning');
+        showToast('يجب أن تكون من ضمن فريق العمل للوصول لهذه الميزة', 'warning');
     };
 
     // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
     window.switchSiteView = (targetId) => {
-        // إخفاء كل الأقسام
         document.querySelectorAll('.site-view-section').forEach(el => {
             el.classList.remove('block');
             el.classList.add('hidden');
         });
-        
-        // إظهار القسم المطلوب
+
         const target = document.getElementById(targetId);
         if (target) {
             target.classList.remove('hidden');
             target.classList.add('block');
-            window.scrollTo(0,0);
+            window.scrollTo(0, 0);
         }
 
         // إغلاق قائمة الموبايل إذا كانت مفتوحة
@@ -40,7 +50,10 @@ export function initNavbar() {
         if (mobileMenu && !mobileMenu.classList.contains('translate-x-full')) {
             mobileMenu.classList.add('translate-x-full');
             const icon = document.querySelector('#mobile-menu-btn i');
-            if(icon) { icon.classList.add('ph-list'); icon.classList.remove('ph-x'); }
+            if (icon) {
+                icon.classList.add('ph-list');
+                icon.classList.remove('ph-x');
+            }
         }
 
         // تنبيه بتغيير الصفحة للتحكم في الكاميرا والباركود
@@ -48,80 +61,4 @@ export function initNavbar() {
             window.onViewChanged(targetId);
         }
     };
-
-    if (user) {
-        // روابط المسجل دخول
-        desktopLinks.innerHTML = `
-            <button onclick="switchSiteView('view-home')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">الرئيسية</button>
-            <button onclick="switchSiteView('view-gallery')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">المعرض</button>
-            <button onclick="switchSiteView('view-barcode')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-qr-code"></i> الباركود</button>
-            <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-shopping-cart"></i> السلة</button>
-            <button onclick="switchSiteView('view-orders')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors flex items-center gap-1"><i class="ph ph-receipt"></i> الأوردرات</button>
-        `;
-        
-        mobileLinks.innerHTML = `
-            <button onclick="switchSiteView('view-home')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">الرئيسية</button>
-            <button onclick="switchSiteView('view-gallery')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">المعرض</button>
-            <button onclick="switchSiteView('view-barcode')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full flex items-center gap-2"><i class="ph ph-qr-code"></i> الباركود</button>
-            <button onclick="switchSiteView('view-cart'); window.refreshCartView();" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-shopping-cart"></i> السلة</button>
-            <button onclick="switchSiteView('view-orders')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full"><i class="ph ph-receipt"></i> الأوردرات</button>
-            ${hasWarehouseAccess ? `<a href="warehouse.html" class="py-3 text-devo-success hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-hard-hat"></i> صفحة العمال (المخزن)</a>` : ''}
-            ${hasAdminAccess ? `<a href="admin.html" class="py-3 text-devo-info hover:text-white border-b border-devo-gray flex items-center gap-2"><i class="ph ph-shield-check"></i> لوحة الإدارة</a>` : ''}
-            <button onclick="handleLogout()" class="py-3 text-devo-error text-right mt-4 flex items-center gap-2"><i class="ph ph-sign-out"></i> تسجيل خروج</button>
-        `;
-
-        let workerTitle = 'عامل مبيعات';
-        if (isWorker) {
-            if (user.worker_job === 'warehouse') workerTitle = 'عامل مخزن';
-            else if (user.worker_job === 'both') workerTitle = 'مبيعات + مخزن';
-        }
-
-        desktopUserArea.innerHTML = `
-            ${hasAdminAccess ? `<a href="admin.html" class="text-devo-info hover:text-white text-sm font-bold flex items-center gap-1 mr-2" title="لوحة الإدارة"><i class="ph ph-shield-check text-xl"></i></a>` : ''}
-            ${hasWarehouseAccess ? `<a href="warehouse.html" class="text-devo-success hover:text-white text-sm font-bold flex items-center gap-1 mr-2" title="صفحة العمال (المخزن)"><i class="ph ph-hard-hat text-xl"></i></a>` : ''}
-            <div class="flex items-center gap-2 border-r border-devo-gray pr-4 mr-2">
-                <div class="text-right col-span-1">
-                    <p class="text-sm font-bold text-white leading-tight truncate w-24" title="${user.full_name}">${user.full_name}</p>
-                    <p class="text-[10px] text-devo-orange leading-tight">${isWorker ? workerTitle : 'إدارة'}</p>
-                </div>
-                <div class="w-10 h-10 rounded-full bg-devo-gray flex items-center justify-center text-white font-bold cursor-pointer hover:bg-devo-orange transition-colors" onclick="handleLogout()" title="تسجيل الخروج">
-                    <i class="ph ph-sign-out text-xl"></i>
-                </div>
-            </div>
-        `;
-        window.handleLogout = () => { logoutUser(); };
-
-    } else {
-        // روابط الزائر
-        desktopLinks.innerHTML = `
-            <button onclick="switchSiteView('view-home')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">الرئيسية</button>
-            <button onclick="switchSiteView('view-gallery')" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted hover:text-white transition-colors">المعرض</button>
-            <button onclick="alertVisitor()" class="px-3 py-2 rounded-md text-sm font-bold text-devo-muted/50 cursor-not-allowed flex items-center gap-1"><i class="ph ph-shopping-cart"></i> السلة <i class="ph ph-lock-key text-[10px]"></i></button>
-        `;
-
-        mobileLinks.innerHTML = `
-            <button onclick="switchSiteView('view-home')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">الرئيسية</button>
-            <button onclick="switchSiteView('view-gallery')" class="py-3 text-right text-devo-muted hover:text-white border-b border-devo-gray w-full">المعرض</button>
-            <a href="auth.html" class="py-3 text-devo-orange hover:text-white border-b border-devo-gray flex items-center gap-2 font-bold"><i class="ph ph-sign-in"></i> تسجيل الدخول</a>
-        `;
-
-        desktopUserArea.innerHTML = `
-            <a href="auth.html" class="px-4 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white border border-devo-orange/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
-                <i class="ph ph-sign-in text-base"></i>
-                <span>تسجيل الدخول</span>
-            </a>
-        `;
-    }
-
-    // زر القائمة الجانبية للموبايل
-    const mobileBtn = document.getElementById('mobile-menu-btn');
-    const mobileMenu = document.getElementById('mobile-menu');
-    if (mobileBtn && mobileMenu) {
-        mobileBtn.addEventListener('click', () => {
-            mobileMenu.classList.toggle('translate-x-full');
-            const icon = mobileBtn.querySelector('i');
-            icon.classList.toggle('ph-list');
-            icon.classList.toggle('ph-x');
-        });
-    }
 }

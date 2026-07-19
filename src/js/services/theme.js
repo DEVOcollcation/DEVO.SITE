@@ -1,5 +1,47 @@
 import { supabase } from '../config/supabase.js';
 
+export function isHexColorLight(hex) {
+  if (!hex || hex[0] !== '#') return false;
+  let fullHex = hex;
+  if (hex.length === 4) {
+    fullHex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  }
+  const r = parseInt(fullHex.substring(1, 3), 16) || 0;
+  const g = parseInt(fullHex.substring(3, 5), 16) || 0;
+  const b = parseInt(fullHex.substring(5, 7), 16) || 0;
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 128;
+}
+
+export function adjustColorBrightness(hex, percent) {
+  if (!hex || hex[0] !== '#') return hex;
+  let fullHex = hex;
+  if (hex.length === 4) {
+    fullHex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  }
+  let R = parseInt(fullHex.substring(1, 3), 16) || 0;
+  let G = parseInt(fullHex.substring(3, 5), 16) || 0;
+  let B = parseInt(fullHex.substring(5, 7), 16) || 0;
+
+  R = parseInt(R * (100 + percent) / 100);
+  G = parseInt(G * (100 + percent) / 100);
+  B = parseInt(B * (100 + percent) / 100);
+
+  R = (R < 255) ? R : 255;
+  G = (G < 255) ? G : 255;
+  B = (B < 255) ? B : 255;
+
+  R = (R > 0) ? R : 0;
+  G = (G > 0) ? G : 0;
+  B = (B > 0) ? B : 0;
+
+  const rHex = R.toString(16).padStart(2, '0');
+  const gHex = G.toString(16).padStart(2, '0');
+  const bHex = B.toString(16).padStart(2, '0');
+
+  return `#${rHex}${gHex}${bHex}`;
+}
+
 // Fallback Default Themes Configuration matching DB seeds
 export const DEFAULT_THEMES = {
   "Dark Theme": {
@@ -140,7 +182,9 @@ export const DEFAULT_THEMES = {
     },
     "visuals": {
       "glass_effect": false,
-      "blur_intensity": "0px"
+      "blur_intensity": "0px",
+      "show_hero_image": true,
+      "hero_image_blend": "overlay"
     }
   },
   "Light Theme": {
@@ -281,7 +325,9 @@ export const DEFAULT_THEMES = {
     },
     "visuals": {
       "glass_effect": false,
-      "blur_intensity": "0px"
+      "blur_intensity": "0px",
+      "show_hero_image": true,
+      "hero_image_blend": "luminosity"
     }
   },
   "Warm Theme": {
@@ -422,7 +468,9 @@ export const DEFAULT_THEMES = {
     },
     "visuals": {
       "glass_effect": false,
-      "blur_intensity": "0px"
+      "blur_intensity": "0px",
+      "show_hero_image": true,
+      "hero_image_blend": "multiply"
     }
   },
   "Midnight Theme": {
@@ -563,7 +611,9 @@ export const DEFAULT_THEMES = {
     },
     "visuals": {
       "glass_effect": false,
-      "blur_intensity": "0px"
+      "blur_intensity": "0px",
+      "show_hero_image": true,
+      "hero_image_blend": "overlay"
     }
   }
 };
@@ -672,6 +722,19 @@ export function applyTheme(theme) {
     .ph-spinner {
       color: var(--loader-color) !important;
     }
+
+    /* Coordinated Text Fixes for Light/Warm Themes */
+    .text-neutral-400, .text-gray-400, .text-zinc-400, .text-neutral-500, .text-gray-500, .text-zinc-500 {
+      color: var(--devo-muted) !important;
+    }
+
+    /* Nested text-white inside light backgrounds should adapt color to match primary text under light themes */
+    .bg-devo-black .text-white, .bg-devo-dark .text-white, 
+    .bg-devo-black\\/80 .text-white, .bg-devo-dark\\/80 .text-white, 
+    .bg-devo-black\\/90 .text-white, .bg-devo-black\\/95 .text-white, 
+    .bg-devo-black\\/50 .text-white, .bg-devo-black\\/30 .text-white {
+      color: ${isHexColorLight(colors.page.bg) ? 'var(--devo-text)' : '#ffffff'} !important;
+    }
   `;
 
   // 3. Modals & Shadows Overrides
@@ -712,10 +775,17 @@ export function applyTheme(theme) {
 
   // 5. Hero Overrides
   if (colors.hero) {
+    const showHeroImage = (visuals.show_hero_image !== false);
+    const heroBlendMode = visuals.hero_image_blend || 'overlay';
+    const overlayPart = colors.hero.overlay ? colors.hero.overlay + ', ' : '';
+    const bgImageStyle = showHeroImage ? `${overlayPart}var(--hero-bg-url, url(''))` : 'none';
+    const blendStyle = colors.hero.overlay ? `normal, ${heroBlendMode}` : heroBlendMode;
+
     cssText += `
       .hero-bg, [data-theme-hero="true"] {
-        background-image: ${colors.hero.overlay ? colors.hero.overlay + ', ' : ''} var(--hero-bg-url, url('')) !important;
+        background-image: ${bgImageStyle} !important;
         background-color: ${colors.hero.bg} !important;
+        background-blend-mode: ${blendStyle} !important;
       }
       .hero-bg h1, [data-theme-hero="true"] h1 {
         color: ${colors.hero.title} !important;
@@ -729,20 +799,45 @@ export function applyTheme(theme) {
   // 6. Buttons Styling
   if (colors.buttons) {
     const btnTypes = ['primary', 'secondary', 'success', 'warning', 'danger'];
+    const stylePreset = colors.buttons.style_preset || 'solid';
+    
     btnTypes.forEach(type => {
       const btn = colors.buttons[type];
       if (btn) {
-        // We override standard bg, text, borders for tailwind custom button classes
+        let bg = btn.bg;
+        let text = btn.text;
+        let border = btn.border || 'transparent';
+        let hoverBg = btn.hover_bg;
+        let hoverText = btn.hover_text || btn.text;
+        let borderRadiusCss = '';
+
+        if (stylePreset === 'outlined' && type === 'primary') {
+          bg = 'transparent';
+          text = btn.bg;
+          border = `2px solid ${btn.bg}`;
+          hoverBg = btn.bg;
+          hoverText = '#ffffff';
+        } else if (stylePreset === 'soft' && type === 'primary') {
+          bg = `${btn.bg}1a`; // 10% opacity
+          text = btn.bg;
+          border = '1px solid transparent';
+          hoverBg = btn.bg;
+          hoverText = '#ffffff';
+        } else if (stylePreset === 'rounded-pill') {
+          borderRadiusCss = 'border-radius: 9999px !important;';
+        }
+
         cssText += `
           .btn-${type}, button.btn-${type}, [data-btn="${type}"] {
-            background-color: ${btn.bg} !important;
-            color: ${btn.text} !important;
-            border: 1px solid ${btn.border || 'transparent'} !important;
+            background-color: ${bg} !important;
+            color: ${text} !important;
+            border: ${border === 'transparent' ? '1px solid transparent' : border} !important;
+            ${borderRadiusCss}
           }
           .btn-${type}:hover, button.btn-${type}:hover, [data-btn="${type}"]:hover {
-            background-color: ${btn.hover_bg} !important;
-            color: ${btn.hover_text || btn.text} !important;
-            border-color: ${btn.hover_border || btn.border || 'transparent'} !important;
+            background-color: ${hoverBg} !important;
+            color: ${hoverText} !important;
+            border-color: ${type === 'primary' && stylePreset === 'outlined' ? btn.bg : 'transparent'} !important;
           }
           .btn-${type}:active, button.btn-${type}:active, [data-btn="${type}"]:active {
             background-color: ${btn.active_bg || btn.hover_bg} !important;
@@ -861,20 +956,58 @@ export function applyTheme(theme) {
   }
 
   // 11. Cards Styling
-  if (colors.cards) {
+  // 11. Cards Styling
+  if (colors.cards || colors.product_cards) {
+    const cardPreset = colors.product_cards?.style_preset || 'bordered';
+    let cardBg = colors.cards?.product?.bg || colors.product_cards?.bg || '#171717';
+    let cardBorder = colors.cards?.product?.border || colors.product_cards?.border || '#262626';
+    let cardRadius = colors.cards?.product?.radius || colors.product_cards?.radius || '16px';
+    let cardShadow = colors.cards?.product?.shadow || colors.product_cards?.shadow || '0 4px 15px rgba(0,0,0,0.05)';
+    let cardBackdrop = '';
+
+    if (cardPreset === 'bordered') {
+      cardShadow = 'none !important';
+    } else if (cardPreset === 'shadowed') {
+      cardBorder = 'transparent !important';
+      const isLightBg = colors.page?.bg ? isHexColorLight(colors.page.bg) : false;
+      cardShadow = isLightBg ? '0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.01) !important' : '0 10px 30px rgba(0,0,0,0.4) !important';
+    } else if (cardPreset === 'glass') {
+      const isLightBg = colors.page?.bg ? isHexColorLight(colors.page.bg) : false;
+      cardBg = isLightBg ? 'rgba(255,255,255,0.4) !important' : 'rgba(0,0,0,0.3) !important';
+      cardBorder = isLightBg ? 'rgba(0,0,0,0.08) !important' : 'rgba(255,255,255,0.08) !important';
+      cardBackdrop = 'backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important;';
+    }
+
+    // Fallbacks for specific cards (statistics, dashboard, order)
+    const statBg = colors.cards?.statistics?.bg || cardBg;
+    const statBorder = colors.cards?.statistics?.border || cardBorder;
+    const statRadius = colors.cards?.statistics?.radius || cardRadius;
+    const statShadow = colors.cards?.statistics?.shadow || cardShadow;
+
+    const dashBg = colors.cards?.dashboard?.bg || cardBg;
+    const dashBorder = colors.cards?.dashboard?.border || cardBorder;
+    const dashRadius = colors.cards?.dashboard?.radius || cardRadius;
+    const dashShadow = colors.cards?.dashboard?.shadow || cardShadow;
+
+    const orderBg = colors.cards?.order?.bg || cardBg;
+    const orderBorder = colors.cards?.order?.border || cardBorder;
+    const orderRadius = colors.cards?.order?.radius || cardRadius;
+    const orderShadow = colors.cards?.order?.shadow || cardShadow;
+
     // Product cards (gallery, home, warehouse)
     cssText += `
       .product-card, [data-card-type="product"], .card-hover {
-        background-color: ${colors.cards.product.bg || colors.product_cards?.bg} !important;
-        border-color: ${colors.cards.product.border || colors.product_cards?.border} !important;
-        border-radius: ${colors.cards.product.radius || colors.product_cards?.radius} !important;
-        box-shadow: ${colors.cards.product.shadow || colors.product_cards?.shadow} !important;
+        background-color: ${cardBg} !important;
+        border-color: ${cardBorder} !important;
+        border-radius: ${cardRadius} !important;
+        box-shadow: ${cardShadow} !important;
+        ${cardBackdrop}
         transition: transform var(--transition-speed), box-shadow var(--transition-speed) !important;
       }
       .product-card:hover, [data-card-type="product"]:hover, .card-hover:hover {
-        box-shadow: ${colors.product_cards?.hover_shadow || '0 10px 30px rgba(0,0,0,0.5)'} !important;
-        ${colors.cards.product.hover_anim === 'translate-y' || colors.product_cards?.hover_effect === 'translate-y' ? 'transform: translateY(-4px) !important;' : ''}
-        ${colors.cards.product.hover_anim === 'scale' || colors.product_cards?.hover_effect === 'scale' ? 'transform: scale(1.02) !important;' : ''}
+        box-shadow: ${colors.product_cards?.hover_shadow || '0 10px 30px rgba(0,0,0,0.1)'} !important;
+        ${colors.cards?.product?.hover_anim === 'translate-y' || colors.product_cards?.hover_effect === 'translate-y' ? 'transform: translateY(-4px) !important;' : ''}
+        ${colors.cards?.product?.hover_anim === 'scale' || colors.product_cards?.hover_effect === 'scale' ? 'transform: scale(1.02) !important;' : ''}
       }
       .product-card h3, .product-card h4 {
         color: ${colors.product_cards?.title || colors.page.text} !important;
@@ -888,46 +1021,77 @@ export function applyTheme(theme) {
 
       /* Statistics Cards */
       .stat-card, [data-card-type="statistics"] {
-        background-color: ${colors.cards.statistics.bg} !important;
-        border-color: ${colors.cards.statistics.border} !important;
-        border-radius: ${colors.cards.statistics.radius} !important;
-        box-shadow: ${colors.cards.statistics.shadow} !important;
+        background-color: ${statBg} !important;
+        border-color: ${statBorder} !important;
+        border-radius: ${statRadius} !important;
+        box-shadow: ${statShadow} !important;
       }
       
       /* Dashboard Cards */
       .dashboard-card, [data-card-type="dashboard"] {
-        background-color: ${colors.cards.dashboard.bg} !important;
-        border-color: ${colors.cards.dashboard.border} !important;
-        border-radius: ${colors.cards.dashboard.radius} !important;
-        box-shadow: ${colors.cards.dashboard.shadow} !important;
+        background-color: ${dashBg} !important;
+        border-color: ${dashBorder} !important;
+        border-radius: ${dashRadius} !important;
+        box-shadow: ${dashShadow} !important;
       }
       
       /* Order Cards */
       .order-card, [data-card-type="order"], .bg-devo-dark.border.border-devo-gray.rounded-xl.p-4 {
-        background-color: ${colors.cards.order.bg} !important;
-        border-color: ${colors.cards.order.border} !important;
-        border-radius: ${colors.cards.order.radius} !important;
-        box-shadow: ${colors.cards.order.shadow} !important;
+        background-color: ${orderBg} !important;
+        border-color: ${orderBorder} !important;
+        border-radius: ${orderRadius} !important;
+        box-shadow: ${orderShadow} !important;
       }
     `;
   }
 
   // 12. Alerts & Badges Overrides
   if (colors.alerts) {
+    const successBg = colors.alerts.success?.bg || 'rgba(16, 185, 129, 0.1)';
+    const successText = colors.alerts.success?.text || '#10b981';
+    const successBorder = colors.alerts.success?.border || 'rgba(16, 185, 129, 0.2)';
+
+    const errorBg = colors.alerts.error?.bg || 'rgba(239, 68, 68, 0.1)';
+    const errorText = colors.alerts.error?.text || '#ef4444';
+    const errorBorder = colors.alerts.error?.border || 'rgba(239, 68, 68, 0.2)';
+
+    const warningBg = colors.alerts.warning?.bg || 'rgba(245, 158, 11, 0.1)';
+    const warningText = colors.alerts.warning?.text || '#f59e0b';
+    const warningBorder = colors.alerts.warning?.border || 'rgba(245, 158, 11, 0.2)';
+
+    const infoBg = colors.alerts.info?.bg || 'rgba(59, 130, 246, 0.1)';
+    const infoText = colors.alerts.info?.text || '#3b82f6';
+    const infoBorder = colors.alerts.info?.border || 'rgba(59, 130, 246, 0.2)';
+
     cssText += `
-      .alert-success, .bg-devo-success\\/10 { background-color: ${colors.alerts.success.bg} !important; color: ${colors.alerts.success.text} !important; border-color: ${colors.alerts.success.border} !important; }
-      .alert-error, .alert-danger, .bg-devo-error\\/10 { background-color: ${colors.alerts.error.bg} !important; color: ${colors.alerts.error.text} !important; border-color: ${colors.alerts.error.border} !important; }
-      .alert-warning, .bg-devo-warning\\/10 { background-color: ${colors.alerts.warning.bg} !important; color: ${colors.alerts.warning.text} !important; border-color: ${colors.alerts.warning.border} !important; }
-      .alert-info, .bg-devo-info\\/10 { background-color: ${colors.alerts.info.bg} !important; color: ${colors.alerts.info.text} !important; border-color: ${colors.alerts.info.border} !important; }
+      .alert-success, .bg-devo-success\\/10 { background-color: ${successBg} !important; color: ${successText} !important; border-color: ${successBorder} !important; }
+      .alert-error, .alert-danger, .bg-devo-error\\/10 { background-color: ${errorBg} !important; color: ${errorText} !important; border-color: ${errorBorder} !important; }
+      .alert-warning, .bg-devo-warning\\/10 { background-color: ${warningBg} !important; color: ${warningText} !important; border-color: ${warningBorder} !important; }
+      .alert-info, .bg-devo-info\\/10 { background-color: ${infoBg} !important; color: ${infoText} !important; border-color: ${infoBorder} !important; }
     `;
   }
   if (colors.badges) {
+    const orangeBg = colors.badges.orange?.bg || colors.brand?.primary || '#f97316';
+    const orangeText = colors.badges.orange?.text || '#ffffff';
+
+    const successBg = colors.badges.success?.bg || '#10b981';
+    const successText = colors.badges.success?.text || '#ffffff';
+
+    const errorBg = colors.badges.error?.bg || '#ef4444';
+    const errorText = colors.badges.error?.text || '#ffffff';
+
+    const warningBg = colors.badges.warning?.bg || '#f59e0b';
+    const warningText = colors.badges.warning?.text || '#ffffff';
+
+    const infoBg = colors.badges.info?.bg || '#3b82f6';
+    const infoText = colors.badges.info?.text || '#ffffff';
+
     cssText += `
-      .badge-orange, .badge-primary, .bg-devo-orange { background-color: ${colors.badges.orange.bg} !important; color: ${colors.badges.orange.text} !important; }
-      .badge-success, .bg-devo-success { background-color: ${colors.badges.success.bg} !important; color: ${colors.badges.success.text} !important; }
-      .badge-error, .badge-danger, .bg-devo-error { background-color: ${colors.badges.error.bg} !important; color: ${colors.badges.error.text} !important; }
-      .badge-warning, .bg-devo-warning { background-color: ${colors.badges.warning.bg} !important; color: ${colors.badges.warning.text} !important; }
-      .badge-info, .bg-devo-info { background-color: ${colors.badges.info.bg} !important; color: ${colors.badges.info.text} !important; }
+      .badge-orange, .badge-primary, .bg-devo-orange { background-color: ${orangeBg} !important; color: ${orangeText} !important; }
+      .badge-success, .bg-devo-success { background-color: ${successBg} !important; color: ${successText} !important; }
+      .badge-error, .badge-danger, .bg-devo-error { background-color: ${errorBg} !important; color: ${errorText} !important; }
+      .badge-warning, .bg-devo-warning { background-color: ${warningBg} !important; color: ${warningText} !important; }
+      .badge-info, .bg-devo-info { background-color: ${infoBg} !important; color: ${infoText} !important; }
     `;
   }
 

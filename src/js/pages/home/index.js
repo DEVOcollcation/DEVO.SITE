@@ -4,6 +4,7 @@ import { initHomeContent } from './home_content.js';
 import { initCart } from './cart.js';
 import { initOrdersView } from './orders.js';
 import { initBarcode } from './barcode.js';
+import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -45,7 +46,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // تعيين علامة الزائر عالمياً
     window.isVisitor = !currentUser;
 
-    initNavbar();
+    // تهيئة الهيدر والفوتر بناءً على الإعدادات المحفوظة
+    await initNavbar();
+    await initFooter();
+
     await initHomeContent();
     await initGallery();
     
