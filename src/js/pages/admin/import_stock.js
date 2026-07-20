@@ -846,167 +846,219 @@ async function handleConfirmSave() {
     showProgress('مزامنة وحفظ البيانات', 'جاري بدء الحفظ بقاعدة البيانات...');
 
     try {
-        const modelsToCreate = previewData.filter(item => item.isNew);
-        const totalSteps = modelsToCreate.length + previewData.length;
-        let currentStep = 0;
-
-        // Step A: Create new models
+        // Step A: Create new models in bulk batches
+        const newModelsToInsert = [];
         for (const item of previewData) {
             if (item.isNew) {
-                currentStep++;
-                const percent = Math.round((currentStep / totalSteps) * 100);
-                updateProgress(`جاري إنشاء الموديل الجديد بالسيستم: ${item.modelName}...`, percent);
-
                 const unreg = unregisteredModels.find(m => String(m.systemCode) === String(item.systemCode));
                 if (unreg) {
-                    const { data: newM, error: modelErr } = await supabase
-                        .from('models')
-                        .insert([{
-                            system_code: unreg.systemCode,
-                            factory_code: unreg.factoryCode,
-                            name: unreg.name,
-                            price: unreg.price,
-                            is_active: false // Saved as draft/inactive
-                        }])
-                        .select()
-                        .single();
-
-                    if (modelErr) throw modelErr;
-                    if (newM) {
-                        item.modelId = newM.id;
-                        
-                        await supabase.from('stock_movements').insert([{
-                            model_id: newM.id,
-                            color_id: null,
-                            movement_type: 'in',
-                            quantity: 0,
-                            reference: `إنشاء موديل جديد عبر استيراد ERP بسعر ${unreg.price} ج.م`
-                        }]);
-                    }
+                    newModelsToInsert.push({
+                        system_code: unreg.systemCode,
+                        factory_code: unreg.factoryCode,
+                        name: unreg.name,
+                        price: unreg.price,
+                        is_active: false
+                    });
                 }
             }
         }
 
-        // Step B: Create new colors globally (prevent duplicate inserts)
-        updateProgress('جاري فحص وإنشاء الألوان الجديدة بالسيستم...', Math.round((currentStep / totalSteps) * 100));
-        const newColorsCreated = {};
+        const initialMovements = [];
+        if (newModelsToInsert.length > 0) {
+            updateProgress('جاري إنشاء الموديلات الجديدة بالسيستم (مجموعات)...', 10);
+            for (let i = 0; i < newModelsToInsert.length; i += 200) {
+                const chunk = newModelsToInsert.slice(i, i + 200);
+                const { data: newModels, error: modelErr } = await supabase
+                    .from('models')
+                    .insert(chunk)
+                    .select('id, system_code, price');
+
+                if (modelErr) throw modelErr;
+
+                if (newModels) {
+                    newModels.forEach(newM => {
+                        const item = previewData.find(p => String(p.systemCode) === String(newM.system_code));
+                        if (item) {
+                            item.modelId = newM.id;
+                            initialMovements.push({
+                                model_id: newM.id,
+                                color_id: null,
+                                movement_type: 'in',
+                                quantity: 0,
+                                reference: `إنشاء موديل جديد عبر استيراد ERP بسعر ${newM.price} ج.م`
+                            });
+                        }
+                    });
+                }
+            }
+        }
+
+        // Step B: Create new colors globally in bulk
+        updateProgress('جاري فحص وإنشاء الألوان الجديدة بالسيستم...', 25);
+        const uniqueColorNamesToCreate = new Set();
         for (const modelMaps of Object.values(colorMappings)) {
             for (const [colorName, mapping] of Object.entries(modelMaps)) {
                 if (mapping.action === 'add') {
-                    const cleanColorName = colorName.trim();
-                    if (newColorsCreated[cleanColorName]) {
-                        mapping.targetColorId = newColorsCreated[cleanColorName];
-                        continue;
-                    }
+                    uniqueColorNamesToCreate.add(colorName.trim());
+                }
+            }
+        }
 
-                    const { data: newColor, error: colorErr } = await supabase
-                        .from('colors')
-                        .insert([{ name: cleanColorName }])
-                        .select()
-                        .single();
+        if (uniqueColorNamesToCreate.size > 0) {
+            const existingNames = new Set(existingColors.map(c => c.name.trim()));
+            const colorsToInsert = [...uniqueColorNamesToCreate]
+                .filter(name => !existingNames.has(name))
+                .map(name => ({ name }));
 
-                    if (colorErr) {
-                        if (colorErr.code === '23505') {
-                            const { data: oldColor } = await supabase
-                                .from('colors')
-                                .select('id')
-                                .eq('name', cleanColorName)
-                                .single();
-                            if (oldColor) {
-                                newColorsCreated[cleanColorName] = oldColor.id;
-                                mapping.targetColorId = oldColor.id;
-                            }
-                        } else {
-                            throw colorErr;
+            if (colorsToInsert.length > 0) {
+                const { data: createdColors, error: colorErr } = await supabase
+                    .from('colors')
+                    .insert(colorsToInsert)
+                    .select('id, name');
+                if (colorErr && colorErr.code !== '23505') throw colorErr;
+                if (createdColors) {
+                    existingColors.push(...createdColors);
+                }
+            }
+
+            const { data: allLatestColors } = await supabase.from('colors').select('id, name');
+            if (allLatestColors) existingColors = allLatestColors;
+
+            const colorMapByName = {};
+            existingColors.forEach(c => colorMapByName[c.name.trim()] = c.id);
+
+            for (const modelMaps of Object.values(colorMappings)) {
+                for (const [colorName, mapping] of Object.entries(modelMaps)) {
+                    if (mapping.action === 'add') {
+                        const cleanName = colorName.trim();
+                        if (colorMapByName[cleanName]) {
+                            mapping.targetColorId = colorMapByName[cleanName];
                         }
-                    } else if (newColor) {
-                        newColorsCreated[cleanColorName] = newColor.id;
-                        mapping.targetColorId = newColor.id;
                     }
                 }
             }
         }
 
-        // Step C: Perform updates model-by-model
+        // Step C: Fetch existing inventory records for all imported models in batch
+        updateProgress('جاري فحص أرصدة المخزون السابقة...', 40);
+        const affectedModelIds = previewData.map(item => item.modelId).filter(Boolean);
+        const existingInventoryMap = new Map(); // "modelId_colorId" -> inventoryId
+
+        for (let i = 0; i < affectedModelIds.length; i += 1000) {
+            const chunk = affectedModelIds.slice(i, i + 1000);
+            const { data: invData, error: fetchInvErr } = await supabase
+                .from('model_inventory')
+                .select('id, model_id, color_id')
+                .in('model_id', chunk);
+            if (fetchInvErr) throw fetchInvErr;
+            if (invData) {
+                invData.forEach(row => {
+                    existingInventoryMap.set(`${row.model_id}_${row.color_id}`, row.id);
+                });
+            }
+        }
+
+        // Step D: Build batch payloads in memory
+        updateProgress('جاري معالجة وتجهيز تحديثات المخزون والأسعار...', 55);
+        const priceUpdates = [];
+        const inventoryUpdates = [];
+        const inventoryInserts = [];
+        const allMovementsToInsert = [...initialMovements];
+
         for (const item of previewData) {
-            currentStep++;
-            const percent = Math.round((currentStep / totalSteps) * 100);
-            updateProgress(`جاري تحديث الموديل والمخزون: ${item.modelName}...`, percent);
+            if (!item.modelId) continue;
 
+            // Price updates
             if (!item.isNew && item.priceChanged) {
-                const { error: priceErr } = await supabase
-                    .from('models')
-                    .update({ price: item.newPrice, updated_at: new Date() })
-                    .eq('id', item.modelId);
-                if (priceErr) throw priceErr;
-
-                const { error: priceMoveErr } = await supabase
-                    .from('stock_movements')
-                    .insert([{
-                        model_id: item.modelId,
-                        color_id: null,
-                        movement_type: 'in',
-                        quantity: 0,
-                        reference: `تعديل السعر من الإكسيل: من ${item.oldPrice} إلى ${item.newPrice} ج.م`
-                    }]);
-                if (priceMoveErr) throw priceMoveErr;
+                priceUpdates.push({
+                    id: item.modelId,
+                    price: item.newPrice,
+                    updated_at: new Date()
+                });
+                allMovementsToInsert.push({
+                    model_id: item.modelId,
+                    color_id: null,
+                    movement_type: 'in',
+                    quantity: 0,
+                    reference: `تعديل السعر من الإكسيل: من ${item.oldPrice} إلى ${item.newPrice} ج.م`
+                });
             }
 
-            // Update/Insert inventory for each color
+            // Colors & Inventory
             for (const color of item.colors) {
                 let targetColorId = color.targetColorId;
-                
                 if (color.action === 'add') {
                     targetColorId = colorMappings[item.systemCode]?.[color.colorName]?.targetColorId;
                 }
-
                 if (!targetColorId) continue;
 
                 if (color.diff !== 0) {
-                    const { data: currentInv } = await supabase
-                        .from('model_inventory')
-                        .select('id')
-                        .eq('model_id', item.modelId)
-                        .eq('color_id', targetColorId)
-                        .maybeSingle();
-
-                    // Available series must be integer in database, so we Math.round to satisfy schema
                     const dbSeriesVal = Math.round(color.calculatedQty);
+                    const key = `${item.modelId}_${targetColorId}`;
+                    const existingInvId = existingInventoryMap.get(key);
 
-                    if (currentInv) {
-                        const { error: invErr } = await supabase
-                            .from('model_inventory')
-                            .update({ available_series: dbSeriesVal })
-                            .eq('id', currentInv.id);
-                        if (invErr) throw invErr;
+                    if (existingInvId) {
+                        inventoryUpdates.push({
+                            id: existingInvId,
+                            available_series: dbSeriesVal
+                        });
                     } else {
-                        const { error: invErr } = await supabase
-                            .from('model_inventory')
-                            .insert([{
-                                model_id: item.modelId,
-                                color_id: targetColorId,
-                                available_series: dbSeriesVal
-                            }]);
-                        if (invErr) throw invErr;
+                        inventoryInserts.push({
+                            model_id: item.modelId,
+                            color_id: targetColorId,
+                            available_series: dbSeriesVal
+                        });
                     }
 
-                    // Log movement diff quantity
                     const movementType = color.diff > 0 ? 'in' : 'out';
                     const roundedDiff = Math.abs(Math.round(color.calculatedQty) - color.currentQty);
-                    
                     if (roundedDiff !== 0) {
-                        const { error: moveErr } = await supabase
-                            .from('stock_movements')
-                            .insert([{
-                                model_id: item.modelId,
-                                color_id: targetColorId,
-                                movement_type: movementType,
-                                quantity: roundedDiff,
-                                reference: `مزامنة جرد ERP (تعديل رصيد)`
-                            }]);
-                        if (moveErr) throw moveErr;
+                        allMovementsToInsert.push({
+                            model_id: item.modelId,
+                            color_id: targetColorId,
+                            movement_type: movementType,
+                            quantity: roundedDiff,
+                            reference: `مزامنة جرد ERP (تعديل رصيد)`
+                        });
                     }
                 }
+            }
+        }
+
+        // Step E: Execute Bulk Operations in Batches of 200
+        if (priceUpdates.length > 0) {
+            updateProgress('جاري تحديث أسعار الموديلات (مجموعات)...', 70);
+            for (let i = 0; i < priceUpdates.length; i += 200) {
+                const chunk = priceUpdates.slice(i, i + 200);
+                const { error } = await supabase.from('models').upsert(chunk, { onConflict: 'id' });
+                if (error) throw error;
+            }
+        }
+
+        if (inventoryUpdates.length > 0) {
+            updateProgress('جاري تحديث أرصدة المخزون الحالية (مجموعات)...', 80);
+            for (let i = 0; i < inventoryUpdates.length; i += 200) {
+                const chunk = inventoryUpdates.slice(i, i + 200);
+                const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'id' });
+                if (error) throw error;
+            }
+        }
+
+        if (inventoryInserts.length > 0) {
+            updateProgress('جاري إضافة عناصر المخزون الجديدة (مجموعات)...', 88);
+            for (let i = 0; i < inventoryInserts.length; i += 200) {
+                const chunk = inventoryInserts.slice(i, i + 200);
+                const { error } = await supabase.from('model_inventory').insert(chunk);
+                if (error) throw error;
+            }
+        }
+
+        if (allMovementsToInsert.length > 0) {
+            updateProgress('جاري تسجيل حركات الجرد والمخزون (مجموعات)...', 95);
+            for (let i = 0; i < allMovementsToInsert.length; i += 200) {
+                const chunk = allMovementsToInsert.slice(i, i + 200);
+                const { error } = await supabase.from('stock_movements').insert(chunk);
+                if (error) throw error;
             }
         }
 

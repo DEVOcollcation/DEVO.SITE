@@ -8,13 +8,13 @@ let selectedAudit = null;
 let currentUserProfile = null;
 
 export async function initAuditsView() {
+    const { session } = getCurrentSession();
+    if (session) currentUserProfile = session.user;
+
     if (isInitialized) {
         await fetchAudits();
         return;
     }
-
-    const { session } = getCurrentSession();
-    if (session) currentUserProfile = session.user;
 
     // Setup filters event listeners
     document.getElementById('audits-search')?.addEventListener('input', applyAuditsFilters);
@@ -116,6 +116,8 @@ function renderAuditsList(list) {
         const itemsCount = a.inventory_audit_items?.length || 0;
         const workerName = a.system_users?.full_name || 'غير معروف';
 
+        const canDelete = (a.status === 'cancelled' || a.status === 'submitted');
+
         return `
             <tr class="hover:bg-devo-gray/20 transition-colors">
                 <td class="p-4 font-mono font-bold text-white">${a.audit_number}</td>
@@ -125,9 +127,12 @@ function renderAuditsList(list) {
                 <td class="p-4 text-center">${statusBadge}</td>
                 <td class="p-4 text-xs text-devo-muted truncate max-w-[200px]" title="${a.notes || ''}">${a.notes || '—'}</td>
                 <td class="p-4 text-center">
-                    <button onclick="window.viewAuditDetails('${a.id}')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
-                        عرض وتدقيق
-                    </button>
+                    <div class="flex items-center justify-center gap-2">
+                        <button onclick="window.viewAuditDetails('${a.id}')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
+                            عرض وتدقيق
+                        </button>
+                        ${canDelete ? `<button onclick="window.deleteAuditSession('${a.id}', '${a.audit_number}')" class="bg-devo-error/15 hover:bg-devo-error text-devo-error hover:text-white border border-devo-error/30 hover:border-devo-error p-1.5 rounded-lg transition-all" title="حذف جلسة الجرد"><i class="ph ph-trash text-sm"></i></button>` : ''}
+                    </div>
                 </td>
             </tr>
         `;
@@ -229,9 +234,14 @@ window.viewAuditDetails = (id) => {
             `;
         } else if (audit.status === 'cancelled') {
             workerNotes.innerHTML += `
-                <div class="mt-3 pt-3 border-t border-devo-gray text-[11px] text-devo-error">
-                    <p class="font-bold">✕ تم إلغاء وتجاهل هذا الجرد بواسطة: ${audit.reviewed_by_user?.full_name || 'المدير'}</p>
-                    <p class="mt-0.5 text-devo-muted">ملاحظات المدير: ${audit.review_notes || 'بدون ملاحظات'}</p>
+                <div class="mt-3 pt-3 border-t border-devo-gray text-[11px] text-devo-error flex justify-between items-center gap-3">
+                    <div>
+                        <p class="font-bold">✕ تم إلغاء وتجاهل هذا الجرد بواسطة: ${audit.reviewed_by_user?.full_name || 'المدير'}</p>
+                        <p class="mt-0.5 text-devo-muted">ملاحظات المدير: ${audit.review_notes || 'بدون ملاحظات'}</p>
+                    </div>
+                    <button onclick="window.deleteAuditSession('${audit.id}', '${audit.audit_number}')" class="bg-devo-error hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 shadow-md">
+                        <i class="ph ph-trash text-sm"></i> حذف الجلسة
+                    </button>
                 </div>
             `;
         }
@@ -323,6 +333,42 @@ window.cancelAuditSession = async () => {
 
     showToast("تم إلغاء وتجاهل الجرد بنجاح", "success");
     window.closeAuditDetailsModal();
+    await fetchAudits();
+};
+
+window.deleteAuditSession = async (id, auditNumber) => {
+    if (!confirm(`هل أنت متأكد من حذف جلسة الجرد "${auditNumber}" نهائياً؟\nلا يمكن التراجع عن هذا الإجراء.`)) return;
+
+    // 1. حذف عناصر الجرد أولاً (child records)
+    const { error: itemsError } = await supabase
+        .from('inventory_audit_items')
+        .delete()
+        .eq('audit_id', id);
+
+    if (itemsError) {
+        showToast('فشل حذف عناصر الجرد: ' + itemsError.message, 'error');
+        console.error(itemsError);
+        return;
+    }
+
+    // 2. حذف جلسة الجرد
+    const { error: auditError } = await supabase
+        .from('inventory_audits')
+        .delete()
+        .eq('id', id)
+        .in('status', ['cancelled', 'submitted']); // حماية إضافية - لا يُحذف المعتمد
+
+    if (auditError) {
+        showToast('فشل حذف جلسة الجرد: ' + auditError.message, 'error');
+        console.error(auditError);
+        return;
+    }
+
+    showToast(`تم حذف جلسة الجرد "${auditNumber}" بنجاح ✓`, 'success');
+    const modal = document.getElementById('audit-details-modal');
+    if (modal && !modal.classList.contains('hidden')) {
+        window.closeAuditDetailsModal();
+    }
     await fetchAudits();
 };
 

@@ -140,86 +140,149 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
     let totalSeriesCount = 0;
     let hasErrors = false;
 
+    // 🌟 تجميع ألوان نفس الصنف داخل نفس الكارت 🌟
+    const groupedMap = new Map();
     cartItems.forEach((item, index) => {
-        const dbInv = dbInventory.find(i => i.model_id === item.modelId && i.color_id === item.colorId);
-        const dbModel = dbModels.find(m => m.id === item.modelId);
-
-        let errorMsg = null;
-        let availableInDB = dbInv ? dbInv.available_series : 0;
-
-        // 🌟 السحر هنا: معادلة المتاح الحقيقي (True Available) 🌟
-        // نضيف الكمية التي يملكها الأوردر بالفعل إلى كمية المخزن
-        let ownedQty = 0;
-        if (editingOrderId && originalOrderData && originalOrderData.original_items) {
-            const oldItem = originalOrderData.original_items.find(oi => oi.model_id === item.modelId && oi.color_id === item.colorId);
-            if (oldItem) ownedQty = oldItem.quantity;
+        if (!groupedMap.has(item.modelId)) {
+            groupedMap.set(item.modelId, {
+                modelId: item.modelId,
+                modelName: item.modelName,
+                factoryCode: item.factoryCode,
+                price: item.price,
+                image: item.image,
+                sizesCount: item.sizesCount,
+                colors: []
+            });
         }
-        
-        const trueAvailable = availableInDB + ownedQty;
+        groupedMap.get(item.modelId).colors.push({
+            ...item,
+            originalIndex: index
+        });
+    });
 
-        if (!dbModel || !dbModel.is_active) {
-            errorMsg = "الموديل غير متاح (تم إيقافه أو حذفه من الإدارة).";
-            hasErrors = true;
-        } else if (trueAvailable === 0) {
-            errorMsg = "نفذت الكمية تماماً من المخزن.";
-            hasErrors = true;
-        } else if (item.qty > trueAvailable) {
-            errorMsg = `المطلوب (${item.qty}) غير متاح. أقصى حد متاح لك: ${trueAvailable} سيريه.`;
-            hasErrors = true;
-        }
+    groupedMap.forEach((modelGroup, modelId) => {
+        let modelHasErrors = false;
+        let modelTotalPrice = 0;
+        let modelTotalSeries = 0;
+        let colorsHtml = '';
 
-        const pricePerPiece = parseFloat(item.price) || 0;
-        const piecesPerSeries = parseInt(item.sizesCount) || 1; 
+        const pricePerPiece = parseFloat(modelGroup.price) || 0;
+        const piecesPerSeries = parseInt(modelGroup.sizesCount) || 1; 
         const pricePerSeries = pricePerPiece * piecesPerSeries; 
-        const itemTotalPrice = pricePerSeries * item.qty; 
 
-        // حتى لو فيه خطأ، نعرض السعر للمنتجات السليمة لنرى الإجمالي
-        if (!errorMsg) {
-            totalOrderPrice += itemTotalPrice;
-            totalSeriesCount += item.qty;
-        }
+        modelGroup.colors.forEach((item) => {
+            const dbInv = dbInventory.find(i => i.model_id === item.modelId && i.color_id === item.colorId);
+            const dbModel = dbModels.find(m => m.id === item.modelId);
 
-        const cardClass = errorMsg ? 'bg-devo-error/10 border-devo-error shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-devo-dark border-devo-gray';
-        const imgClass = errorMsg ? 'grayscale opacity-60' : '';
+            let errorMsg = null;
+            let availableInDB = dbInv ? dbInv.available_series : 0;
+
+            let ownedQty = 0;
+            if (editingOrderId && originalOrderData && originalOrderData.original_items) {
+                const oldItem = originalOrderData.original_items.find(oi => oi.model_id === item.modelId && oi.color_id === item.colorId);
+                if (oldItem) ownedQty = oldItem.quantity;
+            }
+            
+            const trueAvailable = availableInDB + ownedQty;
+
+            if (!dbModel || !dbModel.is_active) {
+                errorMsg = "الموديل غير متاح (تم إيقافه أو حذفه من الإدارة).";
+                hasErrors = true;
+                modelHasErrors = true;
+            } else if (trueAvailable === 0) {
+                errorMsg = "نفذت الكمية تماماً من المخزن.";
+                hasErrors = true;
+                modelHasErrors = true;
+            } else if (item.qty > trueAvailable) {
+                errorMsg = `المطلوب (${item.qty}) غير متاح. أقصى حد متاح لك: ${trueAvailable} سيريه.`;
+                hasErrors = true;
+                modelHasErrors = true;
+            }
+
+            const itemTotalPrice = pricePerSeries * item.qty; 
+
+            if (!errorMsg) {
+                totalOrderPrice += itemTotalPrice;
+                totalSeriesCount += item.qty;
+                modelTotalPrice += itemTotalPrice;
+                modelTotalSeries += item.qty;
+            }
+
+            const colorRowClass = errorMsg ? 'bg-devo-error/20 border-devo-error/40' : 'bg-devo-black border-devo-gray/70';
+
+            colorsHtml += `
+                <div class="p-2.5 ${colorRowClass} border rounded-lg transition-all mb-2">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full ${errorMsg ? 'bg-devo-error' : 'bg-devo-info'} shrink-0"></span>
+                            <span class="text-white font-bold text-xs sm:text-sm"><i class="ph-fill ph-palette text-devo-info"></i> ${item.colorName}</span>
+                        </div>
+
+                        ${errorMsg ? `
+                            <div class="flex flex-col sm:flex-row gap-2 items-start sm:items-center w-full sm:w-auto justify-between">
+                                <span class="text-devo-error text-[11px] font-bold flex items-center gap-1"><i class="ph ph-warning-circle text-sm"></i> ${errorMsg}</span>
+                                <div class="flex items-center gap-2">
+                                    ${trueAvailable > 0 ? `<button type="button" onclick="updateCartItemQty(${item.originalIndex}, ${trueAvailable}, ${trueAvailable})" class="text-[10px] bg-devo-orange text-white px-2.5 py-1 rounded shadow whitespace-nowrap hover:bg-devo-orangeHover transition-colors font-bold">تصحيح لـ ${trueAvailable}</button>` : ''}
+                                    <button type="button" onclick="confirmRemoveFromCart(${item.originalIndex})" class="text-devo-error hover:bg-devo-error/20 p-1 rounded transition-colors" title="إزالة هذا اللون"><i class="ph ph-trash text-base"></i></button>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+                                <div class="flex items-center bg-devo-dark border border-devo-gray rounded-lg overflow-hidden h-8">
+                                    <button type="button" onclick="updateCartItemQty(${item.originalIndex}, ${item.qty - 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-minus text-xs"></i></button>
+                                    <input type="number" readonly value="${item.qty}" class="w-9 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray">
+                                    <button type="button" onclick="updateCartItemQty(${item.originalIndex}, ${item.qty + 1}, ${trueAvailable})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-plus text-xs"></i></button>
+                                </div>
+                                <div class="text-left flex items-center gap-2">
+                                    <div>
+                                        <p class="text-devo-orange font-black text-xs sm:text-sm">${itemTotalPrice.toLocaleString()} ج.م</p>
+                                        <p class="text-devo-muted text-[9px]">(${item.qty * piecesPerSeries} قطعة)</p>
+                                    </div>
+                                    <button type="button" onclick="confirmRemoveFromCart(${item.originalIndex})" class="text-devo-error hover:bg-devo-error/20 p-1.5 rounded transition-colors" title="إزالة هذا اللون"><i class="ph ph-trash text-base md:text-lg"></i></button>
+                                </div>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        });
+
+        const cardClass = modelHasErrors ? 'bg-devo-error/10 border-devo-error shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-devo-dark border-devo-gray';
+        const imgClass = modelHasErrors ? 'grayscale opacity-60' : '';
 
         html += `
-            <div class="cart-item-card flex gap-3 md:gap-4 p-3 ${cardClass} border rounded-xl relative transition-all duration-300 mb-3" data-search="${item.modelName} ${item.factoryCode || ''}">
-                <img src="${item.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover bg-devo-black shrink-0 ${imgClass}" onerror="this.src='./src/assets/icons/devo.jpeg'">
+            <div class="cart-item-card flex flex-col sm:flex-row gap-3 md:gap-4 p-3.5 ${cardClass} border rounded-xl relative transition-all duration-300 mb-4 shadow-sm" data-search="${modelGroup.modelName} ${modelGroup.factoryCode || ''}">
+                <div class="flex gap-3 md:gap-4 items-start">
+                    <img src="${modelGroup.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover bg-devo-black shrink-0 ${imgClass}" onerror="this.src='./src/assets/icons/devo.jpeg'">
+                </div>
+
                 <div class="flex flex-col flex-1 justify-between">
-                    <div class="flex justify-between items-start">
+                    <div class="flex justify-between items-start mb-2">
                         <div>
-                            <h4 class="text-white font-bold text-sm line-clamp-1">${item.modelName}</h4>
-                            
+                            <h4 class="text-white font-bold text-base line-clamp-1">${modelGroup.modelName}</h4>
                             <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                <span class="text-devo-muted text-[10px] font-mono bg-devo-black px-2 py-0.5 rounded border border-devo-gray" title="كود الموديل"><i class="ph ph-barcode"></i> ${item.factoryCode || 'بدون كود'}</span>
+                                <span class="text-devo-muted text-[10px] font-mono bg-devo-black px-2 py-0.5 rounded border border-devo-gray" title="كود الموديل"><i class="ph ph-barcode"></i> ${modelGroup.factoryCode || 'بدون كود'}</span>
                                 <span class="text-devo-muted text-[10px] bg-devo-black px-2 py-0.5 rounded border border-devo-gray" title="عدد القطع في السيريه الواحد"><i class="ph ph-ruler"></i> ${piecesPerSeries} قطع</span>
                                 <span class="text-devo-info text-[10px] bg-devo-info/10 px-2 py-0.5 rounded border border-devo-info/20" title="سعر القطعة الواحدة"><i class="ph ph-tag"></i> ق: ${pricePerPiece} ج</span>
                                 <span class="text-devo-orange text-[10px] bg-devo-orange/10 px-2 py-0.5 rounded border border-devo-orange/20" title="سعر السيريه الكامل"><i class="ph ph-stack"></i> سيريه: ${pricePerSeries} ج</span>
                             </div>
-                            
-                            <p class="text-devo-info text-xs mt-1.5 font-bold"><i class="ph-fill ph-palette"></i> ${item.colorName}</p>
                         </div>
-                        <button type="button" onclick="confirmRemoveFromCart(${index})" class="text-devo-error hover:bg-devo-error/20 p-1.5 rounded transition-colors shrink-0" title="إزالة من السلة"><i class="ph ph-trash text-lg md:text-xl"></i></button>
+                        <button type="button" onclick="confirmRemoveModelFromCart('${modelId}')" class="text-devo-error hover:bg-devo-error/20 px-2.5 py-1.5 rounded-lg transition-colors shrink-0 flex items-center gap-1 text-xs font-bold border border-devo-error/20" title="إزالة الموديل بالكامل بجميع ألوانه">
+                            <i class="ph ph-trash text-base"></i> <span class="hidden sm:inline">حذف الموديل</span>
+                        </button>
                     </div>
 
-                    ${errorMsg ? `
-                        <div class="mt-2 p-2 bg-devo-error/20 border border-devo-error/40 rounded flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
-                            <span class="text-devo-error text-[11px] font-bold flex items-center gap-1"><i class="ph ph-warning-circle text-sm"></i> ${errorMsg}</span>
-                            ${trueAvailable > 0 ? `<button type="button" onclick="updateCartItemQty(${index}, ${trueAvailable}, ${trueAvailable})" class="text-[10px] bg-devo-orange text-white px-3 py-1.5 rounded shadow whitespace-nowrap hover:bg-devo-orangeHover transition-colors font-bold">تصحيح لـ ${trueAvailable}</button>` : ''}
+                    <div class="mt-2">
+                        <p class="text-devo-muted text-xs font-bold mb-2 flex items-center gap-1"><i class="ph ph-palette text-devo-orange"></i> الألوان المحددة لهذا الموديل (${modelGroup.colors.length}):</p>
+                        <div class="space-y-1.5">
+                            ${colorsHtml}
                         </div>
-                    ` : `
-                        <div class="flex justify-between items-end mt-2 border-t border-devo-gray/50 pt-2">
-                            <div class="flex items-center bg-devo-black border border-devo-gray rounded-lg overflow-hidden h-8">
-                                <button type="button" onclick="updateCartItemQty(${index}, ${item.qty - 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-minus"></i></button>
-                                <input type="number" readonly value="${item.qty}" class="w-10 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray">
-                                <button type="button" onclick="updateCartItemQty(${index}, ${item.qty + 1}, ${trueAvailable})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-plus"></i></button>
-                            </div>
-                            <div class="text-left">
-                                <p class="text-devo-orange font-black text-sm">${itemTotalPrice.toLocaleString()} ج.م</p>
-                                <p class="text-devo-muted text-[9px] mt-0.5">إجمالي ${item.qty * piecesPerSeries} قطعة</p>
-                            </div>
-                        </div>
-                    `}
+                    </div>
+
+                    <div class="flex justify-between items-center mt-3 pt-2 border-t border-devo-gray/50 text-xs">
+                        <span class="text-devo-muted font-bold">إجمالي الموديل: <span class="text-white font-bold">${modelTotalSeries} سيريه</span> (${modelTotalSeries * piecesPerSeries} قطعة)</span>
+                        <span class="text-devo-orange font-black text-base">${modelTotalPrice.toLocaleString()} ج.م</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -230,10 +293,12 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
     const sumPriceEl = document.getElementById('sum-price');
     const sumModelsEl = document.getElementById('sum-models');
     const sumSeriesEl = document.getElementById('sum-series');
+    const itemsCountEl = document.getElementById('cart-items-count');
 
     if (sumPriceEl) sumPriceEl.textContent = totalOrderPrice.toLocaleString();
-    if (sumModelsEl) sumModelsEl.textContent = cartItems.length;
+    if (sumModelsEl) sumModelsEl.textContent = groupedMap.size;
     if (sumSeriesEl) sumSeriesEl.textContent = totalSeriesCount;
+    if (itemsCountEl) itemsCountEl.textContent = `${groupedMap.size} موديلات في الأوردر (${totalSeriesCount} سيريه)`;
 
     if (checkoutBtn) {
         if (hasErrors) {
@@ -249,6 +314,26 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
         }
     }
 }
+
+// 🌟 دالة حذف الموديل بالكامل بجميع ألوانه 🌟
+window.confirmRemoveModelFromCart = async (modelId) => {
+    const modelItems = cartItems.filter(i => i.modelId === modelId);
+    if (modelItems.length === 0) return;
+    const modelName = modelItems[0].modelName || 'الموديل';
+
+    const confirmed = await confirmDialog({ 
+        title: 'حذف الموديل من السلة', 
+        message: `هل أنت متأكد من رغبتك في حذف الموديل (${modelName}) بجميع ألوانه من السلة؟`, 
+        isDestructive: true 
+    });
+
+    if (confirmed) {
+        cartItems = cartItems.filter(i => i.modelId !== modelId);
+        saveCart();
+        loadAndRenderCart();
+        showToast(`تم حذف الموديل (${modelName}) من السلة`, 'success');
+    }
+};
 
 // 🌟 دالة إفراغ السلة بالكامل وإلغاء وضع التعديل 🌟
 window.clearEntireCart = async () => {
@@ -504,6 +589,10 @@ async function handleCheckout(e) {
             await logOrderAction(orderIdToPrint, 'edited_in_cart', `تم تعديل أصناف الأوردر وإعادة حفظه من السلة بواسطة (${userName})`);
         } else {
             await logOrderAction(orderIdToPrint, 'created', `تم إنشاء الأوردر بواسطة (${userName})`);
+        }
+
+        if (window.refreshWorkerOrders) {
+            window.refreshWorkerOrders();
         }
 
         document.getElementById('checkout-modal')?.classList.add('opacity-0');

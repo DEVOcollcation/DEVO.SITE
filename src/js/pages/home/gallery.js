@@ -218,6 +218,27 @@ function resolveImageUrl(url) {
     return url; 
 }
 
+window.toggleGalleryFilters = () => {
+    const advFilters = document.getElementById('gallery-advanced-filters');
+    const btnIcon = document.querySelector('button[onclick="toggleGalleryFilters()"] i');
+    if (!advFilters) return;
+    
+    const isHidden = advFilters.classList.contains('hidden');
+    if (isHidden) {
+        advFilters.classList.remove('hidden');
+        advFilters.classList.add('flex');
+        if (btnIcon) {
+            btnIcon.className = 'ph ph-x text-lg text-devo-orange';
+        }
+    } else {
+        advFilters.classList.add('hidden');
+        advFilters.classList.remove('flex');
+        if (btnIcon) {
+            btnIcon.className = 'ph ph-faders text-lg text-white';
+        }
+    }
+};
+
 window.clearGalleryFilters = () => {
     document.getElementById('gal-search').value = '';
     document.getElementById('gal-category').value = '';
@@ -281,29 +302,32 @@ function generateGalleryCardHTML(m) {
     
     let stockBadge = '';
     if (isWorker) {
-        if (isOut) stockBadge = `<span class="absolute top-3 right-3 bg-devo-error text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold flex items-center gap-1"><i class="ph ph-warning-circle"></i> نفذت الكمية</span>`;
-        else if (totalSeries <= 5) stockBadge = `<span class="absolute top-3 right-3 bg-devo-orange text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
-        else stockBadge = `<span class="absolute top-3 right-3 bg-devo-success text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
+        if (isOut) stockBadge = `<span class="absolute top-2 right-2 bg-devo-error text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-10 font-bold flex items-center gap-1"><i class="ph ph-warning-circle"></i> نفذت</span>`;
+        else if (totalSeries <= 5) stockBadge = `<span class="absolute top-2 right-2 bg-devo-orange text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
+        else stockBadge = `<span class="absolute top-2 right-2 bg-devo-success text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-10 font-bold">متبقي ${totalSeries} سيريه</span>`;
     } else {
-        if (isOut) stockBadge = `<span class="absolute top-3 right-3 bg-devo-black/80 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold border border-devo-gray">نفذت الكمية</span>`;
-        else stockBadge = `<span class="absolute top-3 right-3 bg-devo-success/20 text-devo-success backdrop-blur-sm border border-devo-success/50 text-xs px-3 py-1.5 rounded shadow-lg z-10 font-bold">متوفر</span>`;
+        if (isOut) stockBadge = `<span class="absolute top-2 right-2 bg-devo-black/80 backdrop-blur-sm text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-10 font-bold border border-devo-gray">نفذت الكمية</span>`;
+        else stockBadge = `<span class="absolute top-2 right-2 bg-devo-success/20 text-devo-success backdrop-blur-sm border border-devo-success/50 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-10 font-bold">متوفر</span>`;
     }
 
     const cardStyle = isOut ? 'grayscale opacity-80' : 'card-hover cursor-pointer';
 
     return `
-    <div id="gallery-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
+    <div id="gallery-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-xl sm:rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
         ${stockBadge}
-        <div class="h-64 sm:h-72 bg-black relative overflow-hidden">
-            <img src="${mainImg}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='./src/assets/icons/devo.jpeg'" loading="lazy">
-            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-90"></div>
+        <div class="h-44 sm:h-64 md:h-72 bg-devo-black relative overflow-hidden flex items-center justify-center p-1">
+            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+            <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
+            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" onerror="this.src='./src/assets/icons/devo.jpeg'" loading="lazy">
         </div>
-        <div class="p-4 flex flex-col flex-1 justify-end z-10 -mt-16 relative">
-            <p class="text-devo-muted text-[10px] font-mono tracking-wider mb-1">${m.factory_code || m.system_code}</p>
-            <h3 class="text-white font-bold text-base sm:text-lg mb-1 truncate" title="${m.name}">${m.name}</h3>
-            <div class="flex justify-between items-end mt-2">
-                <span class="text-devo-muted text-xs flex items-center gap-1"><i class="ph ph-tag"></i> ${m.categories?.name || 'بدون تصنيف'}</span>
-                <p class="text-devo-orange font-black text-lg sm:text-xl">${m.price} <span class="text-[10px] font-normal">ج.م</span></p>
+        <div class="p-2.5 sm:p-4 flex flex-col flex-1 justify-between z-10 relative bg-devo-dark border-t border-devo-gray/30">
+            <div>
+                <p class="text-devo-muted text-[9px] sm:text-[10px] font-mono tracking-wider mb-0.5">${m.factory_code || m.system_code}</p>
+                <h3 class="text-white font-bold text-xs sm:text-base md:text-lg mb-0.5 sm:mb-1 truncate" title="${m.name}">${m.name}</h3>
+            </div>
+            <div class="flex justify-between items-end mt-1 sm:mt-2">
+                <span class="text-devo-muted text-[10px] sm:text-xs flex items-center gap-1"><i class="ph ph-tag"></i> ${m.categories?.name || 'بدون تصنيف'}</span>
+                <p class="text-devo-orange font-black text-sm sm:text-lg md:text-xl">${m.price} <span class="text-[9px] sm:text-[10px] font-normal">ج.م</span></p>
             </div>
         </div>
     </div>`;
@@ -357,40 +381,78 @@ window.openModelViewer = (id) => {
     const mainImg = resolveImageUrl(imgs[0].image_url);
     
     let imagesGalleryHtml = `
-        <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-80 md:h-[400px] mb-3">
-            <img src="${mainImg}" id="viewer-main-img" class="w-full h-full object-cover" onerror="this.src='./src/assets/icons/devo.jpeg'">
+        <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-56 sm:h-72 md:h-[380px] mb-2 sm:mb-3 flex items-center justify-center p-1.5 relative">
+            <img src="${mainImg}" id="viewer-blur-bg" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+            <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
+            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 w-full h-full object-contain" onerror="this.src='./src/assets/icons/devo.jpeg'">
         </div>
-        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src" class="w-20 h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}</div>` : ''}
+        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-contain p-1 bg-devo-black cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}</div>` : ''}
     `;
 
     const renderSizesTags = classSizes.length > 0 
-        ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
-        : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('');
+        ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[11px] sm:text-xs px-2.5 py-1 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
+        : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[11px] sm:text-xs px-2.5 py-1 rounded font-medium">${s.sizes?.name}</span>`).join('');
     
     const sizesHtml = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
 
+    // قسم إضافة طقم (يظهر فقط للموظفين/الآدمن)
+    let setHtml = '';
+    if (isWorker) {
+        setHtml = `
+        <div class="bg-gradient-to-r from-devo-orange/15 via-devo-dark to-devo-black border border-devo-orange/40 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-devo-orange/20 border border-devo-orange/50 flex items-center justify-center text-devo-orange shrink-0">
+                    <i class="ph ph-package text-lg font-bold"></i>
+                </div>
+                <div>
+                    <h5 class="text-white text-xs sm:text-sm font-black flex items-center gap-1">
+                        إضافة طقم كامل
+                        <span class="text-[10px] text-devo-orange bg-devo-orange/20 px-1.5 py-0.5 rounded font-bold border border-devo-orange/30">(سيرية من كل لون)</span>
+                    </h5>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <div class="flex items-center bg-devo-dark border border-devo-orange/50 rounded-lg overflow-hidden h-8 sm:h-9">
+                    <button onclick="decrementQty('set-qty-${model.id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
+                    <input type="number" id="set-qty-${model.id}" value="1" min="1" max="99" readonly class="w-8 bg-transparent text-center text-devo-orange text-xs sm:text-sm font-black outline-none border-x border-devo-gray">
+                    <button onclick="incrementQty('set-qty-${model.id}', 99)" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
+                </div>
+                
+                <button id="add-set-btn-${model.id}" onclick="addSetToCart(event, '${model.id}')" class="flex-1 sm:flex-none px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-lg text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-1.5 active:scale-95">
+                    <i class="ph ph-plus-circle text-base sm:text-lg"></i>
+                    <span>إضافة طقم</span>
+                </button>
+            </div>
+        </div>`;
+    }
+
     if (content) {
         content.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 md:p-0">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-1 sm:p-2 md:p-0">
                 <div>${imagesGalleryHtml}</div>
                 <div class="flex flex-col">
-                    <div class="mb-4 pb-4 border-b border-devo-gray flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div class="mb-3 pb-3 border-b border-devo-gray flex justify-between items-center gap-2">
                         <div>
-                            <p class="text-devo-muted text-xs font-mono mb-1">كود: ${model.factory_code || model.system_code}</p>
-                            <h2 id="viewer-name" class="text-2xl font-black text-white leading-tight">${model.name}</h2>
-                            <p class="text-3xl text-devo-orange font-black mt-2"><span id="viewer-price">${model.price}</span> <span class="text-base font-normal">ج.م</span></p>
+                            <p class="text-devo-muted text-[10px] sm:text-xs font-mono mb-0.5">كود: ${model.factory_code || model.system_code}</p>
+                            <h2 id="viewer-name" class="text-lg sm:text-2xl font-black text-white leading-tight">${model.name}</h2>
+                            <p class="text-xl sm:text-3xl text-devo-orange font-black mt-1"><span id="viewer-price">${model.price}</span> <span class="text-xs sm:text-base font-normal">ج.م</span></p>
                         </div>
-                        <button onclick="shareModel('${model.id}')" class="flex items-center justify-center gap-2 bg-devo-dark border border-devo-gray hover:border-devo-info hover:text-devo-info text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold w-full md:w-auto shrink-0 shadow-sm">
-                            <i class="ph ph-share-network text-lg"></i> مشاركة
+                        <button onclick="shareModel('${model.id}')" class="flex items-center justify-center gap-1.5 bg-devo-dark border border-devo-gray hover:border-devo-info hover:text-devo-info text-white px-3 py-1.5 rounded-lg transition-colors text-xs sm:text-sm font-bold shrink-0 shadow-sm">
+                            <i class="ph ph-share-network text-base"></i> مشاركة
                         </button>
                     </div>
-                    <div class="mb-6">
-                        <h4 id="viewer-sizes-title" class="text-sm font-bold text-white mb-2 flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
-                        <div id="viewer-sizes-container" class="flex flex-wrap gap-2">${sizesHtml}</div>
+
+                    <div class="mb-3">
+                        <h4 id="viewer-sizes-title" class="text-xs sm:text-sm font-bold text-white mb-1.5 flex items-center gap-1.5"><i class="ph ph-ruler text-devo-orange"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
+                        <div id="viewer-sizes-container" class="flex flex-wrap gap-1.5">${sizesHtml}</div>
                     </div>
+
+                    ${setHtml}
+
                     <div class="flex-1">
-                        <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i class="ph ph-palette"></i> الألوان المتاحة للطلب</h4>
-                        <div id="viewer-colors-container" class="space-y-1">
+                        <h4 class="text-xs sm:text-sm font-bold text-white mb-2 flex items-center gap-1.5"><i class="ph ph-palette text-devo-orange"></i> الألوان المتاحة للطلب</h4>
+                        <div id="viewer-colors-container" class="space-y-1.5">
                             ${generateColorsHTML(model, sizesCount)}
                         </div>
                     </div>
@@ -402,36 +464,78 @@ window.openModelViewer = (id) => {
     if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.remove('opacity-0'), 10); }
 };
 
+function getOwnedQtyForColor(modelId, colorId) {
+    const savedOrderData = localStorage.getItem('devo_edit_order_data');
+    if (!savedOrderData) return 0;
+    try {
+        const orderData = JSON.parse(savedOrderData);
+        if (orderData && orderData.original_items) {
+            const item = orderData.original_items.find(oi => oi.model_id === modelId && oi.color_id === colorId);
+            return item ? (item.quantity || 0) : 0;
+        }
+    } catch(e) {}
+    return 0;
+}
+
+function getCartQtyForColor(modelId, colorId) {
+    loadLocalCart();
+    const item = localCart.find(i => i.modelId === modelId && i.colorId === colorId);
+    return item ? item.qty : 0;
+}
+
+function refreshColorsContainer(modelId) {
+    const model = allModels.find(m => m.id === modelId);
+    if (!model) return;
+    const classSizes = model.classes?.class_sizes || [];
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
+    const container = document.getElementById('viewer-colors-container');
+    if (container) container.innerHTML = generateColorsHTML(model, sizesCount);
+}
+
 function generateColorsHTML(model, sizesCount) {
     if (!model.model_inventory || model.model_inventory.length === 0) {
-        return `<div class="text-center p-4 text-devo-error bg-devo-error/10 rounded-xl text-sm border border-devo-error/20">لا توجد ألوان مسجلة.</div>`;
+        return `<div class="text-center p-3 text-devo-error bg-devo-error/10 rounded-xl text-xs sm:text-sm border border-devo-error/20">لا توجد ألوان مسجلة.</div>`;
     }
 
     const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
 
     return model.model_inventory.map(inv => {
-        const available = inv.available_series || 0;
+        const dbAvailable = inv.available_series || 0;
+        const ownedQty = getOwnedQtyForColor(model.id, inv.color_id);
+        const available = dbAvailable + ownedQty;
         const isOut = available === 0;
         
         if (!isWorker) {
-            return `<div class="flex justify-between items-center p-3 bg-devo-black border border-devo-gray rounded-xl mb-2 transition-all"><span class="text-white font-bold">${inv.colors?.name}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
+            return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-gray rounded-xl mb-1.5 transition-all"><span class="text-white text-xs sm:text-sm font-bold">${inv.colors?.name}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
         }
 
+        const cartQty = getCartQtyForColor(model.id, inv.color_id);
+        const displayAvailable = Math.max(0, available - cartQty);
+        const isDisplayOut = displayAvailable === 0;
+
+        const cartBadge = cartQty > 0
+            ? `<span class="inline-flex items-center gap-0.5 text-[10px] font-black text-devo-orange bg-devo-orange/15 border border-devo-orange/40 px-1.5 py-0.5 rounded-md whitespace-nowrap"><i class="ph ph-shopping-cart-simple text-[10px]"></i>${cartQty} في السلة</span>`
+            : '';
+
         return `
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-devo-black border ${isOut ? 'border-devo-error/30 opacity-70' : 'border-devo-gray'} rounded-xl mb-2 gap-3 transition-all duration-300">
-            <div class="flex justify-between w-full sm:w-auto flex-1">
-                <span class="text-white font-bold flex items-center gap-2"><span class="w-3 h-3 rounded-full ${isOut ? 'bg-devo-error' : 'bg-devo-success'}"></span>${inv.colors?.name}</span>
-                <span class="text-xs ${isOut ? 'text-devo-error' : 'text-devo-muted'} font-mono mt-1">متبقي: ${available}</span>
+        <div class="flex items-center justify-between p-2 sm:p-2.5 bg-devo-black border ${isDisplayOut && !isOut ? 'border-devo-orange/30' : isOut ? 'border-devo-error/30 opacity-70' : 'border-devo-gray'} rounded-xl mb-1.5 gap-2 transition-all duration-300">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isOut ? 'bg-devo-error' : isDisplayOut ? 'bg-devo-orange' : 'bg-devo-success'}"></span>
+                <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+                    <span class="text-white font-bold text-xs sm:text-sm truncate">${inv.colors?.name}</span>
+                    <span class="text-[10px] sm:text-xs ${isOut ? 'text-devo-error' : isDisplayOut ? 'text-devo-orange' : 'text-devo-muted'} font-mono whitespace-nowrap">${isOut ? '(نفذت)' : `(متبقي ${displayAvailable})`}</span>
+                    ${cartBadge}
+                </div>
             </div>
-            ${isOut ? `<button disabled class="w-full sm:w-auto px-4 py-2 bg-devo-error/10 text-devo-error border border-devo-error/20 rounded-lg text-sm font-bold cursor-not-allowed flex items-center justify-center gap-2"><i class="ph ph-prohibit"></i> نفذت الكمية</button>` : `
-                <div class="flex items-center gap-2 w-full sm:w-auto">
-                    <div class="flex items-center bg-devo-dark border border-devo-gray rounded-lg overflow-hidden h-9">
-                        <button onclick="decrementQty('qty-${inv.color_id}')" class="px-3 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus"></i></button>
-                        <input type="number" id="qty-${inv.color_id}" value="1" min="1" max="${available}" readonly class="w-10 bg-transparent text-center text-white text-sm font-bold outline-none border-x border-devo-gray">
-                        <button onclick="incrementQty('qty-${inv.color_id}', ${available})" class="px-3 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus"></i></button>
+            ${isOut ? `<span class="text-[11px] font-bold text-devo-error px-2 py-1 bg-devo-error/10 border border-devo-error/20 rounded-lg shrink-0">غير متوفر</span>` : isDisplayOut ? `<span class="text-[11px] font-bold text-devo-orange px-2 py-1 bg-devo-orange/10 border border-devo-orange/20 rounded-lg shrink-0">مضافة كلها</span>` : `
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <div class="flex items-center bg-devo-dark border border-devo-gray rounded-lg overflow-hidden h-8 sm:h-9">
+                        <button onclick="decrementQty('qty-${inv.color_id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
+                        <input type="number" id="qty-${inv.color_id}" value="1" min="1" max="${displayAvailable}" readonly class="w-8 sm:w-10 bg-transparent text-center text-white text-xs sm:text-sm font-bold outline-none border-x border-devo-gray appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none leading-none">
+                        <button onclick="incrementQty('qty-${inv.color_id}', ${displayAvailable})" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
                     </div>
-                    <button onclick="addToCart(event, '${model.id}', '${inv.color_id}', '${model.name.replace(/'/g, "\\'")}', '${inv.colors?.name}', ${model.price}, '${mainImg}', ${available}, ${sizesCount}, '${model.factory_code || model.system_code}')" class="flex-1 sm:flex-none px-4 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-sm font-bold transition-all shadow-md flex justify-center items-center gap-2">
-                        <i class="ph ph-shopping-cart-simple text-lg"></i> إضافة
+                    <button onclick="addToCart(event, '${model.id}', '${inv.color_id}', '${model.name.replace(/'/g, "\\'")}', '${inv.colors?.name}', ${model.price}, '${mainImg}', ${dbAvailable}, ${sizesCount}, '${model.factory_code || model.system_code}')" class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-xs sm:text-sm font-bold transition-all shadow-md flex justify-center items-center gap-1 active:scale-95">
+                        <i class="ph ph-shopping-cart-simple text-sm sm:text-base"></i> <span class="hidden xs:inline">إضافة</span>
                     </button>
                 </div>
             `}
@@ -463,29 +567,156 @@ window.shareModel = async (id) => {
 };
 
 // ==========================================
-// 🌟 5. أوامر السلة والكميات 🌟
+// 🌟 5. أوامر السلة والكميات (مع حماية الضغط المتكرر) 🌟
 // ==========================================
 window.incrementQty = (inputId, max) => {
     const input = document.getElementById(inputId);
-    let val = parseInt(input.value);
+    if (!input) return;
+    let val = parseInt(input.value) || 1;
     if (val < max) input.value = val + 1;
 };
+
 window.decrementQty = (inputId) => {
     const input = document.getElementById(inputId);
-    let val = parseInt(input.value);
+    if (!input) return;
+    let val = parseInt(input.value) || 1;
     if (val > 1) input.value = val - 1;
 };
 
-window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable, sizesCount, factoryCode) => {
-    const qtyInput = document.getElementById(`qty-${colorId}`);
-    const qty = parseInt(qtyInput.value);
+window.addSetToCart = (event, modelId) => {
+    const btn = event?.currentTarget || event?.target;
+    if (btn) {
+        if (btn.dataset.locked === "true") return; // 🛡️ حماية ضد الضغط المتكرر
+        btn.dataset.locked = "true";
+        btn.disabled = true;
+    }
 
-    if (qty > maxAvailable) return showToast('الكمية المطلوبة تتجاوز المتاح في المخزن!', 'error');
+    const model = allModels.find(m => m.id === modelId);
+    if (!model || !model.model_inventory || model.model_inventory.length === 0) {
+        if (btn) { btn.disabled = false; delete btn.dataset.locked; }
+        return showToast('لا توجد ألوان متاحة لهذا الموديل!', 'error');
+    }
+
+    const setQtyInput = document.getElementById(`set-qty-${modelId}`);
+    const setCount = parseInt(setQtyInput?.value) || 1;
+
+    loadLocalCart();
+
+    const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
+    const classSizes = model.classes?.class_sizes || [];
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
+    const factoryCode = model.factory_code || model.system_code;
+
+    let addedColorsCount = 0;
+    let totalSeriesAdded = 0;
+    let skippedColors = [];
+
+    model.model_inventory.forEach(inv => {
+        const dbAvailable = inv.available_series || 0;
+        const ownedQty = getOwnedQtyForColor(model.id, inv.color_id);
+        const trueAvailable = dbAvailable + ownedQty;
+
+        if (trueAvailable <= 0) {
+            skippedColors.push(inv.colors?.name || 'لون');
+            return;
+        }
+
+        const existingIndex = localCart.findIndex(i => i.modelId === model.id && i.colorId === inv.color_id);
+        const currentQty = existingIndex > -1 ? localCart[existingIndex].qty : 0;
+        
+        const spaceLeft = trueAvailable - currentQty;
+        if (spaceLeft <= 0) {
+            skippedColors.push(inv.colors?.name || 'لون');
+            return;
+        }
+
+        const qtyToAdd = Math.min(setCount, spaceLeft);
+
+        if (existingIndex > -1) {
+            localCart[existingIndex].qty += qtyToAdd;
+        } else {
+            localCart.push({
+                modelId: model.id,
+                colorId: inv.color_id,
+                modelName: model.name,
+                colorName: inv.colors?.name,
+                price: model.price,
+                image: mainImg,
+                qty: qtyToAdd,
+                sizesCount: sizesCount,
+                factoryCode: factoryCode
+            });
+        }
+        addedColorsCount++;
+        totalSeriesAdded += qtyToAdd;
+    });
+
+    if (addedColorsCount === 0) {
+        showToast('جميع الألوان المتاحة نفذت كميتها أو مضافة بالفعل بأقصى حد بالسلة!', 'error');
+    } else {
+        saveLocalCart();
+        if (window.refreshCartView) window.refreshCartView();
+        refreshColorsContainer(modelId);
+
+        let msg = `تم إضافة ${setCount} طقم (${addedColorsCount} لون) للسلة بنجاح!`;
+        if (skippedColors.length > 0) {
+            msg += ` (تم تجاوز ${skippedColors.length} لون لنفاذ الكمية)`;
+        }
+        showToast(msg, 'success');
+    }
+
+    if (btn) {
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="ph ph-check text-base"></i> تمت إضافة الطقم`;
+        btn.classList.replace('from-devo-orange', 'from-devo-success');
+        btn.classList.replace('to-orange-600', 'to-green-600');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.replace('from-devo-success', 'from-devo-orange');
+            btn.classList.replace('to-green-600', 'to-orange-600');
+            btn.disabled = false;
+            delete btn.dataset.locked;
+        }, 1000);
+    }
+};
+
+window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable, sizesCount, factoryCode) => {
+    const btn = event?.currentTarget || event?.target;
+    if (btn) {
+        if (btn.dataset.locked === "true") return; // 🛡️ حماية ضد الضغط المتكرر
+        btn.dataset.locked = "true";
+        btn.disabled = true;
+    }
+
+    const unlockBtn = () => {
+        if (btn) {
+            btn.disabled = false;
+            delete btn.dataset.locked;
+        }
+    };
+
+    const qtyInput = document.getElementById(`qty-${colorId}`);
+    const qty = parseInt(qtyInput?.value) || 1;
+
+    // 🌟 قراءة أحدث سلة من localStorage مباشرة لمنع مسح أصناف الفاتورة عند التعديل 🌟
+    loadLocalCart();
+
+    const ownedQty = getOwnedQtyForColor(modelId, colorId);
+    const trueAvailable = maxAvailable + ownedQty;
+
+    if (qty > trueAvailable) {
+        unlockBtn();
+        return showToast('الكمية المطلوبة تتجاوز المتاح لك في المخزن!', 'error');
+    }
 
     const existingIndex = localCart.findIndex(i => i.modelId === modelId && i.colorId === colorId);
     
     if (existingIndex > -1) {
-        if (localCart[existingIndex].qty + qty > maxAvailable) return showToast('إجمالي الكمية المطلوبة في السلة تتجاوز المتاح!', 'error');
+        if (localCart[existingIndex].qty + qty > trueAvailable) {
+            unlockBtn();
+            return showToast('إجمالي الكمية المطلوبة في السلة تتجاوز المتاح لك!', 'error');
+        }
         localCart[existingIndex].qty += qty;
     } else {
         localCart.push({ modelId, colorId, modelName, colorName, price, image, qty, sizesCount, factoryCode });
@@ -493,18 +724,21 @@ window.addToCart = (event, modelId, colorId, modelName, colorName, price, image,
 
     saveLocalCart();
     if (window.refreshCartView) window.refreshCartView();
-    
-    const btn = event.currentTarget || event.target;
+    refreshColorsContainer(modelId);
+
     if (btn) {
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = `<i class="ph ph-check text-lg"></i> تمت الإضافة`;
+        btn.innerHTML = `<i class="ph ph-check text-base"></i> تمت الإضافة`;
         btn.classList.replace('bg-devo-orange', 'bg-devo-success');
         btn.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-green-600');
         setTimeout(() => {
             btn.innerHTML = originalHtml;
             btn.classList.replace('bg-devo-success', 'bg-devo-orange');
             btn.classList.replace('hover:bg-green-600', 'hover:bg-devo-orangeHover');
-        }, 2000);
+            unlockBtn();
+        }, 1000);
+    } else {
+        unlockBtn();
     }
     showToast(`تم إضافة الموديل للسلة`, 'success');
 };
@@ -513,6 +747,8 @@ function loadLocalCart() {
     const saved = localStorage.getItem('devo_cart');
     if (saved) {
         try { localCart = JSON.parse(saved); } catch(e) { localCart = []; }
+    } else {
+        localCart = [];
     }
     updateFloatingCart();
 }

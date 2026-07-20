@@ -22,7 +22,25 @@ self.addEventListener('install', (event) => {
 
 // تفعيل السيرفس وركر
 self.addEventListener('fetch', (event) => {
+  // Ignore non-GET requests
+  if (event.request.method !== 'GET') return;
+
+  // Ignore external API requests (like Supabase)
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(() => {
+      return caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return new Response('Network error occurred', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
+        });
+      });
+    })
   );
 });

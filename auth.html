@@ -36,12 +36,19 @@
                     if (colors) {
                         const styleEl = document.createElement('style');
                         styleEl.id = 'devo-theme-styles-early';
+                        const bgHex = colors.page?.bg || '#0a0a0a';
+                        const isLight = bgHex !== '#0a0a0a' && bgHex !== '#171717' && bgHex !== '#121212';
+                        const defaultGray = isLight ? (colors.brand?.secondary || '#ebdcb9') : '#262626';
+                        const defaultGrayHover = isLight ? (colors.brand?.secondary_hover || '#c4b28d') : '#404040';
+                        const devoGray = colors.borders?.color || defaultGray;
+                        const devoGrayHover = colors.brand?.secondary_hover || defaultGrayHover;
+
                         let cssText = `
                             :root {
                                 --devo-black: ${colors.page?.bg || '#0a0a0a'};
                                 --devo-dark: ${colors.page?.bg_secondary || colors.page?.surface || '#171717'};
-                                --devo-gray: ${colors.borders?.color || '#262626'};
-                                --devo-gray-hover: ${colors.brand?.secondary_hover || '#404040'};
+                                --devo-gray: ${devoGray};
+                                --devo-gray-hover: ${devoGrayHover};
                                 --devo-orange: ${colors.brand?.primary || '#f97316'};
                                 --devo-orange-hover: ${colors.brand?.primary_hover || '#ea580c'};
                                 --devo-text: ${colors.page?.text || '#f5f5f5'};
@@ -52,7 +59,7 @@
                                 --devo-info: ${colors.alerts?.info?.text || '#3b82f6'};
                                 --selection-bg: ${colors.page?.selection_bg || '#f97316'};
                                 --selection-text: ${colors.page?.selection_text || '#ffffff'};
-                                --border-color: ${colors.borders?.color || '#262626'};
+                                --border-color: ${devoGray};
                                 --border-width: ${colors.borders?.width || '1px'};
                                 --border-radius-base: ${colors.borders?.radius || '12px'};
                                 --shadow-color: ${colors.shadows?.color || 'rgba(0,0,0,0.8)'};

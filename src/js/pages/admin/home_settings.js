@@ -51,192 +51,203 @@ async function loadHeroSettings() {
         document.getElementById('hs-social-fb').value = map['social_facebook'] || '';
         document.getElementById('hs-social-wa').value = map['social_whatsapp'] || '';
         document.getElementById('hs-social-maps').value = map['social_maps'] || '';
+
+        // الخيارات المتقدمة لخلفية الهيرو
+        if (document.getElementById('hs-bg-show')) document.getElementById('hs-bg-show').value = map['hero_bg_show'] || 'true';
+        if (document.getElementById('hs-bg-blend')) document.getElementById('hs-bg-blend').value = map['hero_bg_blend'] || 'normal';
+        if (document.getElementById('hs-bg-glass')) document.getElementById('hs-bg-glass').value = map['hero_bg_glass'] || 'soft';
+        if (document.getElementById('hs-title-color')) document.getElementById('hs-title-color').value = map['hero_title_color'] || '#ffffff';
+        if (document.getElementById('hs-subtitle-color')) document.getElementById('hs-subtitle-color').value = map['hero_subtitle_color'] || '#a3a3a3';
+        if (document.getElementById('hs-bg-edge-feather')) document.getElementById('hs-bg-edge-feather').value = map['hero_bg_edge_feather'] || '25';
+        if (document.getElementById('hs-bg-opacity')) document.getElementById('hs-bg-opacity').value = map['hero_bg_opacity'] || '100';
+        if (document.getElementById('hs-bg-overlay')) document.getElementById('hs-bg-overlay').value = map['hero_bg_overlay_opacity'] || '40';
+        if (document.getElementById('hs-bg-blur')) document.getElementById('hs-bg-blur').value = map['hero_bg_blur'] || '0';
+        if (document.getElementById('hs-glass-opacity')) document.getElementById('hs-glass-opacity').value = map['hero_glass_opacity'] || '30';
+        if (document.getElementById('hs-glass-blur')) document.getElementById('hs-glass-blur').value = map['hero_glass_blur'] || '12';
+
+        // خيارات تفعيل الخلفية في صفحات الموقع المختلفة
+        if (document.getElementById('hs-bg-enable-gallery')) document.getElementById('hs-bg-enable-gallery').value = map['bg_enable_gallery'] || 'false';
+        if (document.getElementById('hs-bg-enable-barcode')) document.getElementById('hs-bg-enable-barcode').value = map['bg_enable_barcode'] || 'false';
+        if (document.getElementById('hs-bg-enable-cart')) document.getElementById('hs-bg-enable-cart').value = map['bg_enable_cart'] || 'false';
+        if (document.getElementById('hs-bg-enable-orders')) document.getElementById('hs-bg-enable-orders').value = map['bg_enable_orders'] || 'false';
     }
 
-    // تعيين قيم الإعدادات المتقدمة للهيدر
-    const heightEl = document.getElementById('hs-header-height');
-    const stickyEl = document.getElementById('hs-header-sticky');
-    const transparentEl = document.getElementById('hs-header-transparent');
-    const compactEl = document.getElementById('hs-header-compact');
-    if (heightEl) heightEl.value = map['header_height'] || '80';
-    if (stickyEl) stickyEl.value = map['header_sticky'] || 'true';
-    if (transparentEl) transparentEl.value = map['header_transparent'] || 'false';
-    if (compactEl) compactEl.value = map['header_compact_on_scroll'] || 'false';
+    // تعبئة قوائم خيارات الهيدر والفوتر
+    populateHeaderFooterSelectors(map['header_layout'] || 'classic', map['footer_layout'] || 'simple');
 
-    // تعيين خيار الروابط السريعة للفوتر
-    const quickLinksEl = document.getElementById('hs-footer-quick-links');
-    if (quickLinksEl) quickLinksEl.checked = map['footer_show_quick_links'] === 'true';
-
-    // رسم Layout Pickers
-    renderHeaderLayoutPicker(map['header_layout'] || 'classic');
-    renderFooterLayoutPicker(map['footer_layout'] || 'simple');
+    // ربط وتفعيل المعاينة الحية في لوحة الإدارة
+    setupHeroPreviewListeners();
+    updateAdminHeroPreview();
 }
 
 // ==========================================
-// 2. Header Layout Picker UI
+// دالة تحديث المعاينة الحية المباشرة في أدمن
 // ==========================================
+function updateAdminHeroPreview() {
+    const desktopImg = resolveImageUrl(document.getElementById('hs-bg-desktop')?.value);
+    const mobileImg = resolveImageUrl(document.getElementById('hs-bg-mobile')?.value);
+    const bgUrl = desktopImg || mobileImg;
 
-function renderHeaderLayoutPicker(activeId) {
-    const container = document.getElementById('header-layouts-grid');
-    if (!container) return;
+    const showBg = document.getElementById('hs-bg-show')?.value === 'true';
+    const blendMode = document.getElementById('hs-bg-blend')?.value || 'normal';
+    const glassMode = document.getElementById('hs-bg-glass')?.value || 'soft';
+    const titleColor = document.getElementById('hs-title-color')?.value || '#ffffff';
+    const subtitleColor = document.getElementById('hs-subtitle-color')?.value || '#a3a3a3';
+    const edgeFeather = document.getElementById('hs-bg-edge-feather')?.value || '25';
+    const opacity = document.getElementById('hs-bg-opacity')?.value || '100';
+    const overlay = document.getElementById('hs-bg-overlay')?.value || '40';
+    const blur = document.getElementById('hs-bg-blur')?.value || '0';
+    const glassOpacity = document.getElementById('hs-glass-opacity')?.value || '30';
+    const glassBlur = document.getElementById('hs-glass-blur')?.value || '12';
 
-    container.innerHTML = HEADER_LAYOUTS.map(layout => {
-        const isActive = layout.id === activeId;
-        return `
-            <div
-                onclick="selectHeaderLayout('${layout.id}')"
-                id="header-layout-card-${layout.id}"
-                class="relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200
-                    ${isActive
-                        ? 'border-devo-orange bg-devo-orange/5 shadow-[0_0_15px_rgba(249,115,22,0.15)]'
-                        : 'border-devo-gray bg-devo-black hover:border-devo-grayHover'
-                    }"
-            >
-                ${isActive ? `<div class="absolute top-2 left-2 w-5 h-5 rounded-full bg-devo-orange flex items-center justify-center"><i class="ph ph-check text-white text-xs font-bold"></i></div>` : ''}
-                <div class="flex items-start gap-3">
-                    <div class="w-10 h-10 rounded-lg ${isActive ? 'bg-devo-orange/20 text-devo-orange' : 'bg-devo-gray/30 text-devo-muted'} flex items-center justify-center shrink-0 transition-colors">
-                        <i class="ph ${layout.icon} text-xl"></i>
-                    </div>
-                    <div>
-                        <h4 class="text-sm font-bold ${isActive ? 'text-devo-orange' : 'text-white'} leading-snug">${layout.name}</h4>
-                        <p class="text-xs text-devo-muted mt-0.5 leading-relaxed">${layout.description}</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
+    // تحديث أرقام ونصوص المؤشرات
+    if (document.getElementById('hs-title-color-text')) document.getElementById('hs-title-color-text').textContent = titleColor;
+    if (document.getElementById('hs-subtitle-color-text')) document.getElementById('hs-subtitle-color-text').textContent = subtitleColor;
+    if (document.getElementById('hs-bg-edge-feather-val')) document.getElementById('hs-bg-edge-feather-val').textContent = `${edgeFeather}%`;
+    if (document.getElementById('hs-bg-opacity-val')) document.getElementById('hs-bg-opacity-val').textContent = `${opacity}%`;
+    if (document.getElementById('hs-bg-overlay-val')) document.getElementById('hs-bg-overlay-val').textContent = `${overlay}%`;
+    if (document.getElementById('hs-bg-blur-val')) document.getElementById('hs-bg-blur-val').textContent = `${blur}px`;
+    if (document.getElementById('hs-glass-opacity-val')) document.getElementById('hs-glass-opacity-val').textContent = `${glassOpacity}%`;
+    if (document.getElementById('hs-glass-blur-val')) document.getElementById('hs-glass-blur-val').textContent = `${glassBlur}px`;
 
-window.selectHeaderLayout = function(layoutId) {
-    currentSettings.header_layout = layoutId;
-    // تحديث UI
-    HEADER_LAYOUTS.forEach(l => {
-        const card = document.getElementById(`header-layout-card-${l.id}`);
-        if (!card) return;
-        const isActive = l.id === layoutId;
-        card.className = `relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200 ${
-            isActive
-                ? 'border-devo-orange bg-devo-orange/5 shadow-[0_0_15px_rgba(249,115,22,0.15)]'
-                : 'border-devo-gray bg-devo-black hover:border-devo-grayHover'
-        }`;
-        const checkmark = card.querySelector('.absolute');
-        if (isActive && !checkmark) {
-            card.insertAdjacentHTML('afterbegin', `<div class="absolute top-2 left-2 w-5 h-5 rounded-full bg-devo-orange flex items-center justify-center"><i class="ph ph-check text-white text-xs font-bold"></i></div>`);
-        } else if (!isActive && checkmark) {
-            checkmark.remove();
+    // 1. طبقة الصورة
+    const prevImg = document.getElementById('admin-hero-prev-img');
+    if (prevImg) {
+        if (showBg && bgUrl) {
+            prevImg.style.display = 'block';
+            prevImg.style.backgroundImage = `url('${bgUrl}')`;
+            prevImg.style.opacity = (parseInt(opacity) / 100).toString();
+            prevImg.style.filter = `blur(${blur}px)`;
+            prevImg.style.mixBlendMode = blendMode;
+        } else {
+            prevImg.style.display = 'none';
         }
-        const icon = card.querySelector('.w-10');
-        if (icon) icon.className = `w-10 h-10 rounded-lg ${isActive ? 'bg-devo-orange/20 text-devo-orange' : 'bg-devo-gray/30 text-devo-muted'} flex items-center justify-center shrink-0 transition-colors`;
-        const title = card.querySelector('h4');
-        if (title) title.className = `text-sm font-bold ${isActive ? 'text-devo-orange' : 'text-white'} leading-snug`;
-    });
-};
+    }
 
-window.saveHeaderSettings = async () => {
-    const btn = document.getElementById('btn-save-header');
+    // 2. طبقة التغميق
+    const prevOverlay = document.getElementById('admin-hero-prev-overlay');
+    if (prevOverlay) {
+        prevOverlay.style.backgroundColor = `rgba(0, 0, 0, ${parseInt(overlay) / 100})`;
+    }
+
+    // 3. طبقات الدمج العلوية والسفلية Edge Merging Fades
+    const prevTopFade = document.getElementById('admin-hero-prev-top-fade');
+    const prevBottomFade = document.getElementById('admin-hero-prev-bottom-fade');
+    const featherPercent = parseInt(edgeFeather);
+    if (prevTopFade) {
+        prevTopFade.style.height = `${featherPercent}%`;
+        prevTopFade.style.backgroundImage = 'linear-gradient(to bottom, #0a0a0a, transparent)';
+    }
+    if (prevBottomFade) {
+        prevBottomFade.style.height = `${featherPercent}%`;
+        prevBottomFade.style.backgroundImage = 'linear-gradient(to top, #0a0a0a, transparent)';
+    }
+
+    // 4. كارت المحتوى الزجاجي
+    const prevCard = document.getElementById('admin-hero-prev-card');
+    if (prevCard) {
+        if (glassMode !== 'none') {
+            const opacityRatio = parseInt(glassOpacity) / 100;
+            const bgAlpha = glassMode === 'heavy' ? Math.min(0.9, opacityRatio + 0.3) : opacityRatio;
+            prevCard.style.backgroundColor = `rgba(0, 0, 0, ${bgAlpha})`;
+            prevCard.style.backdropFilter = `blur(${glassBlur}px)`;
+            prevCard.style.webkitBackdropFilter = `blur(${glassBlur}px)`;
+            prevCard.style.border = `1px solid rgba(255, 255, 255, ${Math.min(0.25, opacityRatio * 0.5)})`;
+            prevCard.style.boxShadow = `0 10px 40px rgba(0, 0, 0, ${Math.min(0.6, opacityRatio + 0.2)})`;
+        } else {
+            prevCard.style.backgroundColor = 'transparent';
+            prevCard.style.backdropFilter = 'none';
+            prevCard.style.webkitBackdropFilter = 'none';
+            prevCard.style.border = 'none';
+            prevCard.style.boxShadow = 'none';
+        }
+    }
+
+    // 5. النصوص والألوان
+    const titleVal = document.getElementById('hs-hero-title')?.value.trim();
+    const subtitleVal = document.getElementById('hs-hero-subtitle')?.value.trim();
+    const prevTitle = document.getElementById('admin-hero-prev-title');
+    const prevSubtitle = document.getElementById('admin-hero-prev-subtitle');
+
+    if (prevTitle) {
+        prevTitle.textContent = titleVal || 'العنوان الرئيسي';
+        prevTitle.style.color = titleColor;
+    }
+    if (prevSubtitle) {
+        prevSubtitle.textContent = subtitleVal || 'الوصف المكتوب في حقل النص الفرعي اعلاه';
+        prevSubtitle.style.color = subtitleColor;
+    }
+}
+
+function setupHeroPreviewListeners() {
+    const ids = [
+        'hs-hero-title', 'hs-hero-subtitle', 'hs-bg-desktop', 'hs-bg-mobile',
+        'hs-bg-show', 'hs-bg-blend', 'hs-bg-glass', 'hs-title-color', 'hs-subtitle-color',
+        'hs-bg-edge-feather', 'hs-bg-opacity', 'hs-bg-overlay', 'hs-bg-blur',
+        'hs-glass-opacity', 'hs-glass-blur', 'hs-bg-enable-gallery', 'hs-bg-enable-barcode',
+        'hs-bg-enable-cart', 'hs-bg-enable-orders'
+    ];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.removeEventListener('input', updateAdminHeroPreview);
+            el.removeEventListener('change', updateAdminHeroPreview);
+            el.addEventListener('input', updateAdminHeroPreview);
+            el.addEventListener('change', updateAdminHeroPreview);
+        }
+    });
+}
+
+// ==========================================
+// 2. Header & Footer Layout Selectors UI
+// ==========================================
+
+function populateHeaderFooterSelectors(activeHeaderId, activeFooterId) {
+    const headerSelect = document.getElementById('hs-header-layout');
+    const footerSelect = document.getElementById('hs-footer-layout');
+
+    if (headerSelect) {
+        headerSelect.innerHTML = HEADER_LAYOUTS.map(l => 
+            `<option value="${l.id}" ${l.id === activeHeaderId ? 'selected' : ''}>${l.name}</option>`
+        ).join('');
+    }
+
+    if (footerSelect) {
+        footerSelect.innerHTML = FOOTER_LAYOUTS.map(l => 
+            `<option value="${l.id}" ${l.id === activeFooterId ? 'selected' : ''}>${l.name}</option>`
+        ).join('');
+    }
+}
+
+window.saveHeaderFooterLayouts = async () => {
+    const btn = document.getElementById('btn-save-header-footer');
+    if (!btn) return;
+
+    const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري الحفظ...`;
 
     try {
+        const headerVal = document.getElementById('hs-header-layout')?.value || 'classic';
+        const footerVal = document.getElementById('hs-footer-layout')?.value || 'simple';
+
         const updates = [
-            { setting_key: 'header_layout', setting_value: currentSettings.header_layout || 'classic' },
-            { setting_key: 'header_height', setting_value: document.getElementById('hs-header-height')?.value || '80' },
-            { setting_key: 'header_sticky', setting_value: document.getElementById('hs-header-sticky')?.value || 'true' },
-            { setting_key: 'header_transparent', setting_value: document.getElementById('hs-header-transparent')?.value || 'false' },
-            { setting_key: 'header_compact_on_scroll', setting_value: document.getElementById('hs-header-compact')?.value || 'false' },
+            { setting_key: 'header_layout', setting_value: headerVal },
+            { setting_key: 'footer_layout', setting_value: footerVal }
         ];
 
         const { error } = await supabase.from('home_settings').upsert(updates, { onConflict: 'setting_key' });
         if (error) throw error;
 
-        showToast('تم حفظ إعدادات الهيدر بنجاح ✓ ستُطبق عند إعادة تحميل الصفحة الرئيسية', 'success');
+        currentSettings.header_layout = headerVal;
+        currentSettings.footer_layout = footerVal;
+
+        showToast('تم حفظ تصميم الهيدر والفوتر بنجاح ✓', 'success');
     } catch (err) {
         showToast('حدث خطأ أثناء الحفظ: ' + err.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i class="ph ph-floppy-disk"></i> حفظ إعدادات الهيدر`;
-    }
-};
-
-// ==========================================
-// 3. Footer Layout Picker UI
-// ==========================================
-
-function renderFooterLayoutPicker(activeId) {
-    const container = document.getElementById('footer-layouts-grid');
-    if (!container) return;
-
-    container.innerHTML = FOOTER_LAYOUTS.map(layout => {
-        const isActive = layout.id === activeId;
-        return `
-            <div
-                onclick="selectFooterLayout('${layout.id}')"
-                id="footer-layout-card-${layout.id}"
-                class="relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200
-                    ${isActive
-                        ? 'border-purple-500 bg-purple-500/5 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                        : 'border-devo-gray bg-devo-black hover:border-devo-grayHover'
-                    }"
-            >
-                ${isActive ? `<div class="absolute top-2 left-2 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center"><i class="ph ph-check text-white text-xs font-bold"></i></div>` : ''}
-                <div class="flex items-start gap-3">
-                    <div class="w-10 h-10 rounded-lg ${isActive ? 'bg-purple-500/20 text-purple-400' : 'bg-devo-gray/30 text-devo-muted'} flex items-center justify-center shrink-0 transition-colors">
-                        <i class="ph ${layout.icon} text-xl"></i>
-                    </div>
-                    <div>
-                        <h4 class="text-sm font-bold ${isActive ? 'text-purple-400' : 'text-white'} leading-snug">${layout.name}</h4>
-                        <p class="text-xs text-devo-muted mt-0.5 leading-relaxed">${layout.description}</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-window.selectFooterLayout = function(layoutId) {
-    currentSettings.footer_layout = layoutId;
-    FOOTER_LAYOUTS.forEach(l => {
-        const card = document.getElementById(`footer-layout-card-${l.id}`);
-        if (!card) return;
-        const isActive = l.id === layoutId;
-        card.className = `relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200 ${
-            isActive
-                ? 'border-purple-500 bg-purple-500/5 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                : 'border-devo-gray bg-devo-black hover:border-devo-grayHover'
-        }`;
-        const checkmark = card.querySelector('.absolute');
-        if (isActive && !checkmark) {
-            card.insertAdjacentHTML('afterbegin', `<div class="absolute top-2 left-2 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center"><i class="ph ph-check text-white text-xs font-bold"></i></div>`);
-        } else if (!isActive && checkmark) {
-            checkmark.remove();
-        }
-        const icon = card.querySelector('.w-10');
-        if (icon) icon.className = `w-10 h-10 rounded-lg ${isActive ? 'bg-purple-500/20 text-purple-400' : 'bg-devo-gray/30 text-devo-muted'} flex items-center justify-center shrink-0 transition-colors`;
-        const title = card.querySelector('h4');
-        if (title) title.className = `text-sm font-bold ${isActive ? 'text-purple-400' : 'text-white'} leading-snug`;
-    });
-};
-
-window.saveFooterSettings = async () => {
-    const btn = document.getElementById('btn-save-footer');
-    btn.disabled = true;
-    btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري الحفظ...`;
-
-    try {
-        const updates = [
-            { setting_key: 'footer_layout', setting_value: currentSettings.footer_layout || 'simple' },
-            { setting_key: 'footer_show_quick_links', setting_value: document.getElementById('hs-footer-quick-links')?.checked ? 'true' : 'false' },
-        ];
-
-        const { error } = await supabase.from('home_settings').upsert(updates, { onConflict: 'setting_key' });
-        if (error) throw error;
-
-        showToast('تم حفظ إعدادات الفوتر بنجاح ✓ ستُطبق عند إعادة تحميل الصفحة الرئيسية', 'success');
-    } catch (err) {
-        showToast('حدث خطأ أثناء الحفظ: ' + err.message, 'error');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<i class="ph ph-floppy-disk"></i> حفظ إعدادات الفوتر`;
+        btn.innerHTML = originalHTML;
     }
 };
 
@@ -257,7 +268,26 @@ window.saveHeroSettings = async () => {
             { setting_key: 'hero_bg_mobile', setting_value: document.getElementById('hs-bg-mobile').value.trim() },
             { setting_key: 'social_facebook', setting_value: document.getElementById('hs-social-fb').value.trim() },
             { setting_key: 'social_whatsapp', setting_value: document.getElementById('hs-social-wa').value.trim() },
-            { setting_key: 'social_maps', setting_value: document.getElementById('hs-social-maps').value.trim() }
+            { setting_key: 'social_maps', setting_value: document.getElementById('hs-social-maps').value.trim() },
+            
+            // خصائص التحكم المتقدمة في الخلفية والنصوص
+            { setting_key: 'hero_bg_show', setting_value: document.getElementById('hs-bg-show')?.value || 'true' },
+            { setting_key: 'hero_bg_blend', setting_value: document.getElementById('hs-bg-blend')?.value || 'normal' },
+            { setting_key: 'hero_bg_glass', setting_value: document.getElementById('hs-bg-glass')?.value || 'soft' },
+            { setting_key: 'hero_title_color', setting_value: document.getElementById('hs-title-color')?.value || '#ffffff' },
+            { setting_key: 'hero_subtitle_color', setting_value: document.getElementById('hs-subtitle-color')?.value || '#a3a3a3' },
+            { setting_key: 'hero_bg_edge_feather', setting_value: document.getElementById('hs-bg-edge-feather')?.value || '25' },
+            { setting_key: 'hero_bg_opacity', setting_value: document.getElementById('hs-bg-opacity')?.value || '100' },
+            { setting_key: 'hero_bg_overlay_opacity', setting_value: document.getElementById('hs-bg-overlay')?.value || '40' },
+            { setting_key: 'hero_bg_blur', setting_value: document.getElementById('hs-bg-blur')?.value || '0' },
+            { setting_key: 'hero_glass_opacity', setting_value: document.getElementById('hs-glass-opacity')?.value || '30' },
+            { setting_key: 'hero_glass_blur', setting_value: document.getElementById('hs-glass-blur')?.value || '12' },
+            
+            // خيارات تفعيل الخلفية في بقية الصفحات
+            { setting_key: 'bg_enable_gallery', setting_value: document.getElementById('hs-bg-enable-gallery')?.value || 'false' },
+            { setting_key: 'bg_enable_barcode', setting_value: document.getElementById('hs-bg-enable-barcode')?.value || 'false' },
+            { setting_key: 'bg_enable_cart', setting_value: document.getElementById('hs-bg-enable-cart')?.value || 'false' },
+            { setting_key: 'bg_enable_orders', setting_value: document.getElementById('hs-bg-enable-orders')?.value || 'false' }
         ];
 
         const { error } = await supabase.from('home_settings').upsert(updates, { onConflict: 'setting_key' });
@@ -325,19 +355,40 @@ function renderPromoCards() {
     }).join('');
 }
 
-window.openPromoModal = (id = null) => {
+window.openPromoModal = async (id = null) => {
     const form = document.getElementById('promo-form');
     form.reset();
     document.getElementById('pm-id').value = id || '';
     document.getElementById('promo-modal-title').textContent = id ? 'تعديل العرض' : 'إضافة عرض جديد';
+
+    // تعبئة قائمة الموديلات المتاحة للربط
+    const modelSelect = document.getElementById('pm-model-id');
+    if (modelSelect) {
+        modelSelect.innerHTML = `<option value="">جاري تحميل الموديلات...</option>`;
+        try {
+            const { data: models } = await supabase
+                .from('models')
+                .select('id, name, factory_code, system_code')
+                .eq('is_active', true)
+                .order('name', { ascending: true });
+
+            let options = `<option value="">-- بدون ربط (تصفح المعرض فقط) --</option>`;
+            if (models && models.length > 0) {
+                options += models.map(m => `<option value="${m.id}">[${m.factory_code || m.system_code || 'موديل'}] ${m.name}</option>`).join('');
+            }
+            modelSelect.innerHTML = options;
+        } catch (e) {
+            modelSelect.innerHTML = `<option value="">-- بدون ربط --</option>`;
+        }
+    }
 
     if (id) {
         const card = promoCards.find(c => c.id === id);
         if (card) {
             document.getElementById('pm-title').value = card.title;
             document.getElementById('pm-desc').value = card.description;
-            // استدعاء الصورة في حالة التعديل
             if (document.getElementById('pm-image')) document.getElementById('pm-image').value = card.image_url || '';
+            if (modelSelect) modelSelect.value = card.model_id || '';
             document.getElementById('pm-badge').value = card.badge_text || '';
             document.getElementById('pm-color').value = card.badge_color || 'bg-devo-orange';
             document.getElementById('pm-status').checked = card.is_active;
@@ -363,11 +414,13 @@ async function handleSavePromo(e) {
     const btn = e.target.querySelector('button[type="submit"]');
     const originalText = btn.innerHTML;
 
-    // تجهيز البيانات بما فيها حقل الصورة
+    const selectedModelId = document.getElementById('pm-model-id')?.value || null;
+
     const payload = {
         title: document.getElementById('pm-title').value.trim(),
         description: document.getElementById('pm-desc').value.trim(),
         image_url: document.getElementById('pm-image') ? document.getElementById('pm-image').value.trim() : null,
+        model_id: selectedModelId,
         badge_text: document.getElementById('pm-badge').value.trim() || null,
         badge_color: document.getElementById('pm-color').value,
         is_active: document.getElementById('pm-status').checked
@@ -379,10 +432,24 @@ async function handleSavePromo(e) {
     try {
         if (id) {
             const { error } = await supabase.from('promo_cards').update(payload).eq('id', id);
-            if (error) throw error;
+            if (error) {
+                if (error.message && error.message.includes('model_id')) {
+                    delete payload.model_id;
+                    const { error: err2 } = await supabase.from('promo_cards').update(payload).eq('id', id);
+                    if (err2) throw err2;
+                    showToast('تم الحفظ، لتشغيل ربط الموديل يرجى إضافة عمود model_id في جدول promo_cards', 'warning');
+                } else throw error;
+            }
         } else {
             const { error } = await supabase.from('promo_cards').insert([payload]);
-            if (error) throw error;
+            if (error) {
+                if (error.message && error.message.includes('model_id')) {
+                    delete payload.model_id;
+                    const { error: err2 } = await supabase.from('promo_cards').insert([payload]);
+                    if (err2) throw err2;
+                    showToast('تم الحفظ، لتشغيل ربط الموديل يرجى إضافة عمود model_id في جدول promo_cards', 'warning');
+                } else throw error;
+            }
         }
         showToast('تم حفظ الكارت الإعلاني بنجاح', 'success');
         closePromoModal();

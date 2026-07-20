@@ -45,15 +45,6 @@ function updateUserProfileUI(profile) {
         }
     }
 
-    // إخفاء/إظهار زر المرتجعات بناءً على صلاحية المدير أو المالك
-    const returnsLink = document.querySelector('[data-target="view-returns"]');
-    if (returnsLink) {
-        if (['owner', 'admin'].includes(profile.role)) {
-            returnsLink.classList.remove('hidden');
-        } else {
-            returnsLink.classList.add('hidden');
-        }
-    }
 
     // إخفاء/إظهار زر مراجعة الجرد بناءً على صلاحية المدير أو المالك
     const auditsLink = document.querySelector('[data-target="view-audits"]');
@@ -121,12 +112,6 @@ async function loadViewLogic(targetId) {
         return; 
     }
 
-    if (targetId === 'view-returns' && !['owner', 'admin'].includes(currentUserContext?.role)) {
-        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
-        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
-        if (defaultLink) switchView('view-dashboard', defaultLink);
-        return; 
-    }
 
     if (targetId === 'view-audits' && !['owner', 'admin'].includes(currentUserContext?.role)) {
         showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
@@ -176,10 +161,6 @@ async function loadViewLogic(targetId) {
         case 'view-preparation':
             const { initPreparationView } = await import('./preparation.js');
             await initPreparationView();
-            break;
-        case 'view-returns':
-            const { initReturnsView } = await import('./returns.js');
-            await initReturnsView();
             break;
         case 'view-audits':
             await initAuditsView();

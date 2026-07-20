@@ -155,6 +155,7 @@ badge_color text DEFAULT 'bg-devo-orange'::text,
 is_active boolean DEFAULT true,
 created_at timestamp with time zone DEFAULT now(),
 image_url text,
+model_id uuid REFERENCES public.models(id) ON DELETE SET NULL,
 CONSTRAINT promo_cards_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.orders (

@@ -37,12 +37,19 @@
                     if (colors) {
                         const styleEl = document.createElement('style');
                         styleEl.id = 'devo-theme-styles-early';
+                        const bgHex = colors.page?.bg || '#0a0a0a';
+                        const isLight = bgHex !== '#0a0a0a' && bgHex !== '#171717' && bgHex !== '#121212';
+                        const defaultGray = isLight ? (colors.brand?.secondary || '#ebdcb9') : '#262626';
+                        const defaultGrayHover = isLight ? (colors.brand?.secondary_hover || '#c4b28d') : '#404040';
+                        const devoGray = colors.borders?.color || defaultGray;
+                        const devoGrayHover = colors.brand?.secondary_hover || defaultGrayHover;
+
                         let cssText = `
                             :root {
                                 --devo-black: ${colors.page?.bg || '#0a0a0a'};
                                 --devo-dark: ${colors.page?.bg_secondary || colors.page?.surface || '#171717'};
-                                --devo-gray: ${colors.borders?.color || '#262626'};
-                                --devo-gray-hover: ${colors.brand?.secondary_hover || '#404040'};
+                                --devo-gray: ${devoGray};
+                                --devo-gray-hover: ${devoGrayHover};
                                 --devo-orange: ${colors.brand?.primary || '#f97316'};
                                 --devo-orange-hover: ${colors.brand?.primary_hover || '#ea580c'};
                                 --devo-text: ${colors.page?.text || '#f5f5f5'};
@@ -53,7 +60,7 @@
                                 --devo-info: ${colors.alerts?.info?.text || '#3b82f6'};
                                 --selection-bg: ${colors.page?.selection_bg || '#f97316'};
                                 --selection-text: ${colors.page?.selection_text || '#ffffff'};
-                                --border-color: ${colors.borders?.color || '#262626'};
+                                --border-color: ${devoGray};
                                 --border-width: ${colors.borders?.width || '1px'};
                                 --border-radius-base: ${colors.borders?.radius || '12px'};
                                 --shadow-color: ${colors.shadows?.color || 'rgba(0,0,0,0.8)'};
@@ -147,6 +154,14 @@
         .animate-laser {
             animation: laser 2s infinite linear;
         }
+        /* إخفاء arrows الـ number input وتوسيط الرقم */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+        input[type="number"][readonly] { 
+            display: flex; align-items: center; justify-content: center;
+            text-align: center; line-height: 1; padding: 0;
+        }
     </style>
 </head>
 <body class="bg-devo-black text-devo-text overflow-x-hidden flex flex-col min-h-screen">
@@ -154,16 +169,27 @@
     <!-- Header Container — يُملأ ديناميكياً من header_layouts.js -->
     <div id="site-header"></div>
 
-    <main class="flex-1">
+    <main class="flex-1 pt-20 md:pt-24">
         
         <div id="view-home" class="site-view-section animate-fade-in block">
-            <section class="hero-bg h-[80vh] min-h-[500px] flex items-center justify-center relative">
-                <div class="text-center z-10 px-4">
+            <section class="hero-bg h-[80vh] min-h-[500px] flex items-center justify-center relative overflow-hidden bg-devo-black">
+                <!-- Layer 1: Background Image Layer -->
+                <div id="hero-bg-image-layer" class="absolute inset-0 bg-cover bg-center transition-all duration-300 pointer-events-none"></div>
+
+                <!-- Layer 2: Dark Overlay Layer -->
+                <div id="hero-bg-overlay-layer" class="absolute inset-0 transition-all duration-300 pointer-events-none z-[1]"></div>
+
+                <!-- Layer 3: Top & Bottom Seamless Edge Merging Fades -->
+                <div id="hero-bg-top-fade" class="absolute top-0 left-0 right-0 pointer-events-none z-[2] transition-all duration-300"></div>
+                <div id="hero-bg-bottom-fade" class="absolute bottom-0 left-0 right-0 pointer-events-none z-[2] transition-all duration-300"></div>
+
+                <!-- Content Container (with optional glass card) -->
+                <div id="hero-content-card" class="text-center z-10 px-6 py-8 md:px-12 md:py-12 max-w-3xl mx-auto rounded-3xl transition-all duration-300">
                     <span class="text-devo-orange font-bold tracking-widest text-sm md:text-base uppercase mb-4 block">DEVO Collection</span>
-                    <h1 id="display-hero-title" class="text-4xl md:text-6xl font-black text-white leading-tight mb-6">
+                    <h1 id="display-hero-title" class="text-4xl md:text-6xl font-black leading-tight mb-6 transition-colors duration-300">
                         <i class="ph ph-spinner animate-spin"></i>
                     </h1>
-                    <p id="display-hero-subtitle" class="text-devo-muted md:text-lg mb-10 max-w-2xl mx-auto">
+                    <p id="display-hero-subtitle" class="md:text-lg mb-10 max-w-2xl mx-auto transition-colors duration-300">
                         ...
                     </p>
                     <button onclick="switchSiteView('view-gallery')" class="inline-flex items-center justify-center gap-2 bg-devo-orange hover:bg-devo-orangeHover text-white font-bold py-4 px-8 rounded-xl shadow-[0_0_20px_rgba(249,115,22,0.3)] transition-all transform hover:scale-105">
@@ -174,13 +200,13 @@
             </section>
 
             <section class="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto -mt-16 relative z-20">
-                <div id="display-promo-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div id="display-promo-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     <div class="col-span-full text-center text-devo-muted py-10"><i class="ph ph-spinner animate-spin text-3xl"></i></div>
                 </div>
             </section>
         </div>
 <div id="view-gallery" class="site-view-section hidden animate-fade-in pb-20">
-    <div class="bg-devo-black/95 backdrop-blur-md border-b border-devo-gray sticky top-20 z-30 py-2 md:py-4 mb-3 shadow-sm">
+    <div class="bg-devo-black border-b border-devo-gray sticky top-20 md:top-24 z-30 py-2 md:py-4 mb-3 shadow-md">
         <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div class="flex flex-col md:flex-row gap-2 md:items-center">
                 
@@ -218,30 +244,30 @@
     <section class="px-2 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[50vh]">
         <div id="gallery-pagination-top" class="flex justify-center items-center gap-1.5 md:gap-3 mb-3 col-span-full"></div>
         
-        <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
         </div>
 
         <div id="gallery-pagination-bottom" class="flex justify-center items-center gap-1.5 md:gap-3 mt-8 mb-4 col-span-full"></div>
     </section>
 </div>
-    </main> <button id="floating-cart-btn" onclick="switchSiteView('view-cart'); window.refreshCartView();" class="fixed bottom-8 right-8 z-[100] bg-devo-orange hover:bg-devo-orangeHover text-white rounded-full w-16 h-16 flex items-center justify-center shadow-[0_10px_25px_rgba(249,115,22,0.4)] transition-all transform hover:scale-110 hidden">
+<button id="floating-cart-btn" onclick="switchSiteView('view-cart'); window.refreshCartView();" class="fixed bottom-8 right-8 z-[100] bg-devo-orange hover:bg-devo-orangeHover text-white rounded-full w-16 h-16 flex items-center justify-center shadow-[0_10px_25px_rgba(249,115,22,0.4)] transition-all transform hover:scale-110 hidden">
         <div class="relative">
             <i class="ph ph-shopping-cart text-3xl"></i>
             <span id="floating-cart-count" class="absolute -top-2 -right-3 bg-white text-devo-orange text-xs font-black w-6 h-6 flex items-center justify-center rounded-full shadow-md border-2 border-devo-orange">0</span>
         </div>
     </button>
 
-    <div id="model-viewer-modal" class="fixed inset-0 bg-black/95 backdrop-blur-md z-[200] hidden flex items-center justify-center p-0 md:p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-devo-dark border border-devo-gray rounded-none md:rounded-2xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-5xl flex flex-col shadow-2xl transform scale-95 md:scale-100 transition-transform duration-300 relative overflow-hidden">
+    <div id="model-viewer-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-end md:items-center justify-center p-0 md:p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-devo-dark border border-devo-gray rounded-t-2xl md:rounded-2xl w-full h-[92vh] md:h-auto md:max-h-[90vh] md:max-w-5xl flex flex-col shadow-2xl transform scale-95 md:scale-100 transition-transform duration-300 relative overflow-hidden">
             
-            <div class="p-4 border-b border-devo-gray flex justify-between items-center bg-devo-black/80 sticky top-0 z-20">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                    <i class="ph ph-t-shirt text-devo-orange text-xl"></i> تفاصيل الموديل
+            <div class="p-3 md:p-4 border-b border-devo-gray flex justify-between items-center bg-devo-black/90 sticky top-0 z-20">
+                <h3 class="text-base md:text-lg font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-t-shirt text-devo-orange text-lg md:text-xl"></i> تفاصيل الموديل
                 </h3>
-                <button onclick="closeModelViewer()" class="text-devo-muted hover:text-white bg-devo-gray/30 p-2 rounded-full transition-colors"><i class="ph ph-x text-xl"></i></button>
+                <button onclick="closeModelViewer()" class="text-devo-muted hover:text-white bg-devo-gray/30 p-1.5 md:p-2 rounded-full transition-colors"><i class="ph ph-x text-lg md:text-xl"></i></button>
             </div>
 
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-0 md:p-6" id="model-viewer-content">
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6" id="model-viewer-content">
                 </div>
         </div>
     </div>
@@ -475,46 +501,56 @@
                 </div>
             </div>
         </div>
-        <div id="view-orders" class="site-view-section hidden animate-fade-in pb-20">
-            <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+        <div id="view-orders" class="site-view-section hidden animate-fade-in pb-12">
+            <div class="max-w-7xl mx-auto w-full px-2 sm:px-6 lg:px-8 pt-2 sm:pt-4 pb-6">
                 
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-devo-gray pb-4 gap-4">
+                <!-- Top Compact Header & Main Actions -->
+                <div class="flex items-center justify-between mb-3 border-b border-devo-gray pb-3 gap-2">
                     <div>
-                        <h2 class="text-2xl font-bold text-white flex items-center gap-2"><i class="ph ph-receipt text-devo-orange"></i> الأوردرات الخاصة بي</h2>
-                        <p class="text-sm text-devo-muted mt-1">مراجعة، طباعة، وتعديل الفواتير التي قمت بإنشائها.</p>
+                        <h2 class="text-lg sm:text-2xl font-black text-white flex items-center gap-2">
+                            <i class="ph ph-receipt text-devo-orange text-xl sm:text-2xl"></i> الأوردرات الخاصة بي
+                        </h2>
                     </div>
-                    <button onclick="switchSiteView('view-gallery')" class="w-full md:w-auto bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2">
-                        <i class="ph ph-plus-circle text-xl"></i> إنشاء أوردر جديد
+                    <button onclick="switchSiteView('view-gallery')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-3 sm:px-5 py-2 rounded-xl font-bold transition-all shadow-md flex items-center justify-center gap-1.5 text-xs sm:text-sm shrink-0">
+                        <i class="ph ph-plus-circle text-base sm:text-lg"></i>
+                        <span>أوردر جديد</span>
                     </button>
                 </div>
 
-                <div class="flex gap-2 mb-6 border-b border-devo-gray pb-2">
-                    <button onclick="switchOrdersTab('active')" id="tab-orders-active" class="px-4 py-2 text-sm font-bold text-devo-orange border-b-2 border-devo-orange transition-all">الأوردرات الحالية</button>
-                    <button onclick="switchOrdersTab('archived')" id="tab-orders-archived" class="px-4 py-2 text-sm font-bold text-devo-muted hover:text-white border-b-2 border-transparent transition-all">الأرشيف</button>
-                </div>
-
-                <div class="bg-devo-dark border border-devo-gray p-4 rounded-2xl mb-6 shadow-sm flex flex-wrap gap-3 items-center">
-                    <div class="relative flex-[2] min-w-[200px]">
-                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                        <input type="text" id="ord-search" placeholder="بحث برقم الأوردر، اسم العميل، الهاتف..." 
-                            class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-sm">
+                <!-- Tabs & Search Toolbar -->
+                <div class="bg-devo-dark border border-devo-gray p-2.5 sm:p-4 rounded-xl sm:rounded-2xl mb-4 shadow-sm space-y-2.5">
+                    <div class="flex items-center justify-between border-b border-devo-gray/60 pb-2">
+                        <div class="flex gap-1 sm:gap-2">
+                            <button onclick="switchOrdersTab('active')" id="tab-orders-active" class="px-3 py-1.5 text-xs sm:text-sm font-bold text-devo-orange border-b-2 border-devo-orange transition-all">الأوردرات الحالية</button>
+                            <button onclick="switchOrdersTab('archived')" id="tab-orders-archived" class="px-3 py-1.5 text-xs sm:text-sm font-bold text-devo-muted hover:text-white border-b-2 border-transparent transition-all">الأرشيف</button>
+                        </div>
                     </div>
-                    
-                    <select id="ord-status" class="flex-1 min-w-[140px] bg-devo-black border border-devo-gray rounded-xl px-3 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-sm">
-                        <option value="">كل الحالات</option>
-                        <option value="created">تم إنشاء الأوردر</option>
-                        <option value="in_progress">جاري العمل</option>
-                        <option value="registered">تم التسجيل على السيستم</option>
-                        <option value="preparing">جاري تجهيز الأوردر</option>
-                        <option value="shipped">تم الشحن</option>
-                        <option value="delivered">تم التسليم</option>
-                    </select>
 
-                    <div class="flex items-center gap-2 bg-devo-black border border-devo-gray rounded-xl px-3 py-1 flex-1 min-w-[200px]">
-                        <span class="text-xs text-devo-muted">من:</span>
-                        <input type="date" id="ord-date-from" class="bg-transparent text-white outline-none text-xs py-1.5 w-full cursor-pointer">
-                        <span class="text-xs text-devo-muted border-r border-devo-gray pr-2">إلى:</span>
-                        <input type="date" id="ord-date-to" class="bg-transparent text-white outline-none text-xs py-1.5 w-full cursor-pointer">
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div class="relative sm:col-span-6">
+                            <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
+                            <input type="text" id="ord-search" placeholder="بحث برقم الأوردر، العميل، الهاتف..." 
+                                class="w-full bg-devo-black border border-devo-gray rounded-lg sm:rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs sm:text-sm h-[38px]">
+                        </div>
+                        
+                        <div class="sm:col-span-3">
+                            <select id="ord-status" class="w-full bg-devo-black border border-devo-gray rounded-lg sm:rounded-xl px-2 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs sm:text-sm h-[38px]">
+                                <option value="">كل الحالات</option>
+                                <option value="created">تم إنشاء الأوردر</option>
+                                <option value="in_progress">جاري العمل</option>
+                                <option value="registered">تم التسجيل على السيستم</option>
+                                <option value="preparing">جاري تجهيز الأوردر</option>
+                                <option value="shipped">تم الشحن</option>
+                                <option value="delivered">تم التسليم</option>
+                            </select>
+                        </div>
+
+                        <div class="sm:col-span-3 flex items-center gap-1 bg-devo-black border border-devo-gray rounded-lg sm:rounded-xl px-2 py-1 h-[38px]">
+                            <span class="text-[10px] sm:text-xs text-devo-muted shrink-0">من:</span>
+                            <input type="date" id="ord-date-from" class="bg-transparent text-white outline-none text-[10px] sm:text-xs py-1 w-full cursor-pointer">
+                            <span class="text-[10px] sm:text-xs text-devo-muted border-r border-devo-gray pr-1 shrink-0">إلى:</span>
+                            <input type="date" id="ord-date-to" class="bg-transparent text-white outline-none text-[10px] sm:text-xs py-1 w-full cursor-pointer">
+                        </div>
                     </div>
                 </div>
 
@@ -532,12 +568,12 @@
                                 </tr>
                             </thead>
                             <tbody id="orders-table-body" class="divide-y divide-devo-gray">
-                                </tbody>
+                            </tbody>
                         </table>
                     </div>
 
-                    <div id="orders-cards-body" class="md:hidden space-y-4">
-                        </div>
+                    <div id="orders-cards-body" class="md:hidden space-y-3">
+                    </div>
                 </div>
 
             </div>

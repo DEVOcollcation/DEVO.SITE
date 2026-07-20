@@ -37,12 +37,19 @@
                     if (colors) {
                         const styleEl = document.createElement('style');
                         styleEl.id = 'devo-theme-styles-early';
+                        const bgHex = colors.page?.bg || '#0a0a0a';
+                        const isLight = bgHex !== '#0a0a0a' && bgHex !== '#171717' && bgHex !== '#121212';
+                        const defaultGray = isLight ? (colors.brand?.secondary || '#ebdcb9') : '#262626';
+                        const defaultGrayHover = isLight ? (colors.brand?.secondary_hover || '#c4b28d') : '#404040';
+                        const devoGray = colors.borders?.color || defaultGray;
+                        const devoGrayHover = colors.brand?.secondary_hover || defaultGrayHover;
+
                         let cssText = `
                             :root {
                                 --devo-black: ${colors.page?.bg || '#0a0a0a'};
                                 --devo-dark: ${colors.page?.bg_secondary || colors.page?.surface || '#171717'};
-                                --devo-gray: ${colors.borders?.color || '#262626'};
-                                --devo-gray-hover: ${colors.brand?.secondary_hover || '#404040'};
+                                --devo-gray: ${devoGray};
+                                --devo-gray-hover: ${devoGrayHover};
                                 --devo-orange: ${colors.brand?.primary || '#f97316'};
                                 --devo-orange-hover: ${colors.brand?.primary_hover || '#ea580c'};
                                 --devo-text: ${colors.page?.text || '#f5f5f5'};
@@ -53,7 +60,7 @@
                                 --devo-info: ${colors.alerts?.info?.text || '#3b82f6'};
                                 --selection-bg: ${colors.page?.selection_bg || '#f97316'};
                                 --selection-text: ${colors.page?.selection_text || '#ffffff'};
-                                --border-color: ${colors.borders?.color || '#262626'};
+                                --border-color: ${devoGray};
                                 --border-width: ${colors.borders?.width || '1px'};
                                 --border-radius-base: ${colors.borders?.radius || '12px'};
                                 --shadow-color: ${colors.shadows?.color || 'rgba(0,0,0,0.8)'};
@@ -181,11 +188,7 @@
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الأوردرات</span>
                 <span class="sidebar-tooltip">إدارة الأوردرات</span>
             </a>
-            <a href="#" data-target="view-returns" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة المرتجعات">
-                <i class="ph ph-arrow-counter-clockwise text-xl shrink-0"></i>
-                <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة المرتجعات</span>
-                <span class="sidebar-tooltip">إدارة المرتجعات</span>
-            </a>
+
             <a href="#" data-target="view-preparation" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تحضير الأوردرات">
                 <i class="ph ph-package text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">تحضير الأوردرات</span>
@@ -411,9 +414,7 @@
                     <i class="ph ph-receipt text-devo-orange"></i> لوحة إدارة الأوردرات
                 </h2>
             </div>
-            <button onclick="exportOrdersToExcel()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg border border-devo-success/20 text-sm">
-                <i class="ph ph-file-xls text-xl"></i> تصدير البيانات (Excel)
-            </button>
+
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -1023,6 +1024,17 @@
                             </div>
                     </div>
 
+                    <!-- Progress Bar for Excel Import -->
+                    <div id="excel-import-progress-container" class="hidden w-full space-y-2 mt-4 bg-devo-black/50 border border-devo-gray p-4 rounded-xl">
+                        <div class="flex justify-between text-xs text-white font-bold">
+                            <span id="excel-progress-text">جاري حفظ الموديلات...</span>
+                            <span id="excel-progress-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-devo-black border border-devo-gray rounded-full h-3 overflow-hidden p-[2px]">
+                            <div id="excel-progress-bar" class="bg-devo-orange h-full rounded-full transition-all duration-300 w-0"></div>
+                        </div>
+                    </div>
+
                     <div class="flex gap-3 mt-4">
                         <button type="button" onclick="resetExcelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">رجوع للخلف</button>
                         <button type="button" onclick="executeExcelImport()" id="excel-import-btn" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg shadow-devo-orange/20 transition-all text-sm flex items-center justify-center gap-2">
@@ -1556,96 +1568,6 @@
 
     </div>
 </div>
-<!-- ============================================================ -->
-<!-- VIEW: إدارة المرتجعات -->
-<!-- ============================================================ -->
-<div id="view-returns" class="view-section hidden h-full">
-    <div class="animate-fade-in space-y-6 pb-20">
-        
-        <!-- Header -->
-        <div class="bg-devo-dark border border-devo-gray p-4 md:p-5 rounded-xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-                <h2 class="text-xl md:text-2xl font-black text-white flex items-center gap-2">
-                    <i class="ph ph-arrow-counter-clockwise text-devo-orange"></i> إدارة المرتجعات والاستبدال
-                </h2>
-                <p class="text-devo-muted text-xs md:text-sm mt-1">عرض، فلترة، ومراجعة فواتير مرتجعات المبيعات المسجلة بالسيستم.</p>
-            </div>
-            <button onclick="refreshReturnsList()" class="bg-devo-gray hover:bg-devo-gray/70 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors w-full md:w-auto justify-center">
-                <i class="ph ph-arrows-clockwise"></i> تحديث
-            </button>
-        </div>
-
-        <!-- Stats Card Row -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 flex items-center gap-4 shadow-sm">
-                <div class="w-12 h-12 rounded-lg bg-devo-orange/10 flex items-center justify-center text-devo-orange"><i class="ph ph-receipt text-2xl"></i></div>
-                <div>
-                    <span class="text-devo-muted text-xs block">عدد فواتير المرتجع</span>
-                    <span class="text-2xl font-black text-white mt-1 block" id="ret-stat-count">0</span>
-                </div>
-            </div>
-            <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 flex items-center gap-4 shadow-sm">
-                <div class="w-12 h-12 rounded-lg bg-devo-success/10 flex items-center justify-center text-devo-success"><i class="ph ph-currency-dollar text-2xl"></i></div>
-                <div>
-                    <span class="text-devo-muted text-xs block">إجمالي مبالغ المرتجع</span>
-                    <span class="text-2xl font-black text-devo-success mt-1 block" id="ret-stat-amount">0 ج.م</span>
-                </div>
-            </div>
-            <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 flex items-center gap-4 shadow-sm">
-                <div class="w-12 h-12 rounded-lg bg-devo-info/10 flex items-center justify-center text-devo-info"><i class="ph ph-stack text-2xl"></i></div>
-                <div>
-                    <span class="text-devo-muted text-xs block">إجمالي السريات المرتجعة</span>
-                    <span class="text-2xl font-black text-devo-info mt-1 block" id="ret-stat-series">0</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm flex flex-wrap gap-3 items-center">
-            <div class="relative flex-[2] min-w-[200px]">
-                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                <input type="text" id="ret-search" placeholder="بحث برقم المرتجع، اسم العميل..." 
-                    class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs md:text-sm">
-            </div>
-            
-            <div class="flex items-center gap-2 bg-devo-black border border-devo-gray rounded-xl px-3 py-1 flex-1 min-w-[240px]">
-                <span class="text-xs text-devo-muted">من:</span>
-                <input type="date" id="ret-date-from" class="bg-transparent text-white outline-none text-xs py-1.5 w-full cursor-pointer">
-                <span class="text-xs text-devo-muted border-r border-devo-gray pr-2">إلى:</span>
-                <input type="date" id="ret-date-to" class="bg-transparent text-white outline-none text-xs py-1.5 w-full cursor-pointer">
-            </div>
-        </div>
-
-        <!-- Table -->
-        <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm">
-            <div class="overflow-x-auto">
-                <table class="w-full text-right text-sm">
-                    <thead class="bg-devo-black border-b border-devo-gray text-devo-muted text-xs">
-                        <tr>
-                            <th class="p-4 font-medium">رقم المرتجع</th>
-                            <th class="p-4 font-medium">رقم الأوردر الأصلي</th>
-                            <th class="p-4 font-medium">اسم العميل</th>
-                            <th class="p-4 font-medium text-center">السريات المرتجعة</th>
-                            <th class="p-4 font-medium text-center">مبلغ المسترد</th>
-                            <th class="p-4 font-medium">التاريخ والوقت</th>
-                            <th class="p-4 font-medium">المستلم</th>
-                            <th class="p-4 font-medium text-center">الإجراءات</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ret-table-body" class="divide-y divide-devo-gray text-white">
-                        <tr>
-                            <td colspan="8" class="p-10 text-center text-devo-muted">
-                                <i class="ph ph-spinner animate-spin text-2xl text-devo-orange block mb-2 mx-auto"></i>
-                                جاري تحميل المرتجعات...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-    </div>
-</div>
 
 <!-- ============================================================ -->
 <!-- VIEW: تحضير الأوردرات -->
@@ -1844,101 +1766,42 @@
         </div>
 
         <!-- ============================================================ -->
-        <!-- SECTION: Header Layout Picker -->
+        <!-- SECTION: Header & Footer Layout Selectors -->
         <!-- ============================================================ -->
         <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 shadow-sm">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5 border-b border-devo-gray pb-4">
                 <div>
                     <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-layout text-devo-orange"></i> تصميم الشريط العلوي (Header Layout)
+                        <i class="ph ph-layout text-devo-orange"></i> تصميم الشريط العلوي والسفلي (Header & Footer Themes)
                     </h3>
-                    <p class="text-devo-muted text-xs mt-1">اختر شكل وتوزيع عناصر الهيدر الذي يناسب هوية متجرك</p>
+                    <p class="text-devo-muted text-xs mt-1">اختر الشكل والتصميم المناسب للشريط العلوي والفوتر من القوائم المنسدلة</p>
                 </div>
-                <button onclick="saveHeaderSettings()" id="btn-save-header" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shrink-0">
-                    <i class="ph ph-floppy-disk"></i> حفظ إعدادات الهيدر
+                <button onclick="saveHeaderFooterLayouts()" id="btn-save-header-footer" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shrink-0 shadow-lg shadow-devo-orange/20">
+                    <i class="ph ph-floppy-disk"></i> حفظ تصميم الهيدر والفوتر
                 </button>
             </div>
 
-            <!-- Layout Cards Grid -->
-            <div id="header-layouts-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
-                <!-- Filled dynamically by home_settings.js -->
-                <div class="col-span-full py-6 text-center text-devo-muted text-sm">
-                    <i class="ph ph-spinner animate-spin text-2xl text-devo-orange block mx-auto mb-2"></i>
-                    جاري تحميل التصميمات...
-                </div>
-            </div>
-
-            <!-- Advanced Header Settings -->
-            <div class="border-t border-devo-gray pt-4">
-                <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-1.5"><i class="ph ph-sliders-horizontal text-devo-orange"></i> إعدادات الهيدر المتقدمة</h4>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-devo-muted mb-1.5">ارتفاع الهيدر (px)</label>
-                        <input type="number" id="hs-header-height" min="50" max="120" value="80"
-                            class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white focus:border-devo-orange outline-none text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-devo-muted mb-1.5">الهيدر الثابت (Sticky)</label>
-                        <select id="hs-header-sticky" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white focus:border-devo-orange outline-none text-sm">
-                            <option value="true">نعم — ثابت عند التمرير</option>
-                            <option value="false">لا — يختفي عند التمرير</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-devo-muted mb-1.5">هيدر شفاف (Transparent)</label>
-                        <select id="hs-header-transparent" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white focus:border-devo-orange outline-none text-sm">
-                            <option value="false">لا — لون خلفية ثابت</option>
-                            <option value="true">نعم — شفاف فوق الـ Hero</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-devo-muted mb-1.5">Compact عند التمرير</label>
-                        <select id="hs-header-compact" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white focus:border-devo-orange outline-none text-sm">
-                            <option value="false">لا — حجم ثابت</option>
-                            <option value="true">نعم — يصغر عند التمرير</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ============================================================ -->
-        <!-- SECTION: Footer Layout Picker -->
-        <!-- ============================================================ -->
-        <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 shadow-sm">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
-                <div>
-                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-layout text-purple-400"></i> تصميم الشريط السفلي (Footer Layout)
-                    </h3>
-                    <p class="text-devo-muted text-xs mt-1">اختر شكل وتوزيع عناصر الفوتر الذي يناسب هوية متجرك</p>
-                </div>
-                <button onclick="saveFooterSettings()" id="btn-save-footer" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shrink-0">
-                    <i class="ph ph-floppy-disk"></i> حفظ إعدادات الفوتر
-                </button>
-            </div>
-
-            <!-- Layout Cards Grid -->
-            <div id="footer-layouts-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
-                <!-- Filled dynamically by home_settings.js -->
-                <div class="col-span-full py-6 text-center text-devo-muted text-sm">
-                    <i class="ph ph-spinner animate-spin text-2xl text-purple-400 block mx-auto mb-2"></i>
-                    جاري تحميل التصميمات...
-                </div>
-            </div>
-
-            <!-- Footer Extra Settings -->
-            <div class="border-t border-devo-gray pt-4">
-                <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-1.5"><i class="ph ph-toggle-left text-purple-400"></i> خيارات إضافية للفوتر</h4>
-                <div class="flex items-center gap-3">
-                    <label class="flex items-center gap-2 cursor-pointer select-none">
-                        <div class="relative">
-                            <input type="checkbox" id="hs-footer-quick-links" class="sr-only peer">
-                            <div class="w-11 h-6 bg-devo-gray rounded-full peer peer-checked:bg-devo-orange after:content-[''] after:absolute after:top-0.5 after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:-translate-x-full shadow-inner"></div>
-                        </div>
-                        <span class="text-sm font-bold text-white">إظهار قسم "الروابط السريعة" في الفوتر</span>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Selector 1: Top Header Theme -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-browser text-devo-orange"></i> تصميم الشريط العلوي (Top Header Layout)
                     </label>
-                    <p class="text-devo-muted text-xs">(متوفر فقط في تصميمات Multi-Column وLuxury)</p>
+                    <p class="text-xs text-devo-muted">اختر الثيم والشكل المطلوب للشريط العلوي أعلى الصفحة</p>
+                    <select id="hs-header-layout" class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white focus:border-devo-orange outline-none text-sm cursor-pointer transition-all">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <!-- Selector 2: Bottom Footer Theme -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-columns text-purple-400"></i> تصميم الشريط السفلي (Footer Layout)
+                    </label>
+                    <p class="text-xs text-devo-muted">اختر الثيم والشكل المطلوب للفوتر أسفل الصفحة</p>
+                    <select id="hs-footer-layout" class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white focus:border-devo-orange outline-none text-sm cursor-pointer transition-all">
+                        <!-- Populated dynamically -->
+                    </select>
                 </div>
             </div>
         </div>
@@ -1967,12 +1830,182 @@
                 <div class="space-y-4">
                     <h4 class="text-sm font-bold text-white border-b border-devo-gray pb-2"><i class="ph ph-image"></i> صور الغلاف (يمكن وضع روابط درايف)</h4>
                     <div>
-                        <label class="block text-xs font-bold text-devo-muted mb-1">خلفية الشاشات الكبيرة </label>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">خلفية الشاشات الكبيرة</label>
                         <input type="url" id="hs-bg-desktop" placeholder="https://..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-devo-muted mb-1">خلفية الهواتف </label>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">خلفية الهواتف</label>
                         <input type="url" id="hs-bg-mobile" placeholder="https://..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                    </div>
+                </div>
+
+                <!-- 🌟 قسم التحكم المتقدم في مظهر خلفية الهيرو 🌟 -->
+                <div class="md:col-span-2 bg-devo-black/60 border border-devo-gray/60 rounded-2xl p-4 sm:p-5 mt-2 space-y-4">
+                    <h4 class="text-sm font-bold text-devo-orange border-b border-devo-gray/60 pb-2 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><i class="ph ph-sliders"></i> التحكم الاحترافي في مظهر وقوة الخلفية (Hero Style Controls)</span>
+                        <span class="text-[11px] text-devo-muted font-normal">تتحكم بالشفافية والتغميق والـ Blur فوراً</span>
+                    </h4>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- تفعيل الصورة -->
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1.5">إظهار/إخفاء الخلفية</label>
+                            <select id="hs-bg-show" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-sm text-white focus:border-devo-orange outline-none">
+                                <option value="true">نعم - إظهار صورة الخلفية</option>
+                                <option value="false">لا - الاكتفاء بلون الثيم فقط</option>
+                            </select>
+                        </div>
+
+                        <!-- نمط الدمج Blend Mode -->
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1.5">طريقة ظهور الصورة (Blend Mode)</label>
+                            <select id="hs-bg-blend" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-sm text-white focus:border-devo-orange outline-none">
+                                <option value="normal">طبيعي (Normal - ألوان فائقة الوضوح)</option>
+                                <option value="overlay">تراكب (Overlay - دمج مريح)</option>
+                                <option value="multiply">تظليل (Multiply - دمج داكن)</option>
+                                <option value="screen">إضاءة (Screen - دمج فاتح)</option>
+                                <option value="luminosity">أحادي (Luminosity)</option>
+                            </select>
+                        </div>
+
+                        <!-- تأثير الزجاج Glassmorphism Mode -->
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1.5">نمط كارت النص (Glass Card Mode)</label>
+                            <select id="hs-bg-glass" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-sm text-white focus:border-devo-orange outline-none">
+                                <option value="soft">كارت زجاجي خفيف (Soft Glass)</option>
+                                <option value="heavy">كارت زجاجي قوي (Heavy Glass)</option>
+                                <option value="none">بدون كارت (نص فقط على الصورة)</option>
+                            </select>
+                        </div>
+
+                        <!-- لون العنوان الرئيسي -->
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">لون العنوان الرئيسي</label>
+                            <div class="flex items-center gap-2">
+                                <input type="color" id="hs-title-color" value="#ffffff" class="w-10 h-9 bg-devo-black border border-devo-gray rounded-lg cursor-pointer p-0.5">
+                                <span id="hs-title-color-text" class="text-xs text-devo-muted font-mono">#ffffff</span>
+                            </div>
+                        </div>
+
+                        <!-- لون النص الفرعي -->
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">لون النص الفرعي (الوصف)</label>
+                            <div class="flex items-center gap-2">
+                                <input type="color" id="hs-subtitle-color" value="#a3a3a3" class="w-10 h-9 bg-devo-black border border-devo-gray rounded-lg cursor-pointer p-0.5">
+                                <span id="hs-subtitle-color-text" class="text-xs text-devo-muted font-mono">#a3a3a3</span>
+                            </div>
+                        </div>
+
+                        <!-- مقبض دمج حواف الصورة Edge Feathering -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center text-xs font-bold text-devo-muted">
+                                <span>دمج وانسيابية حواف الصورة (Edge Merge)</span>
+                                <span id="hs-bg-edge-feather-val" class="text-devo-orange">25%</span>
+                            </div>
+                            <input type="range" id="hs-bg-edge-feather" min="0" max="50" value="25" class="w-full accent-devo-orange cursor-pointer h-2 bg-devo-dark rounded-lg">
+                        </div>
+
+                        <!-- مقبض الشفافية Opacity -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center text-xs font-bold text-devo-muted">
+                                <span>شفافية الصورة (Image Opacity)</span>
+                                <span id="hs-bg-opacity-val" class="text-devo-orange">100%</span>
+                            </div>
+                            <input type="range" id="hs-bg-opacity" min="0" max="100" value="100" class="w-full accent-devo-orange cursor-pointer h-2 bg-devo-dark rounded-lg">
+                        </div>
+
+                        <!-- مقبض التغميق Overlay Darkness -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center text-xs font-bold text-devo-muted">
+                                <span>درجة التغميق / الإعتام (Dark Overlay)</span>
+                                <span id="hs-bg-overlay-val" class="text-devo-orange">40%</span>
+                            </div>
+                            <input type="range" id="hs-bg-overlay" min="0" max="90" value="40" class="w-full accent-devo-orange cursor-pointer h-2 bg-devo-dark rounded-lg">
+                        </div>
+
+                        <!-- مقبض التعتيم Blur Amount -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center text-xs font-bold text-devo-muted">
+                                <span>درجة الضبابية والمسح (Image Blur)</span>
+                                <span id="hs-bg-blur-val" class="text-devo-orange">0px</span>
+                            </div>
+                            <input type="range" id="hs-bg-blur" min="0" max="20" value="0" class="w-full accent-devo-orange cursor-pointer h-2 bg-devo-dark rounded-lg">
+                        </div>
+
+                        <!-- مقبض شفافية الكارت الزجاجي Glass Opacity -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center text-xs font-bold text-devo-muted">
+                                <span>شفافية الكارت الشفاف (Glass Opacity)</span>
+                                <span id="hs-glass-opacity-val" class="text-devo-orange">30%</span>
+                            </div>
+                            <input type="range" id="hs-glass-opacity" min="0" max="100" value="30" class="w-full accent-devo-orange cursor-pointer h-2 bg-devo-dark rounded-lg">
+                        </div>
+
+                        <!-- مقبض تنعيم وانتشار حواف الكارت Glass Edge Blur -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center text-xs font-bold text-devo-muted">
+                                <span>انسيابية وتنعيم حواف الكارت (Soft Edges)</span>
+                                <span id="hs-glass-blur-val" class="text-devo-orange">12px</span>
+                            </div>
+                            <input type="range" id="hs-glass-blur" min="0" max="30" value="12" class="w-full accent-devo-orange cursor-pointer h-2 bg-devo-dark rounded-lg">
+                        </div>
+                    </div>
+
+                    <!-- 🌟 قسم تفعيل الخلفية في بقية صفحات الموقع 🌟 -->
+                    <div class="border-t border-devo-gray/50 pt-4 mt-2">
+                        <h5 class="text-xs font-bold text-devo-orange mb-3 flex items-center gap-1.5"><i class="ph ph-squares-four"></i> تفعيل عرض الخلفية في صفحات الموقع الأخرى (Section Background Toggles)</h5>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">خلفية صفحة المعرض</label>
+                                <select id="hs-bg-enable-gallery" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-xs text-white focus:border-devo-orange outline-none">
+                                    <option value="false">إيقاف - لون افتراضي</option>
+                                    <option value="true">تفعيل - عرض خلفية الهيرو</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">خلفية صفحة الباركود</label>
+                                <select id="hs-bg-enable-barcode" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-xs text-white focus:border-devo-orange outline-none">
+                                    <option value="false">إيقاف - لون افتراضي</option>
+                                    <option value="true">تفعيل - عرض خلفية الهيرو</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">خلفية صفحة السلة</label>
+                                <select id="hs-bg-enable-cart" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-xs text-white focus:border-devo-orange outline-none">
+                                    <option value="false">إيقاف - لون افتراضي</option>
+                                    <option value="true">تفعيل - عرض خلفية الهيرو</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">خلفية صفحة الأوردرات</label>
+                                <select id="hs-bg-enable-orders" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-xs text-white focus:border-devo-orange outline-none">
+                                    <option value="false">إيقاف - لون افتراضي</option>
+                                    <option value="true">تفعيل - عرض خلفية الهيرو</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 🌟 كارت المعاينة الحية المباشرة Live Preview Card 🌟 -->
+                    <div class="pt-2">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-devo-muted flex items-center gap-1.5"><i class="ph ph-eye text-devo-orange"></i> معاينة حية للمظهر النهائي (Live Preview)</span>
+                            <span class="text-[10px] text-devo-muted/80">تتغير فوراً عند التعديل وحركة المقابض</span>
+                        </div>
+                        <div id="admin-hero-preview-box" class="h-56 rounded-xl relative overflow-hidden flex items-center justify-center border border-devo-gray/50 bg-devo-black shadow-inner">
+                            <div id="admin-hero-prev-img" class="absolute inset-0 bg-cover bg-center transition-all duration-150"></div>
+                            <div id="admin-hero-prev-overlay" class="absolute inset-0 transition-all duration-150 z-[1]"></div>
+                            <div id="admin-hero-prev-top-fade" class="absolute top-0 left-0 right-0 pointer-events-none transition-all duration-150 z-[2]"></div>
+                            <div id="admin-hero-prev-bottom-fade" class="absolute bottom-0 left-0 right-0 pointer-events-none transition-all duration-150 z-[2]"></div>
+                            <div id="admin-hero-prev-card" class="relative z-10 text-center px-6 py-4 rounded-3xl max-w-md mx-auto transition-all duration-200">
+                                <span class="text-devo-orange text-[10px] font-bold tracking-widest uppercase block mb-1">DEVO COLLECTION</span>
+                                <h4 id="admin-hero-prev-title" class="text-lg font-black leading-tight transition-colors duration-200">العنوان الرئيسي</h4>
+                                <p id="admin-hero-prev-subtitle" class="text-xs mt-1 transition-colors duration-200">الوصف المكتوب في حقل النص الفرعي اعلاه</p>
+                                <div class="mt-3">
+                                    <span class="bg-devo-orange text-white text-xs px-4 py-1.5 rounded-lg font-bold inline-block shadow-md">تصفح الموديلات</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -2038,6 +2071,13 @@
                         <label class="block text-xs font-bold text-devo-muted mb-1">صورة العرض (رابط درايف - اختياري)</label>
                         <input type="url" id="pm-image" placeholder="https://..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
                     </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">الموديل المرتبط (فتح الموديل مباشرة عند النقر - اختياري)</label>
+                        <select id="pm-model-id" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none cursor-pointer text-sm">
+                            <option value="">-- بدون ربط (تصفح المعرض فقط) --</option>
+                        </select>
+                    </div>
                     
                     <div class="grid grid-cols-2 gap-4">
                         <div>
@@ -2080,83 +2120,6 @@
                     <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-sm"></i></a>
                 </div>
             </footer>
-<!-- ============================================================ -->
-<!-- MODAL: إنشاء مرتجع من أوردر -->
-<!-- ============================================================ -->
-<div id="create-return-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
-        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
-            <div>
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                    <i class="ph ph-arrow-counter-clockwise text-devo-orange"></i> إنشاء فاتورة مرتجع جديدة
-                </h3>
-                <p class="text-xs text-devo-muted mt-1" id="cr-modal-subtitle">جاري تحميل بيانات الأوردر...</p>
-            </div>
-            <button onclick="closeCreateReturnModal()" class="text-devo-muted hover:text-white transition-colors">
-                <i class="ph ph-x text-xl"></i>
-            </button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-5 space-y-4" style="scrollbar-width:thin;">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
-                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
-                    <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-user"></i> بيانات العميل</span>
-                    <h4 class="text-white font-bold text-sm truncate" id="cr-customer-name">-</h4>
-                    <span class="text-xs text-devo-info font-mono mt-0.5" id="cr-customer-phone">-</span>
-                </div>
-                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
-                    <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-receipt"></i> الأوردر الأصلي</span>
-                    <h4 class="text-devo-orange font-mono font-bold text-sm truncate" id="cr-invoice-number">-</h4>
-                    <span class="text-[11px] text-devo-muted mt-0.5">البائع: <span class="text-white" id="cr-seller-name">-</span></span>
-                </div>
-                <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center space-y-1">
-                    <div class="flex justify-between text-xs"><span class="text-devo-muted">إجمالي الأوردر:</span> <span class="text-white font-bold" id="cr-total-price">0</span></div>
-                    <div class="flex justify-between text-xs"><span class="text-devo-muted">المدفوع (العربون):</span> <span class="text-devo-success font-bold" id="cr-deposit">0</span></div>
-                    <div class="flex justify-between text-sm border-t border-devo-gray pt-1 mt-1"><span class="text-white font-bold">المتبقي:</span> <span class="text-devo-orange font-black" id="cr-remaining">0</span></div>
-                </div>
-            </div>
-
-            <!-- Items Table to select return qty -->
-            <div class="border border-devo-gray rounded-xl overflow-hidden bg-devo-black">
-                <table class="w-full text-right text-sm">
-                    <thead class="text-xs text-devo-muted bg-devo-dark">
-                        <tr>
-                            <th class="p-3">الموديل والكود</th>
-                            <th class="p-3">اللون</th>
-                            <th class="p-3 text-center">الكمية الأصلية</th>
-                            <th class="p-3 text-center">سعر السرية</th>
-                            <th class="p-3 text-center w-32">كمية المرتجع</th>
-                            <th class="p-3 text-left">إجمالي المرتجع</th>
-                        </tr>
-                    </thead>
-                    <tbody id="cr-items-tbody" class="divide-y divide-devo-gray text-white">
-                        <!-- Filled by JS -->
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Notes -->
-            <div>
-                <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات المرتجع (سبب الإرجاع)</label>
-                <textarea id="cr-notes" rows="2" placeholder="اكتب سبب إرجاع الموديل أو أي ملاحظات أخرى..." class="w-full bg-devo-black border border-devo-gray rounded-xl px-3 py-2 text-white focus:border-devo-orange outline-none text-xs resize-none"></textarea>
-            </div>
-        </div>
-
-        <!-- Modal Footer -->
-        <div class="p-5 border-t border-devo-gray flex items-center justify-between bg-devo-black/50 rounded-b-2xl shrink-0">
-            <div class="flex flex-col">
-                <span class="text-devo-muted text-xs">إجمالي مبلغ الارتجاع المالي:</span>
-                <span class="text-2xl font-black text-devo-success" id="cr-refund-total">0 ج.م</span>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="closeCreateReturnModal()" class="px-5 py-2.5 rounded-xl border border-devo-gray text-white text-sm hover:bg-devo-gray transition-colors">إلغاء</button>
-                <button id="cr-btn-save" onclick="window.saveReturnInvoice()" class="bg-devo-success hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
-                    <i class="ph ph-check-circle"></i> تأكيد وحفظ المرتجع
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- ============================================================ -->
 <!-- VIEW: مراجعة جرد المخزن الدوري -->
@@ -2898,27 +2861,6 @@
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- MODAL: تفاصيل فاتورة المرتجع -->
-<!-- ============================================================ -->
-<div id="return-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-3xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
-        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-receipt text-devo-orange"></i> تفاصيل فاتورة المرتجع</h3>
-            <div class="flex items-center gap-2">
-                <button id="ret-btn-print" class="bg-devo-info hover:bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1">
-                    <i class="ph ph-printer"></i> طباعة
-                </button>
-                <button onclick="closeReturnDetailsModal()" class="text-devo-muted hover:text-white transition-colors">
-                    <i class="ph ph-x text-xl"></i>
-                </button>
-            </div>
-        </div>
-        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="ret-details-content" style="scrollbar-width:thin;">
-            <!-- Filled by JS -->
-        </div>
-    </div>
-</div>
 
 <div id="color-excel-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex justify-center items-center p-4 opacity-0 transition-opacity duration-300">
         <div class="bg-devo-dark border border-devo-gray w-full max-w-2xl rounded-2xl shadow-devo-float transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]">
@@ -2975,7 +2917,7 @@
     <script type="module" src="./src/js/components/searchable_select.js"></script>
     <script type="module" src="./src/js/components/table_sorter.js"></script>
     <script type="module" src="./src/js/pages/admin/preparation.js"></script>
-    <script type="module" src="./src/js/pages/admin/returns.js"></script>
+
     <script type="module" src="./src/js/pages/admin/audits.js"></script>
 
     <!-- ===== SIDEBAR TOGGLE ===== -->

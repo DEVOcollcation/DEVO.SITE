@@ -8,6 +8,12 @@ let defCache = { cats: [], clss: [], szs: [], clrs: [] };
 let currentPage = 1;
 const itemsPerPage = 50; 
 let currentFilteredModels = [];
+let isExcelImporting = false;
+let realtimeModelsQueue = {
+    inserts: new Set(),
+    updates: new Set()
+};
+let realtimeTimeout = null;
 
 let currentOpenModelId = null;
 let currentModelMovements = [];
@@ -112,6 +118,64 @@ async function fetchAllModelsChunked() {
 // ==========================================
 // 🌟 2. الرادار اللحظي 🌟
 // ==========================================
+function processRealtimeModelsQueue() {
+    if (realtimeTimeout) clearTimeout(realtimeTimeout);
+    realtimeTimeout = setTimeout(async () => {
+        const inserts = new Set(realtimeModelsQueue.inserts);
+        const updates = new Set(realtimeModelsQueue.updates);
+        realtimeModelsQueue.inserts.clear();
+        realtimeModelsQueue.updates.clear();
+        realtimeTimeout = null;
+
+        const idsToFetch = [...inserts, ...updates];
+        if (idsToFetch.length === 0) return;
+
+        try {
+            let fetchedModels = [];
+            const chunkSize = 50;
+            for (let i = 0; i < idsToFetch.length; i += chunkSize) {
+                const chunk = idsToFetch.slice(i, i + chunkSize);
+                const { data, error } = await supabase
+                    .from('models')
+                    .select(`*, categories(id, name), classes(id, name, class_sizes(sizes(id, name))), model_sizes(sizes(id, name)), model_inventory(color_id, available_series, colors(id, name, color_code)), model_images(image_url)`)
+                    .in('id', chunk);
+                if (error) throw error;
+                if (data) {
+                    fetchedModels = [...fetchedModels, ...data];
+                }
+            }
+
+            let changed = false;
+            fetchedModels.forEach(fullModel => {
+                if (inserts.has(fullModel.id)) {
+                    if (!allModels.find(m => m.id === fullModel.id)) {
+                        allModels.unshift(fullModel);
+                        changed = true;
+                    }
+                } else if (updates.has(fullModel.id)) {
+                    const index = allModels.findIndex(m => m.id === fullModel.id);
+                    if (index > -1) {
+                        allModels[index] = fullModel;
+                        changed = true;
+                        
+                        const card = document.getElementById(`admin-model-card-${fullModel.id}`);
+                        if (card) card.outerHTML = generateModelCardHTML(fullModel);
+                        
+                        if (currentOpenModelId === fullModel.id) updateLiveModalInventory(fullModel);
+                    }
+                }
+            });
+
+            if (changed) {
+                updateAdminStats();
+                applyFilters();
+            }
+        } catch (err) {
+            console.error("Error processing batched realtime models:", err);
+        }
+    }, 800);
+}
+
 function setupAdminRealtimeTracker() {
     supabase.channel('admin_models_tracker')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, (payload) => {
@@ -128,32 +192,17 @@ function setupAdminRealtimeTracker() {
                 return;
             }
 
-            setTimeout(async () => {
-                const { data: fullModel } = await supabase
-                    .from('models')
-                    .select(`*, categories(id, name), classes(id, name, class_sizes(sizes(id, name))), model_sizes(sizes(id, name)), model_inventory(color_id, available_series, colors(id, name, color_code)), model_images(image_url)`)
-                    .eq('id', payload.new.id).single();
+            if (isExcelImporting) return;
 
-                if (!fullModel) return;
-
-                if (payload.eventType === 'INSERT') {
-                    if (!allModels.find(m => m.id === fullModel.id)) {
-                        allModels.unshift(fullModel);
-                        updateAdminStats();
-                        applyFilters(); 
-                    }
-                } else if (payload.eventType === 'UPDATE') {
-                    const index = allModels.findIndex(m => m.id === fullModel.id);
-                    if (index > -1) {
-                        allModels[index] = fullModel;
-                        updateAdminStats();
-                        const card = document.getElementById(`admin-model-card-${fullModel.id}`);
-                        if (card) card.outerHTML = generateModelCardHTML(fullModel);
-                        
-                        if (currentOpenModelId === fullModel.id) updateLiveModalInventory(fullModel);
-                    }
+            if (payload.eventType === 'INSERT') {
+                realtimeModelsQueue.inserts.add(payload.new.id);
+                processRealtimeModelsQueue();
+            } else if (payload.eventType === 'UPDATE') {
+                if (!realtimeModelsQueue.inserts.has(payload.new.id)) {
+                    realtimeModelsQueue.updates.add(payload.new.id);
                 }
-            }, 800);
+                processRealtimeModelsQueue();
+            }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
             const mIndex = allModels.findIndex(m => m.id === payload.new.model_id);
@@ -299,8 +348,10 @@ function generateModelCardHTML(m) {
 
     return `
     <div id="admin-model-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl transition-all duration-300 flex flex-col ${cardClass}">
-        <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl">
-            <img src="${mainImg}" class="w-full h-full object-cover transition-transform hover:scale-110" onerror="this.src='./src/assets/icons/devo.jpeg'">
+        <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl p-1">
+            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+            <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
+            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform hover:scale-105" onerror="this.src='./src/assets/icons/devo.jpeg'">
             <div class="absolute top-3 right-3 z-10">${badgeHTML}</div>
             ${!m.is_active ? `<div class="absolute top-3 left-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-10">معطل</div>` : ''}
         </div>
@@ -910,25 +961,120 @@ window.processExcelPreview = async () => {
     finally { btn.disabled = false; btn.innerHTML = `<i class="ph ph-magnifying-glass text-xl"></i> تحليل الملف`; }
 };
 
+window.resetExcelModal = () => {
+    document.getElementById('excel-step-1').classList.remove('hidden');
+    document.getElementById('excel-step-2').classList.add('hidden');
+    document.getElementById('excel-file-input').value = '';
+    document.getElementById('excel-file-name').textContent = 'اسحب الملف هنا';
+    pendingExcelModels = [];
+    pendingExcelCategories.clear();
+    const progressContainer = document.getElementById('excel-import-progress-container');
+    if (progressContainer) {
+        progressContainer.classList.add('hidden');
+        document.getElementById('excel-progress-bar').style.width = '0%';
+        document.getElementById('excel-progress-percent').textContent = '0%';
+    }
+};
+
 window.executeExcelImport = async () => {
     if (pendingExcelModels.length === 0) return showToast('لا توجد موديلات صالحة', 'warning');
     const btn = document.getElementById('excel-import-btn');
     btn.disabled = true; btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> الحفظ...`;
+    
+    const progressContainer = document.getElementById('excel-import-progress-container');
+    const progressBar = document.getElementById('excel-progress-bar');
+    const progressText = document.getElementById('excel-progress-text');
+    const progressPercent = document.getElementById('excel-progress-percent');
+    
+    if (progressContainer) progressContainer.classList.remove('hidden');
+    
+    const resetBtn = document.querySelector('button[onclick="resetExcelModal()"]');
+    if (resetBtn) resetBtn.disabled = true;
+
+    isExcelImporting = true;
+    
     try {
+        if (progressText) progressText.textContent = 'جاري التحقق من الفئات وحفظها...';
+        if (progressBar) progressBar.style.width = '5%';
+        if (progressPercent) progressPercent.textContent = '5%';
+
+        // Bulk insert categories to minimize database queries
+        const newCatsToInsert = [];
         for (const catName of pendingExcelCategories) {
             if (!defCache.cats.find(c => c.name === catName)) {
-                const { data } = await supabase.from('categories').insert([{ name: catName }]).select().single();
-                if (data) defCache.cats.push(data);
+                newCatsToInsert.push({ name: catName });
             }
         }
-        const modelsToInsert = pendingExcelModels.map(m => ({ ...m, category_id: m.category_name ? defCache.cats.find(c => c.name === m.category_name)?.id : null }));
-        for (let i = 0; i < modelsToInsert.length; i += 300) {
-            await supabase.from('models').upsert(modelsToInsert.slice(i, i + 300), { onConflict: 'system_code', ignoreDuplicates: true });
+        if (newCatsToInsert.length > 0) {
+            const { data, error } = await supabase.from('categories').insert(newCatsToInsert).select();
+            if (error) throw error;
+            if (data) {
+                defCache.cats.push(...data);
+            }
         }
+
+        const modelsToInsert = pendingExcelModels.map(m => {
+            const { category_name, ...cleanModel } = m;
+            return {
+                ...cleanModel,
+                category_id: category_name ? defCache.cats.find(c => c.name === category_name)?.id : null
+            };
+        });
+
+        const batchSize = 200;
+        const totalModels = modelsToInsert.length;
+        const totalBatches = Math.ceil(totalModels / batchSize);
+        
+        for (let i = 0; i < totalModels; i += batchSize) {
+            const batchNum = Math.floor(i / batchSize) + 1;
+            const currentBatch = modelsToInsert.slice(i, i + batchSize);
+            
+            if (progressText) {
+                progressText.textContent = `جاري رفع الموديلات (مجموعة ${batchNum} من ${totalBatches})...`;
+            }
+            
+            const { error } = await supabase.from('models').upsert(currentBatch, { 
+                onConflict: 'system_code', 
+                ignoreDuplicates: true 
+            });
+            
+            if (error) throw error;
+            
+            const percent = Math.round(5 + (batchNum / totalBatches) * 90);
+            if (progressBar) progressBar.style.width = `${percent}%`;
+            if (progressPercent) progressPercent.textContent = `${percent}%`;
+        }
+
+        if (progressText) progressText.textContent = 'جاري تحديث البيانات واللوحة...';
+        if (progressBar) progressBar.style.width = '98%';
+        if (progressPercent) progressPercent.textContent = '98%';
+
+        // Batch reload all models chunked (very efficient, 2-3 queries total)
+        await fetchAllModelsChunked();
+
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressPercent) progressPercent.textContent = '100%';
+        if (progressText) progressText.textContent = 'تم حفظ جميع البيانات بنجاح!';
+        
         showToast('تم الاستيراد بنجاح', 'success');
-        closeExcelImportModal();
-    } catch (err) { showToast(err.message, 'error'); } 
-    finally { btn.disabled = false; btn.innerHTML = `تأكيد وحفظ`; }
+        
+        setTimeout(() => {
+            closeExcelImportModal();
+            if (progressContainer) progressContainer.classList.add('hidden');
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressPercent) progressPercent.textContent = '0%';
+        }, 1000);
+
+    } catch (err) { 
+        showToast(`حدث خطأ أثناء الرفع: ${err.message || err}`, 'error'); 
+        if (progressText) progressText.textContent = 'فشلت العملية';
+    } 
+    finally { 
+        isExcelImporting = false;
+        btn.disabled = false; 
+        btn.innerHTML = `<i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الموديلات الجديدة`; 
+        if (resetBtn) resetBtn.disabled = false;
+    }
 };
 
 function readExcelFile(file) {

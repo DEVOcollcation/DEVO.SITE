@@ -207,6 +207,11 @@ export const DEFAULT_THEMES = {
         "secondary": "#f5f5f5",
         "secondary_hover": "#e5e5e5"
       },
+      "borders": {
+        "color": "#e5e5e5",
+        "width": "1px",
+        "radius": "12px"
+      },
       "top_nav": {
         "bg": "#ffffff",
         "border": "#e5e5e5",
@@ -349,6 +354,11 @@ export const DEFAULT_THEMES = {
         "primary_hover": "#ea580c",
         "secondary": "#ebdcb9",
         "secondary_hover": "#c4b28d"
+      },
+      "borders": {
+        "color": "#ebdcb9",
+        "width": "1px",
+        "radius": "12px"
       },
       "top_nav": {
         "bg": "#f4ebd0",
@@ -637,14 +647,20 @@ export function applyTheme(theme) {
     document.head.appendChild(styleEl);
   }
 
+  const isLightPageBg = isHexColorLight(colors.page?.bg);
+  const defaultGray = isLightPageBg ? (colors.brand?.secondary || '#ebdcb9') : '#262626';
+  const defaultGrayHover = isLightPageBg ? (colors.brand?.secondary_hover || '#c4b28d') : '#404040';
+  const grayColor = colors.borders?.color || defaultGray;
+  const grayHoverColor = colors.brand?.secondary_hover || defaultGrayHover;
+
   // 2. Build CSS Variables block
   let cssText = `
     :root {
       /* Page Level Backgrounds & Texts */
       --devo-black: ${colors.page.bg} !important;
       --devo-dark: ${colors.page.bg_secondary || colors.page.surface} !important;
-      --devo-gray: ${colors.borders?.color || '#262626'} !important;
-      --devo-gray-hover: ${colors.brand?.secondary_hover || '#404040'} !important;
+      --devo-gray: ${grayColor} !important;
+      --devo-gray-hover: ${grayHoverColor} !important;
       --devo-orange: ${colors.brand?.primary || '#f97316'} !important;
       --devo-orange-hover: ${colors.brand?.primary_hover || '#ea580c'} !important;
       --devo-text: ${colors.page.text || '#f5f5f5'} !important;
@@ -665,7 +681,7 @@ export function applyTheme(theme) {
       --shadow-devo-float: 0 var(--shadow-size) var(--shadow-blur) -10px var(--shadow-color) !important;
 
       /* Borders */
-      --border-color: ${colors.borders?.color || '#262626'} !important;
+      --border-color: ${grayColor} !important;
       --border-width: ${colors.borders?.width || '1px'} !important;
       --border-radius-base: ${colors.borders?.radius || '12px'} !important;
 
@@ -729,12 +745,22 @@ export function applyTheme(theme) {
     }
 
     /* Nested text-white inside light backgrounds should adapt color to match primary text under light themes */
-    .bg-devo-black .text-white, .bg-devo-dark .text-white, 
-    .bg-devo-black\\/80 .text-white, .bg-devo-dark\\/80 .text-white, 
-    .bg-devo-black\\/90 .text-white, .bg-devo-black\\/95 .text-white, 
-    .bg-devo-black\\/50 .text-white, .bg-devo-black\\/30 .text-white {
-      color: ${isHexColorLight(colors.page.bg) ? 'var(--devo-text)' : '#ffffff'} !important;
+    .bg-devo-black .text-white, .bg-devo-dark .text-white, .bg-devo-gray .text-white,
+    .bg-devo-black .text-white\\/90, .bg-devo-dark .text-white\\/90, .bg-devo-gray .text-white\\/90,
+    .bg-devo-black .text-white\\/80, .bg-devo-dark .text-white\\/80, .bg-devo-gray .text-white\\/80,
+    .bg-devo-black\\/80 .text-white, .bg-devo-dark\\/80 .text-white, .bg-devo-gray\\/80 .text-white,
+    .bg-devo-black\\/90 .text-white, .bg-devo-dark\\/90 .text-white, .bg-devo-gray\\/90 .text-white,
+    .bg-devo-black\\/95 .text-white, .bg-devo-dark\\/95 .text-white, .bg-devo-gray\\/95 .text-white,
+    .bg-devo-black\\/50 .text-white, .bg-devo-dark\\/50 .text-white, .bg-devo-gray\\/50 .text-white,
+    .bg-devo-black\\/30 .text-white, .bg-devo-dark\\/30 .text-white, .bg-devo-gray\\/30 .text-white {
+      color: ${isLightPageBg ? 'var(--devo-text)' : '#ffffff'} !important;
     }
+
+    ${isLightPageBg ? `
+      .bg-devo-gray, .bg-devo-gray\\/80, .bg-devo-gray\\/50 {
+        color: var(--devo-text);
+      }
+    ` : ''}
   `;
 
   // 3. Modals & Shadows Overrides
@@ -774,24 +800,11 @@ export function applyTheme(theme) {
   }
 
   // 5. Hero Overrides
+  // 5. Hero Overrides
   if (colors.hero) {
-    const showHeroImage = (visuals.show_hero_image !== false);
-    const heroBlendMode = visuals.hero_image_blend || 'overlay';
-    const overlayPart = colors.hero.overlay ? colors.hero.overlay + ', ' : '';
-    const bgImageStyle = showHeroImage ? `${overlayPart}var(--hero-bg-url, url(''))` : 'none';
-    const blendStyle = colors.hero.overlay ? `normal, ${heroBlendMode}` : heroBlendMode;
-
     cssText += `
       .hero-bg, [data-theme-hero="true"] {
-        background-image: ${bgImageStyle} !important;
         background-color: ${colors.hero.bg} !important;
-        background-blend-mode: ${blendStyle} !important;
-      }
-      .hero-bg h1, [data-theme-hero="true"] h1 {
-        color: ${colors.hero.title} !important;
-      }
-      .hero-bg p, [data-theme-hero="true"] p {
-        color: ${colors.hero.subtitle} !important;
       }
     `;
   }

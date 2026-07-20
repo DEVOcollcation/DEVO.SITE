@@ -21,22 +21,106 @@ export async function initOrdersView() {
     setupOrdersRealtime(); // 🌟 تفعيل الرادار اللحظي للموظف 🌟
 }
 
-// 🌟 الرادار اللحظي لمنع التعديل عند القفل 🌟
+export async function refreshWorkerOrders() {
+    if (!currentUser) return;
+    await fetchMyOrders();
+}
+window.refreshWorkerOrders = refreshWorkerOrders;
+
+async function fetchFullWorkerOrderById(orderId) {
+    if (!currentUser) return null;
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select(`
+                *,
+                order_items (
+                    *,
+                    models (
+                        name, 
+                        factory_code,
+                        system_code,
+                        model_images(image_url),
+                        model_sizes(size_id),
+                        classes(class_sizes(size_id))
+                    ),
+                    colors (name)
+                )
+            `)
+            .eq('id', orderId)
+            .maybeSingle();
+
+        if (data && !error) {
+            const idx = allOrders.findIndex(o => o.id === orderId);
+            if (idx > -1) {
+                allOrders[idx] = data;
+            } else {
+                allOrders.unshift(data);
+            }
+            return data;
+        }
+    } catch (e) {
+        console.error('Error fetching worker order by ID:', e);
+    }
+    return null;
+}
+
+// 🌟 الرادار اللحظي لمنع التعديل عند القفل والمزامنة اللحظية الشاملة 🌟
 function setupOrdersRealtime() {
     supabase.channel('worker_orders_sync')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
-            if (payload.new.worker_id !== currentUser.id && payload.new.assigned_worker_id !== currentUser.id) return;
-            
-            const idx = allOrders.findIndex(o => o.id === payload.new.id);
-            if (idx > -1) {
-                allOrders[idx] = { ...allOrders[idx], ...payload.new };
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
+            if (!currentUser) return;
+            const isMine = payload.new.worker_id === currentUser.id || payload.new.assigned_worker_id === currentUser.id;
+            if (!isMine) return;
+
+            const newOrder = await fetchFullWorkerOrderById(payload.new.id);
+            if (newOrder) {
                 renderOrders();
-                
-                // إذا كان يحاول تعديله وقام مستخدم آخر بقفله
-                const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || '';
-                if (orderToEdit && orderToEdit.id === payload.new.id && payload.new.is_locked && payload.new.assigned_admin_name !== myName) {
+                showToast(`تم إسناد/إنشاء أوردر جديد رقم (#${newOrder.invoice_number})!`, 'info');
+            }
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
+            if (!currentUser) return;
+            const isMine = payload.new.worker_id === currentUser.id || payload.new.assigned_worker_id === currentUser.id;
+            const existingIdx = allOrders.findIndex(o => o.id === payload.new.id);
+
+            if (isMine) {
+                const updatedOrder = await fetchFullWorkerOrderById(payload.new.id);
+                if (updatedOrder) {
+                    renderOrders();
+                    
+                    // تنبيه الموظف عند إسناد أوردر جديد له من قبل الإدارة
+                    if (existingIdx === -1) {
+                        showToast(`تم إسناد أوردر رقم (#${updatedOrder.invoice_number}) لك من قبل الإدارة!`, 'info');
+                    }
+
+                    // إذا كان الموظف يحاول تعديله وقام مستخدم آخر بقفله
+                    const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || '';
+                    if (orderToEdit && orderToEdit.id === payload.new.id && payload.new.is_locked && payload.new.assigned_admin_name !== myName) {
+                        closeEditWarningModal();
+                        showToast('قامت الإدارة أو مستخدم آخر بقفل هذا الأوردر للتو، لا يمكن تعديله الآن!', 'error');
+                    }
+                }
+            } else {
+                // إذا كان الأوردر موجهاً سابقاً للموظف وتم إلغاء تعيينه أو تحويله لموظف آخر
+                if (existingIdx > -1) {
+                    allOrders.splice(existingIdx, 1);
+                    renderOrders();
+                    showToast('تم إلغاء إسناد أحد الأوردرات من حسابك بواسطة الإدارة', 'warning');
+                }
+            }
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
+            if (!currentUser) return;
+            const existingIdx = allOrders.findIndex(o => o.id === payload.old.id);
+            if (existingIdx > -1) {
+                const deletedInv = allOrders[existingIdx].invoice_number || payload.old.id;
+                allOrders.splice(existingIdx, 1);
+                renderOrders();
+                showToast(`تم حذف الأوردر رقم (#${deletedInv}) بواسطة الإدارة`, 'warning');
+
+                if (orderToEdit && orderToEdit.id === payload.old.id) {
                     closeEditWarningModal();
-                    showToast('قامت الإدارة أو مستخدم آخر بقفل هذا الأوردر للتو، لا يمكن تعديله الآن!', 'error');
                 }
             }
         })
@@ -153,6 +237,18 @@ function renderOrders() {
             </div>
         `;
 
+        let cardActionButtons = `
+            <div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-devo-gray/60 mt-3">
+                <button onclick="viewOrderDetails('${o.id}')" class="h-9 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="عرض الفاتورة"><i class="ph ph-eye text-sm"></i> <span>عرض</span></button>
+                <button onclick="reprintOrder('${o.id}')" class="h-9 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="طباعة"><i class="ph ph-printer text-sm"></i> <span>طباعة</span></button>
+                ${isEditable 
+                    ? `<button onclick="confirmEditOrder('${o.id}')" class="h-9 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="تعديل"><i class="ph ph-pencil-simple text-sm"></i> <span>تعديل</span></button>` 
+                    : `<button disabled class="h-9 bg-devo-gray/20 text-devo-muted rounded-lg text-xs font-medium flex items-center justify-center gap-1 opacity-50 cursor-not-allowed" title="${o.is_locked ? 'الأوردر قيد العمل من الإدارة' : 'لا يمكن التعديل'}"><i class="ph ph-lock text-sm"></i> <span>مقفل</span></button>`
+                }
+                <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="h-9 bg-devo-black border border-devo-gray text-devo-muted hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'} text-sm"></i> <span>${o.is_archived ? 'استعادة' : 'أرشيف'}</span></button>
+            </div>
+        `;
+
         if (tbody) {
             tbody.innerHTML += `
                 <tr class="hover:bg-devo-black/40 transition-colors">
@@ -168,19 +264,31 @@ function renderOrders() {
 
         if (cardsBody) {
             cardsBody.innerHTML += `
-                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl relative">
-                    <div class="flex justify-between items-start border-b border-devo-gray pb-3 mb-3">
-                        <div>
-                            <span class="font-mono text-devo-orange font-bold text-xs flex items-center gap-1">${o.invoice_number} ${lockIcon}</span>
-                            <h4 class="font-bold text-white mt-1">${o.customer_name}</h4>
+                <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl shadow-sm relative space-y-2.5">
+                    <div class="flex justify-between items-center border-b border-devo-gray/60 pb-2.5">
+                        <div class="flex items-center gap-1.5">
+                            <span class="bg-devo-orange/15 text-devo-orange px-2.5 py-0.5 rounded-md font-mono font-bold text-xs border border-devo-orange/30">#${o.invoice_number}</span>
+                            ${lockIcon}
                         </div>
-                        <span class="px-2 py-1 rounded text-[10px] font-bold border ${config.color}">${config.text}</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${config.color}">${config.text}</span>
                     </div>
-                    <div class="flex justify-between text-xs text-devo-muted mb-4">
-                        <span>${o.total_series} سيريه (${o.total_price} ج.م)</span>
-                        <span>${dateStr}</span>
+
+                    <div class="flex justify-between items-start pt-0.5">
+                        <div>
+                            <h4 class="font-bold text-white text-sm">${o.customer_name}</h4>
+                            ${o.phone_1 ? `<p class="text-[11px] text-devo-muted font-mono mt-0.5" dir="ltr">${o.phone_1}</p>` : ''}
+                        </div>
+                        <div class="text-left">
+                            <div class="text-devo-orange font-black text-sm">${(o.total_price || 0).toLocaleString()} ج.م</div>
+                            <div class="text-[10px] text-devo-muted">${o.total_series} سيريه</div>
+                        </div>
                     </div>
-                    ${actionButtons}
+
+                    <div class="flex justify-between items-center text-[10px] text-devo-muted pt-1">
+                        <span><i class="ph ph-calendar-blank"></i> ${dateStr}</span>
+                    </div>
+
+                    ${cardActionButtons}
                 </div>
             `;
         }
@@ -188,7 +296,8 @@ function renderOrders() {
 }
 
 window.viewOrderDetails = async (id) => {
-    const o = allOrders.find(x => x.id === id);
+    const freshOrder = await fetchFullWorkerOrderById(id);
+    const o = freshOrder || allOrders.find(x => x.id === id);
     if (!o) return;
 
     const remaining = o.total_price - (o.deposit || 0);
@@ -258,7 +367,7 @@ window.viewOrderDetails = async (id) => {
                             return `
                                 <div class="flex gap-2.5 items-start">
                                     <div class="w-1.5 h-1.5 rounded-full bg-devo-orange mt-1.5 shrink-0 shadow-sm shadow-devo-orange/50"></div>
-                                    <div class="flex-1 text-white/90">
+                                    <div class="flex-1 text-devo-text font-medium">
                                         <span class="font-normal">${log.notes}</span>
                                         <span class="text-[10px] text-devo-muted mr-1.5 font-mono">(${logDate})</span>
                                     </div>
@@ -332,8 +441,9 @@ window.closeOrderDetailsModal = () => {
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
-window.reprintOrder = (id) => {
-    const o = allOrders.find(x => x.id === id);
+window.reprintOrder = async (id) => {
+    const freshOrder = await fetchFullWorkerOrderById(id);
+    const o = freshOrder || allOrders.find(x => x.id === id);
     if (!o) return;
     
     showToast('جاري تجهيز الفاتورة للطباعة...', 'info');

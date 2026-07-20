@@ -45,6 +45,18 @@ export async function initNavbar() {
             window.scrollTo(0, 0);
         }
 
+        // تمييز وتظليل التبويب النشط فورياً في جميع الـ Layouts
+        document.querySelectorAll('[data-nav-view]').forEach(btn => {
+            const viewId = btn.getAttribute('data-nav-view');
+            if (viewId === targetId) {
+                btn.classList.add('text-devo-orange', 'font-black', 'bg-devo-orange/15', 'border-devo-orange/40', 'shadow-sm');
+                btn.classList.remove('text-devo-muted', 'border-transparent');
+            } else {
+                btn.classList.remove('text-devo-orange', 'font-black', 'bg-devo-orange/15', 'border-devo-orange/40', 'shadow-sm');
+                btn.classList.add('text-devo-muted', 'border-transparent');
+            }
+        });
+
         // إغلاق قائمة الموبايل إذا كانت مفتوحة
         const mobileMenu = document.getElementById('mobile-menu');
         if (mobileMenu && !mobileMenu.classList.contains('translate-x-full')) {
@@ -61,4 +73,8 @@ export async function initNavbar() {
             window.onViewChanged(targetId);
         }
     };
+
+    // التنشيط الأولي للشاشة الافتراضية
+    const initialView = localStorage.getItem('devo_edit_order_data') ? 'view-cart' : 'view-home';
+    window.switchSiteView(initialView);
 }
