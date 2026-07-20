@@ -1,5 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { syncActiveTheme } from '../../services/theme.js';
+import { showToast } from '../../components/toast.js';
+import { confirmDialog } from '../../components/modal.js';
 
 // ============================================================
 // State
@@ -1715,8 +1717,14 @@ window.saveAuditDraftProgress = async function() {
     });
 };
 
-window.confirmRestartPreparation = function() {
-    const ok = confirm("هل أنت متأكد من إعادة بدء التحضير من جديد؟ سيتم مسح جميع العلامات والملاحظات المسجلة لهذا الأوردر.");
+window.confirmRestartPreparation = async function() {
+    const ok = await confirmDialog({
+        title: 'إعادة بدء التحضير',
+        message: 'هل أنت متأكد من إعادة بدء التحضير من جديد؟ سيتم مسح جميع العلامات والملاحظات المسجلة لهذا الأوردر.',
+        confirmText: 'إعادة البدء',
+        cancelText: 'إلغاء',
+        isDestructive: true
+    });
     if (!ok) return;
     window.restartPreparation();
 };
@@ -1750,8 +1758,14 @@ window.restartPreparation = async function() {
     showToast("تم إعادة بدء التحضير بنجاح", "success");
 };
 
-window.confirmRestartAudit = function() {
-    const ok = confirm("هل أنت متأكد من إعادة بدء الجرد من جديد؟ سيتم تصفير الكميات الفعلية المسجلة لجميع الأصناف.");
+window.confirmRestartAudit = async function() {
+    const ok = await confirmDialog({
+        title: 'إعادة بدء الجرد',
+        message: 'هل أنت متأكد من إعادة بدء الجرد من جديد؟ سيتم تصفير الكميات الفعلية المسجلة لجميع الأصناف.',
+        confirmText: 'إعادة البدء',
+        cancelText: 'إلغاء',
+        isDestructive: true
+    });
     if (!ok) return;
     window.restartAudit();
 };

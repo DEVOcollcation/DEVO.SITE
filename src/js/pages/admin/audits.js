@@ -1,5 +1,6 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
+import { confirmDialog } from '../../components/modal.js';
 import { getCurrentSession } from '../../services/auth.js';
 
 let isInitialized = false;
@@ -116,7 +117,7 @@ function renderAuditsList(list) {
         const itemsCount = a.inventory_audit_items?.length || 0;
         const workerName = a.system_users?.full_name || 'غير معروف';
 
-        const canDelete = (a.status === 'cancelled' || a.status === 'submitted');
+        const canDelete = true;
 
         return `
             <tr class="hover:bg-devo-gray/20 transition-colors">
@@ -227,9 +228,14 @@ window.viewAuditDetails = (id) => {
         actionButtons.classList.add('hidden');
         if (audit.status === 'confirmed') {
             workerNotes.innerHTML += `
-                <div class="mt-3 pt-3 border-t border-devo-gray text-[11px] text-devo-success">
-                    <p class="font-bold">✓ تم اعتماد هذا الجرد وتطبيقه على السيستم بواسطة: ${audit.reviewed_by_user?.full_name || 'المدير'}</p>
-                    <p class="mt-0.5 text-devo-muted">ملاحظات المدير: ${audit.review_notes || 'بدون ملاحظات'}</p>
+                <div class="mt-3 pt-3 border-t border-devo-gray text-[11px] text-devo-success flex justify-between items-center gap-3">
+                    <div>
+                        <p class="font-bold">✓ تم اعتماد هذا الجرد وتطبيقه على السيستم بواسطة: ${audit.reviewed_by_user?.full_name || 'المدير'}</p>
+                        <p class="mt-0.5 text-devo-muted">ملاحظات المدير: ${audit.review_notes || 'بدون ملاحظات'}</p>
+                    </div>
+                    <button onclick="window.deleteAuditSession('${audit.id}', '${audit.audit_number}')" class="bg-devo-error hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 shadow-md">
+                        <i class="ph ph-trash text-sm"></i> حذف الجلسة
+                    </button>
                 </div>
             `;
         } else if (audit.status === 'cancelled') {
@@ -268,9 +274,14 @@ window.confirmAuditSession = async () => {
     if (!selectedAudit) return;
     const notes = document.getElementById('audit-admin-notes').value.trim();
 
-    if (!confirm("هل أنت متأكد من اعتماد هذا الجرد؟ سيتم تعديل كميات الموديلات في المخزن تلقائياً وتوليد حركات مخزنية بالفارق.")) {
-        return;
-    }
+    const ok = await confirmDialog({
+        title: 'تأكيد اعتماد الجرد',
+        message: 'هل أنت متأكد من اعتماد هذا الجرد؟ سيتم تعديل كميات الموديلات في المخزن تلقائياً وتوليد حركات مخزنية بالفارق.',
+        confirmText: 'اعتماد الجرد',
+        cancelText: 'إلغاء',
+        isDestructive: false
+    });
+    if (!ok) return;
 
     const confirmBtn = document.getElementById('audit-btn-confirm');
     confirmBtn.disabled = true;
@@ -304,9 +315,14 @@ window.cancelAuditSession = async () => {
     if (!selectedAudit) return;
     const notes = document.getElementById('audit-admin-notes').value.trim();
 
-    if (!confirm("هل أنت متأكد من تجاهل وإلغاء هذا الجرد؟ لن يتم تطبيق أي تعديلات على كميات المخزن.")) {
-        return;
-    }
+    const ok = await confirmDialog({
+        title: 'تأكيد إلغاء الجرد',
+        message: 'هل أنت متأكد من تجاهل وإلغاء هذا الجرد؟ لن يتم تطبيق أي تعديلات على كميات المخزن.',
+        confirmText: 'تجاهل وإلغاء',
+        cancelText: 'تراجع',
+        isDestructive: true
+    });
+    if (!ok) return;
 
     const cancelBtn = document.getElementById('audit-btn-cancel');
     cancelBtn.disabled = true;
@@ -337,7 +353,14 @@ window.cancelAuditSession = async () => {
 };
 
 window.deleteAuditSession = async (id, auditNumber) => {
-    if (!confirm(`هل أنت متأكد من حذف جلسة الجرد "${auditNumber}" نهائياً؟\nلا يمكن التراجع عن هذا الإجراء.`)) return;
+    const ok = await confirmDialog({
+        title: 'حذف جلسة الجرد',
+        message: `هل أنت متأكد من حذف جلسة الجرد "${auditNumber}" نهائياً؟\nلا يمكن التراجع عن هذا الإجراء.`,
+        confirmText: 'حذف نهائياً',
+        cancelText: 'إلغاء',
+        isDestructive: true
+    });
+    if (!ok) return;
 
     // 1. حذف عناصر الجرد أولاً (child records)
     const { error: itemsError } = await supabase
@@ -355,8 +378,7 @@ window.deleteAuditSession = async (id, auditNumber) => {
     const { error: auditError } = await supabase
         .from('inventory_audits')
         .delete()
-        .eq('id', id)
-        .in('status', ['cancelled', 'submitted']); // حماية إضافية - لا يُحذف المعتمد
+        .eq('id', id);
 
     if (auditError) {
         showToast('فشل حذف جلسة الجرد: ' + auditError.message, 'error');

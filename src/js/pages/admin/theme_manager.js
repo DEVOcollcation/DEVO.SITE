@@ -10,7 +10,7 @@ import {
   resetSystemTheme
 } from '../../services/theme.js';
 import { showToast } from '../../components/toast.js';
-import { confirmDialog } from '../../components/modal.js';
+import { confirmDialog, promptDialog } from '../../components/modal.js';
 
 let isInitialized = false;
 let allThemes = [];
@@ -213,7 +213,13 @@ window.triggerActivateTheme = async function(id) {
   const theme = allThemes.find(t => t.id === id);
   if (!theme) return;
 
-  const ok = confirm(`هل أنت متأكد من تفعيل المظهر "${theme.name}" وتطبيقه على الموقع بالكامل وللمستخدمين؟`);
+  const ok = await confirmDialog({
+    title: 'تفعيل المظهر',
+    message: `هل أنت متأكد من تفعيل المظهر "${theme.name}" وتطبيقه على الموقع بالكامل وللمستخدمين؟`,
+    confirmText: 'تفعيل المظهر',
+    cancelText: 'إلغاء',
+    isDestructive: false
+  });
   if (!ok) return;
 
   showToast('جاري تفعيل المظهر وتطبيق المتغيرات البصرية...', 'info');
@@ -233,7 +239,13 @@ window.triggerDuplicateTheme = async function(id) {
   const theme = allThemes.find(t => t.id === id);
   if (!theme) return;
 
-  const newName = prompt(`أدخل اسماً للمظهر المكرر:`, `${theme.name} Copy`);
+  const newName = await promptDialog({
+    title: 'تكرار المظهر',
+    message: 'أدخل اسماً للمظهر المكرر:',
+    defaultValue: `${theme.name} Copy`,
+    confirmText: 'نسخ المظهر',
+    cancelText: 'إلغاء'
+  });
   if (newName === null) return;
   const trimmed = newName.trim();
   if (!trimmed) return showToast('اسم المظهر مطلوب لتكراره', 'error');
@@ -267,7 +279,13 @@ window.triggerDeleteTheme = async function(id) {
     return showToast('لا يمكن حذف المظاهر الافتراضية للنظام.', 'error');
   }
 
-  const ok = confirm(`هل أنت متأكد تماماً من حذف المظهر "${theme.name}" نهائياً من قاعدة البيانات؟ لا يمكن التراجع.`);
+  const ok = await confirmDialog({
+    title: 'حذف المظهر',
+    message: `هل أنت متأكد تماماً من حذف المظهر "${theme.name}" نهائياً من قاعدة البيانات؟ لا يمكن التراجع.`,
+    confirmText: 'حذف نهائياً',
+    cancelText: 'إلغاء',
+    isDestructive: true
+  });
   if (!ok) return;
 
   showToast('جاري حذف المظهر...', 'info');
@@ -284,7 +302,13 @@ window.triggerDeleteTheme = async function(id) {
 
 // --- Reset System Theme ---
 window.triggerResetSystemTheme = async function(id, name) {
-  const ok = confirm(`هل أنت متأكد من استعادة الإعدادات الافتراضية الأصلية للمظهر "${name}"؟ سيؤدي ذلك لإلغاء أي تعديلات تمت عليه.`);
+  const ok = await confirmDialog({
+    title: 'استعادة المظهر الافتراضي',
+    message: `هل أنت متأكد من استعادة الإعدادات الافتراضية الأصلية للمظهر "${name}"؟ سيؤدي ذلك لإلغاء أي تعديلات تمت عليه.`,
+    confirmText: 'استعادة الافتراضي',
+    cancelText: 'إلغاء',
+    isDestructive: true
+  });
   if (!ok) return;
 
   showToast('جاري استعادة المظهر الافتراضي للنظام...', 'info');

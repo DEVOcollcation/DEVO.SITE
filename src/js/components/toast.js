@@ -52,5 +52,8 @@ export function showToast(message, type = 'success') {
     }, 3500);
 }
 
-// Attach to window object for global access (useful for inline HTML onclick handlers if needed)
+// Attach to window object for global access
 window.showToast = showToast;
+window.alert = function(message) {
+    showToast(message, 'info');
+};
