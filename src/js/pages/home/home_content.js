@@ -45,6 +45,7 @@ async function loadHeroSettings() {
     // 2. حقن السوشيال ميديا
     if (document.getElementById('link-facebook')) document.getElementById('link-facebook').href = map['social_facebook'] || '#';
     if (document.getElementById('link-whatsapp')) document.getElementById('link-whatsapp').href = map['social_whatsapp'] || '#';
+    if (document.getElementById('link-telegram')) document.getElementById('link-telegram').href = map['social_telegram'] || '#';
     if (document.getElementById('link-maps')) document.getElementById('link-maps').href = map['social_maps'] || '#';
 
     // 3. قراءة خصائص خلفية البانر الرئيسي

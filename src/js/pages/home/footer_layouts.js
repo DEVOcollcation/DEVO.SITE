@@ -52,17 +52,21 @@ export const FOOTER_LAYOUTS = [
 function buildSocialIcons(settings, size = 'md') {
     const fb = settings.social_facebook || '#';
     const wa = settings.social_whatsapp || '#';
+    const tg = settings.social_telegram || '#';
     const maps = settings.social_maps || '#';
     const sz = size === 'lg' ? 'w-11 h-11 text-2xl' : 'w-9 h-9 text-lg';
 
     return `
-        <a href="${fb}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-blue-400 hover:border-blue-400/50 hover:bg-blue-500/10 transition-all shadow-sm" aria-label="Facebook" id="link-facebook">
+        <a href="${fb}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-blue-400 hover:border-blue-400/50 hover:bg-blue-500/10 transition-all shadow-sm" aria-label="Facebook" id="link-facebook" title="فيسبوك">
             <i class="ph ph-facebook-logo"></i>
         </a>
-        <a href="${wa}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-green-400 hover:border-green-400/50 hover:bg-green-500/10 transition-all shadow-sm" aria-label="WhatsApp" id="link-whatsapp">
+        <a href="${wa}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-green-400 hover:border-green-400/50 hover:bg-green-500/10 transition-all shadow-sm" aria-label="WhatsApp" id="link-whatsapp" title="واتساب">
             <i class="ph ph-whatsapp-logo"></i>
         </a>
-        <a href="${maps}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10 transition-all shadow-sm" aria-label="Google Maps" id="link-maps">
+        <a href="${tg}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-sky-400 hover:border-sky-400/50 hover:bg-sky-500/10 transition-all shadow-sm" aria-label="Telegram" id="link-telegram" title="تليجرام">
+            <i class="ph ph-telegram-logo"></i>
+        </a>
+        <a href="${maps}" target="_blank" class="${sz} rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center text-devo-muted hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10 transition-all shadow-sm" aria-label="Google Maps" id="link-maps" title="خرائط جوجل">
             <i class="ph ph-map-pin"></i>
         </a>
     `;
@@ -221,12 +225,13 @@ function renderLuxury(settings) {
 function renderContactOnly(settings) {
     const fb = settings.social_facebook || '#';
     const wa = settings.social_whatsapp || '#';
+    const tg = settings.social_telegram || '#';
     const maps = settings.social_maps || '#';
 
     return `
         <footer class="bg-devo-dark border-t border-devo-gray py-8 mt-auto" data-layout="contact-only">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <a href="${wa}" target="_blank" class="p-4 rounded-2xl bg-devo-black border border-devo-gray hover:border-green-500/50 hover:bg-green-500/5 transition-all flex items-center gap-3 group">
                         <div class="w-10 h-10 rounded-xl bg-green-500/10 text-green-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
                             <i class="ph ph-whatsapp-logo"></i>
@@ -243,6 +248,15 @@ function renderContactOnly(settings) {
                         <div>
                             <p class="text-white font-bold text-xs">صفحة الفيسبوك</p>
                             <p class="text-devo-muted text-[11px]">متابعة أحدث الموديلات</p>
+                        </div>
+                    </a>
+                    <a href="${tg}" target="_blank" class="p-4 rounded-2xl bg-devo-black border border-devo-gray hover:border-sky-500/50 hover:bg-sky-500/5 transition-all flex items-center gap-3 group">
+                        <div class="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                            <i class="ph ph-telegram-logo"></i>
+                        </div>
+                        <div>
+                            <p class="text-white font-bold text-xs">قناة التليجرام</p>
+                            <p class="text-devo-muted text-[11px]">انضم لقناتنا الرسمية</p>
                         </div>
                     </a>
                     <a href="${maps}" target="_blank" class="p-4 rounded-2xl bg-devo-black border border-devo-gray hover:border-red-500/50 hover:bg-red-500/5 transition-all flex items-center gap-3 group">

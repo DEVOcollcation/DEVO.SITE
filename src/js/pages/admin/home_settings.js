@@ -50,6 +50,7 @@ async function loadHeroSettings() {
         document.getElementById('hs-bg-mobile').value = map['hero_bg_mobile'] || '';
         document.getElementById('hs-social-fb').value = map['social_facebook'] || '';
         document.getElementById('hs-social-wa').value = map['social_whatsapp'] || '';
+        if (document.getElementById('hs-social-tg')) document.getElementById('hs-social-tg').value = map['social_telegram'] || '';
         document.getElementById('hs-social-maps').value = map['social_maps'] || '';
 
         // الخيارات المتقدمة لخلفية الهيرو
@@ -268,6 +269,7 @@ window.saveHeroSettings = async () => {
             { setting_key: 'hero_bg_mobile', setting_value: document.getElementById('hs-bg-mobile').value.trim() },
             { setting_key: 'social_facebook', setting_value: document.getElementById('hs-social-fb').value.trim() },
             { setting_key: 'social_whatsapp', setting_value: document.getElementById('hs-social-wa').value.trim() },
+            { setting_key: 'social_telegram', setting_value: (document.getElementById('hs-social-tg')?.value || '').trim() },
             { setting_key: 'social_maps', setting_value: document.getElementById('hs-social-maps').value.trim() },
             
             // خصائص التحكم المتقدمة في الخلفية والنصوص
