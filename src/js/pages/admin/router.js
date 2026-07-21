@@ -150,6 +150,10 @@ async function loadViewLogic(targetId) {
             const { initBulkEditsView } = await import('./bulk_edits.js');
             await initBulkEditsView();
             break;
+        case 'view-print-barcodes':
+            const { initPrintBarcodesView } = await import('./print_barcodes.js');
+            await initPrintBarcodesView();
+            break;
         case 'view-admin-orders':
             const { initAdminOrdersView } = await import('./admin_orders.js');
             await initAdminOrdersView();
@@ -205,6 +209,141 @@ async function initRouter() {
         if (defaultLink) switchView('view-dashboard', defaultLink);
     }
 }
+
+// ==========================================
+// 🌟 Engine: Refresh All System & Website Data 🌟
+// ==========================================
+export async function refreshAllSystemData(options = {}) {
+    const isSilent = options.silent === true;
+
+    const icons = document.querySelectorAll('#global-refresh-icon, #refresh-icon, .refresh-icon-spin');
+    icons.forEach(i => i.classList.add('animate-spin'));
+
+    if (!isSilent) {
+        showToast('جاري جلب أحدث البيانات من قاعدة البيانات...', 'info');
+    }
+
+    try {
+        // 1. Refetch definitions & lookup caches for dependent modules
+        const modelsMod = await import('./models.js').catch(() => null);
+        if (modelsMod && typeof modelsMod.loadDefinitionsCache === 'function') {
+            await modelsMod.loadDefinitionsCache();
+        }
+
+        const bulkMod = await import('./bulk_edits.js').catch(() => null);
+        if (bulkMod && typeof bulkMod.fetchBulkFilterOptions === 'function') {
+            await bulkMod.fetchBulkFilterOptions();
+        }
+
+        const barcodeMod = await import('./print_barcodes.js').catch(() => null);
+        if (barcodeMod && typeof barcodeMod.fetchBarcodeFilterOptions === 'function') {
+            await barcodeMod.fetchBarcodeFilterOptions();
+        }
+
+        const importMod = await import('./import_stock.js').catch(() => null);
+        if (importMod && typeof importMod.loadInitialData === 'function') {
+            await importMod.loadInitialData();
+        }
+
+        // 2. Identify active view and refresh its data
+        const activeView = document.querySelector('.view-section:not(.hidden)');
+        const activeViewId = activeView ? activeView.id : null;
+
+        if (activeViewId) {
+            switch (activeViewId) {
+                case 'view-dashboard': {
+                    const dashMod = await import('./dashboard.js').catch(() => null);
+                    if (dashMod && typeof dashMod.fetchDashboardData === 'function') {
+                        await dashMod.fetchDashboardData();
+                    }
+                    break;
+                }
+                case 'view-models': {
+                    if (modelsMod && typeof modelsMod.fetchAllModelsChunked === 'function') {
+                        await modelsMod.fetchAllModelsChunked();
+                    }
+                    break;
+                }
+                case 'view-definitions': {
+                    const defMod = await import('./definitions.js').catch(() => null);
+                    if (defMod && typeof defMod.loadCurrentTabData === 'function') {
+                        await defMod.loadCurrentTabData();
+                    }
+                    break;
+                }
+                case 'view-admin-orders': {
+                    const ordersMod = await import('./admin_orders.js').catch(() => null);
+                    if (ordersMod && typeof ordersMod.fetchAdminOrders === 'function') {
+                        await ordersMod.fetchAdminOrders();
+                    }
+                    break;
+                }
+                case 'view-preparation': {
+                    const prepMod = await import('./preparation.js').catch(() => null);
+                    if (prepMod && typeof prepMod.fetchOrders === 'function') {
+                        await prepMod.fetchOrders();
+                    }
+                    break;
+                }
+                case 'view-audits': {
+                    const auditsMod = await import('./audits.js').catch(() => null);
+                    if (auditsMod && typeof auditsMod.fetchAudits === 'function') {
+                        await auditsMod.fetchAudits();
+                    }
+                    break;
+                }
+                case 'view-bulk-edits': {
+                    if (bulkMod && typeof bulkMod.fetchBulkModels === 'function') {
+                        await bulkMod.fetchBulkModels();
+                    }
+                    break;
+                }
+                case 'view-print-barcodes': {
+                    if (barcodeMod && typeof barcodeMod.fetchBarcodeModels === 'function') {
+                        await barcodeMod.fetchBarcodeModels();
+                    }
+                    break;
+                }
+                case 'view-home-settings': {
+                    const hsMod = await import('./home_settings.js').catch(() => null);
+                    if (hsMod && typeof hsMod.loadHeroSettings === 'function') {
+                        await hsMod.loadHeroSettings();
+                    }
+                    break;
+                }
+                case 'view-theme-manager': {
+                    const themeMod = await import('./theme_manager.js').catch(() => null);
+                    if (themeMod && typeof themeMod.loadThemes === 'function') {
+                        await themeMod.loadThemes();
+                    }
+                    break;
+                }
+                case 'view-users': {
+                    const usersMod = await import('./users.js').catch(() => null);
+                    if (usersMod && typeof usersMod.loadUsers === 'function') {
+                        await usersMod.loadUsers();
+                    }
+                    break;
+                }
+            }
+        }
+
+        window.dispatchEvent(new CustomEvent('devo:global-data-refreshed'));
+
+        if (!isSilent) {
+            showToast('تم تحديث جميع بيانات النظام بنجاح 🔄', 'success');
+        }
+    } catch (err) {
+        console.error('Data refresh error:', err);
+        if (!isSilent) {
+            showToast('حدث خطأ أثناء تحديث البيانات', 'error');
+        }
+    } finally {
+        icons.forEach(i => i.classList.remove('animate-spin'));
+    }
+}
+
+window.refreshAllSystemData = refreshAllSystemData;
 
 // Start the Router
 document.addEventListener('DOMContentLoaded', initRouter);

@@ -214,6 +214,11 @@
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">التعديلات المجمعة</span>
                 <span class="sidebar-tooltip">التعديلات المجمعة</span>
             </a>
+            <a href="#" data-target="view-print-barcodes" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تصدير وطباعة الباركود">
+                <i class="ph ph-qr-code text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">تصدير وطباعة الباركود</span>
+                <span class="sidebar-tooltip">تصدير وطباعة الباركود</span>
+            </a>
             <a href="#" data-target="view-import-stock" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="استيراد أعداد وألوان الموديلات">
                 <i class="ph ph-file-arrow-up text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">استيراد أعداد وألوان الموديلات</span>
@@ -263,6 +268,12 @@
                     <i class="ph ph-hard-hat text-base"></i>
                     <span class="hidden md:inline">صفحة العمال (المخزن)</span>
                 </a>
+                
+                <button id="global-refresh-btn" onclick="refreshAllSystemData()" title="تحديث جميع البيانات والتعريفات من قاعدة البيانات بدون ريفريش للصفحة" 
+                    class="px-3.5 py-2 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white border border-devo-orange/30 hover:border-devo-orange rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer">
+                    <i class="ph ph-arrows-clockwise text-base" id="global-refresh-icon"></i>
+                    <span class="hidden sm:inline">تحديث البيانات</span>
+                </button>
                 
                 <button id="logout-btn" class="px-4 py-2 text-sm font-medium text-devo-muted hover:text-devo-error transition-colors flex items-center gap-2">
                     <span>تسجيل الخروج</span>
@@ -414,6 +425,10 @@
                     <i class="ph ph-receipt text-devo-orange"></i> لوحة إدارة الأوردرات
                 </h2>
             </div>
+            <button onclick="refreshAllSystemData()" class="bg-devo-gray hover:bg-devo-black text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray text-sm" title="تحديث أحدث البيانات من قاعدة البيانات">
+                <i class="ph ph-arrows-clockwise text-xl refresh-icon-spin"></i>
+                <span>تحديث البيانات</span>
+            </button>
 
         </div>
 
@@ -533,10 +548,15 @@
                                 class="w-full bg-devo-black border border-devo-gray rounded-xl pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-muted"
                                 placeholder="بحث سريع في العناصر...">
                         </div>
-                        <button onclick="openDefinitionModalFromCurrent()" class="w-full md:w-auto bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20">
-                            <i class="ph ph-plus-circle text-2xl"></i>
-                            <span>إضافة عنصر جديد</span>
-                        </button>
+                        <div class="flex items-center gap-2 w-full md:w-auto">
+                            <button onclick="refreshAllSystemData()" class="bg-devo-gray hover:bg-devo-black text-white px-4 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray" title="تحديث جميع البيانات من قاعدة البيانات">
+                                <i class="ph ph-arrows-clockwise text-xl refresh-icon-spin"></i>
+                            </button>
+                            <button onclick="openDefinitionModalFromCurrent()" class="w-full md:w-auto bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20">
+                                <i class="ph ph-plus-circle text-2xl"></i>
+                                <span>إضافة عنصر جديد</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="flex-1 bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden flex flex-col relative min-h-[400px]">
@@ -642,9 +662,14 @@
                     <i class="ph ph-users text-devo-orange"></i> إدارة الحسابات
                 </h2>
             </div>
-            <button onclick="openUserModal()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 text-sm w-full md:w-auto justify-center">
-                <i class="ph ph-user-plus text-xl"></i> إضافة مستخدم جديد
-            </button>
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <button onclick="refreshAllSystemData()" class="bg-devo-gray hover:bg-devo-black text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray text-sm" title="تحديث أحدث البيانات من قاعدة البيانات">
+                    <i class="ph ph-arrows-clockwise text-xl refresh-icon-spin"></i>
+                </button>
+                <button onclick="openUserModal()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 text-sm flex-1 md:flex-none justify-center">
+                    <i class="ph ph-user-plus text-xl"></i> إضافة مستخدم جديد
+                </button>
+            </div>
         </div>
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1281,6 +1306,218 @@
 
     </div>
 </div>
+
+<div id="view-print-barcodes" class="view-section hidden h-full">
+    <div class="animate-fade-in relative h-full flex flex-col space-y-4">
+        
+        <div class="bg-devo-dark border border-devo-gray rounded-xl shadow-sm shrink-0 transition-all duration-300">
+            <div class="p-4 flex justify-between items-center cursor-pointer select-none border-b border-transparent hover:border-devo-gray/50 transition-colors" onclick="toggleBarcodeFilters()">
+                <h2 class="text-lg md:text-xl font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-funnel text-devo-orange"></i> صياد الموديلات (فلترة متقدمة للباركود)
+                </h2>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-devo-muted hidden md:inline">اضغط للطي/الفتح</span>
+                    <i id="barcode-filter-icon" class="ph ph-caret-up text-xl text-devo-muted transition-transform duration-300"></i>
+                </div>
+            </div>
+
+            <div id="barcode-filters-container" class="p-4 border-t border-devo-gray transition-all duration-300">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <!-- Row 1: Split Searches -->
+                    <div class="lg:col-span-2 relative">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="barcode-search-name" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                    </div>
+                    <div class="relative">
+                        <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="barcode-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                    </div>
+                    <div class="relative">
+                        <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="barcode-search-system" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                    </div>
+
+                    <!-- Row 2: Factory Range & Multi-select Dropdowns -->
+                    <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                        <span class="text-xs text-devo-muted whitespace-nowrap">رينج كود المصنع:</span>
+                        <input type="text" id="barcode-factory-from" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="من كود">
+                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                        <input type="text" id="barcode-factory-to" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="إلى كود">
+                    </div>
+
+                    <!-- Category Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="barcode-dropdown-cat-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleBarcodeMultiSelectDropdown(event, 'barcode-dropdown-cat-menu')">
+                            <span id="barcode-dropdown-cat-label" class="truncate text-right">جميع التصنيفات</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="barcode-dropdown-cat-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="barcode-dropdown-cat-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateBarcodeMultiSelectLabel('cat')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'cat', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'cat', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="barcode-dropdown-cat-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Class Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="barcode-dropdown-class-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleBarcodeMultiSelectDropdown(event, 'barcode-dropdown-class-menu')">
+                            <span id="barcode-dropdown-class-label" class="truncate text-right">جميع الفئات</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="barcode-dropdown-class-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="barcode-dropdown-class-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateBarcodeMultiSelectLabel('class')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'class', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'class', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="barcode-dropdown-class-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Colors, Sizes, Activation Status, Stock Status -->
+                    <!-- Color Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="barcode-dropdown-color-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleBarcodeMultiSelectDropdown(event, 'barcode-dropdown-color-menu')">
+                            <span id="barcode-dropdown-color-label" class="truncate text-right">جميع الألوان</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="barcode-dropdown-color-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="barcode-dropdown-color-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateBarcodeMultiSelectLabel('color')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'color', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'color', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="barcode-dropdown-color-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Size Multi-Select Dropdown -->
+                    <div class="relative multi-select-dropdown" id="barcode-dropdown-size-container">
+                        <button type="button" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm flex justify-between items-center cursor-pointer" onclick="toggleBarcodeMultiSelectDropdown(event, 'barcode-dropdown-size-menu')">
+                            <span id="barcode-dropdown-size-label" class="truncate text-right">جميع المقاسات</span>
+                            <i class="ph ph-caret-down text-devo-muted text-xs"></i>
+                        </button>
+                        <div id="barcode-dropdown-size-menu" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg p-3 z-[100] shadow-devo-float flex flex-col gap-2" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2 mb-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-white select-none">
+                                    <input type="checkbox" id="barcode-dropdown-size-exclude" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateBarcodeMultiSelectLabel('size')">
+                                    <span>استثناء المحدد 🚫</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'size', 'all')" class="text-[10px] text-devo-orange hover:underline select-none">تحديد الكل</button>
+                                    <button type="button" onclick="barcodeMultiSelectAction(event, 'size', 'clear')" class="text-[10px] text-devo-muted hover:underline select-none">مسح</button>
+                                </div>
+                            </div>
+                            <div id="barcode-dropdown-size-options" class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                                <!-- Checkboxes populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <select id="barcode-filter-status" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm cursor-pointer">
+                        <option value="">حالة التفعيل (الكل)</option>
+                        <option value="true">النشطة فقط</option>
+                        <option value="false">المعطلة فقط</option>
+                    </select>
+                    <div class="flex items-center gap-1 bg-devo-black border border-devo-gray rounded-lg px-2">
+                        <select id="barcode-filter-stock-op" class="bg-transparent text-white outline-none text-sm cursor-pointer w-full py-2.5">
+                            <option class="bg-devo-dark text-white" value="">كمية المخزون (الكل)</option>
+                            <option class="bg-devo-dark text-white" value="less">الكمية أقل من</option>
+                            <option class="bg-devo-dark text-white" value="greater">الكمية أكبر من</option>
+                            <option class="bg-devo-dark text-white" value="equal">الكمية تساوي</option>
+                        </select>
+                        <input type="number" id="barcode-filter-stock-qty" placeholder="الكمية" min="0" class="bg-transparent text-white outline-none text-sm w-16 text-center border-r border-devo-gray py-2.5 hidden">
+                    </div>
+
+                    <!-- Row 4: Price & Date Ranges -->
+                    <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                        <span class="text-xs text-devo-muted whitespace-nowrap">السعر:</span>
+                        <input type="number" id="barcode-price-min" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="من">
+                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                        <input type="number" id="barcode-price-max" class="bg-transparent text-white outline-none text-sm w-full text-center" placeholder="أقصى">
+                    </div>
+                    <div class="lg:col-span-2 flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-3 py-1.5">
+                        <span class="text-xs text-devo-muted whitespace-nowrap">الإضافة:</span>
+                        <input type="date" id="barcode-date-from" class="bg-transparent text-devo-muted outline-none text-xs w-full cursor-pointer">
+                        <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                        <input type="date" id="barcode-date-to" class="bg-transparent text-devo-muted outline-none text-xs w-full cursor-pointer">
+                    </div>
+
+                    <!-- Row 5: Action Buttons -->
+                    <div class="col-span-full flex gap-2 mt-2">
+                        <button onclick="applyBarcodeFilters()" class="flex-1 bg-devo-orange hover:bg-devo-orangeHover text-white py-2.5 rounded-lg text-sm font-bold transition-all flex justify-center items-center gap-2 shadow-md"><i class="ph ph-magnifying-glass text-lg"></i> بحث وتطبيق الفلاتر</button>
+                        <button onclick="clearBarcodeFilters()" class="bg-devo-gray hover:bg-devo-black border border-devo-gray text-white px-5 py-2.5 rounded-lg text-sm transition-all" title="مسح الفلاتر"><i class="ph ph-eraser text-lg"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm flex-1 flex flex-col min-h-[350px]">
+            <div class="p-3 bg-devo-black border-b border-devo-gray flex justify-between items-center shrink-0">
+                <span class="text-sm font-bold text-white">إجمالي المطابق: <span id="barcode-results-count" class="text-devo-orange">0</span> موديل</span>
+                <span class="text-xs text-devo-info bg-devo-info/10 border border-devo-info/20 px-3 py-1.5 rounded-lg">المحدد: <span id="barcode-selected-count" class="font-bold text-sm">0</span></span>
+            </div>
+            
+            <div class="overflow-y-auto flex-1 custom-scrollbar">
+                <table id="barcode-table" class="w-full text-right text-sm">
+                    <thead class="bg-devo-black/95 backdrop-blur-sm sticky top-0 z-10 text-devo-muted text-xs border-b border-devo-gray">
+                        <tr>
+                            <th class="p-3 w-12 text-center border-l border-devo-gray/30"><input type="checkbox" id="barcode-select-all" onchange="toggleBarcodeSelectAll(this)" class="accent-devo-orange w-4 h-4 cursor-pointer" title="تحديد/إلغاء تحديد كل النتائج"></th>
+                            <th class="p-3">الكود والموديل</th>
+                            <th class="p-3 text-center">السعر</th>
+                            <th class="p-3 text-center">التصنيف / المخزون</th>
+                            <th class="p-3 text-center">الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody id="barcode-table-body" class="divide-y divide-devo-gray text-white">
+                        <tr><td colspan="5" class="p-10 text-center text-devo-muted"><i class="ph ph-spinner animate-spin text-3xl"></i> جاري التحميل...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="barcode-pagination" class="flex justify-center items-center gap-3 py-3 bg-devo-black border-t border-devo-gray shrink-0"></div>
+        </div>
+
+        <div class="sticky bottom-0 w-full bg-devo-black/95 backdrop-blur-md border-t border-devo-orange/50 p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] z-40 hidden rounded-b-xl" id="barcode-action-bar">
+            <div class="flex flex-col lg:flex-row items-center justify-between gap-4">
+                <div>
+                    <span class="text-xs text-devo-muted font-bold">سيتم إنشاء وطباعة ملصقات الباركود للموديلات التي تم اختيارها من الجدول أعلاه.</span>
+                </div>
+                <div class="flex gap-2 w-full lg:w-auto shrink-0">
+                    <button id="btn-barcode-execute" onclick="openBulkBarcodeModal()" class="flex-1 lg:flex-none bg-devo-orange hover:bg-devo-orangeHover text-white px-8 py-3 rounded-lg text-sm font-bold transition-all shadow-[0_0_15px_rgba(249,115,22,0.4)] flex items-center justify-center gap-2">
+                        <i class="ph ph-printer text-lg"></i> تجهيز وطباعة الباركود للمحدد 🏷️
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
 <div id="view-import-stock" class="view-section hidden h-full">
     <div class="animate-fade-in relative pb-10 space-y-6">
         
@@ -1986,6 +2223,30 @@
                         </div>
                     </div>
 
+                    <!-- 🌟 قسم إعدادات قارئ الباركود والـ QR كود 🌟 -->
+                    <div class="border-t border-devo-gray/50 pt-4 mt-4">
+                        <h5 class="text-xs font-bold text-devo-orange mb-3 flex items-center gap-1.5"><i class="ph ph-qr-code"></i> إعدادات ماسح الباركود والـ QR كود (Barcode & QR Settings)</h5>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">طريقة عمل الكاميرا (Scan Mode)</label>
+                                <select id="hs-barcode-scan-mode" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-xs text-white focus:border-devo-orange outline-none">
+                                    <option value="both">كلاهما (الباركود الشريطي والـ QR كود)</option>
+                                    <option value="barcode">الباركود الشريطي فقط (1D Barcode)</option>
+                                    <option value="qr">الـ QR كود المربعي فقط (2D QR Code)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">نوع الكود للتعرف على المنتج (Product Code Match)</label>
+                                <select id="hs-barcode-match-type" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-xs text-white focus:border-devo-orange outline-none">
+                                    <option value="both">كلاهما (كود السيستم أو كود المصنع)</option>
+                                    <option value="system">كود السيستم فقط (System Code)</option>
+                                    <option value="factory">كود المصنع فقط (Factory Code)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+
                     <!-- 🌟 كارت المعاينة الحية المباشرة Live Preview Card 🌟 -->
                     <div class="pt-2">
                         <div class="flex items-center justify-between mb-2">
@@ -2068,7 +2329,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-devo-muted mb-1">الوصف المكتوب <span class="text-devo-error">*</span></label>
-                        <textarea id="pm-desc" required rows="2" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm resize-none"></textarea>
+                        <textarea id="pm-desc" required rows="4" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm resize-y" placeholder="اكتب كل نقطة في سطر مستقل لتظهر كنقاط مرتبة"></textarea>
                     </div>
 
                     <div>
@@ -2109,21 +2370,6 @@
 
     </div>
 </div>
-            </div>
-</div> <footer class="bg-devo-black border-t border-devo-gray py-3 px-6 shrink-0 flex flex-col md:flex-row items-center justify-between text-[11px] z-10">
-                <div class="text-devo-muted font-medium mb-2 md:mb-0">
-                    &copy; <span id="current-year"></span> DEVO Collection. جميع الحقوق محفوظة للمصنع.
-                </div>
-                <script>document.getElementById('current-year').textContent = new Date().getFullYear();</script>
-                
-                <div class="flex flex-wrap items-center justify-center gap-1.5 text-devo-muted bg-devo-dark py-1 px-3 rounded-full border border-devo-gray/50 shadow-sm">
-                    <i class="ph-fill ph-code text-devo-orange text-sm"></i>
-                    <a href="https://ahmed-attia-portfolio-ahm3d0xs-projects.vercel.app/" target="_blank" class="text-white font-bold hover:text-devo-orange transition-colors tracking-wide">Ahmed M. Attia</a>
-                    <span class="font-medium text-[9px] uppercase tracking-wider text-devo-info">Developer</span>
-                    <span class="text-devo-gray mx-0.5">|</span>
-                    <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-sm"></i></a>
-                </div>
-            </footer>
 
 <!-- ============================================================ -->
 <!-- VIEW: مراجعة جرد المخزن الدوري -->
@@ -2498,7 +2744,7 @@
         </div>
 
     </div>
-</div>
+ تأثير اللمعان الزجاجي الديناميكي </div>
 
 <!-- ============================================================ -->
 <!-- MODAL: تفاصيل ومراجعة جلسة الجرد -->
@@ -2558,6 +2804,142 @@
                     <i class="ph ph-check-circle"></i> تأكيد وتطبيق على السيستم
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: تصدير وطباعة الباركود المجمع -->
+<!-- ============================================================ -->
+<div id="bulk-barcode-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] hidden items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i class="ph ph-qr-code text-devo-orange text-2xl"></i> مصمم وطباعة الباركود
+            </h3>
+            <button onclick="closeBulkBarcodeModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-xl"></i></button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6 text-right" dir="rtl">
+            <!-- panel 1: Settings (التحكم الكامل) -->
+            <div class="flex-1 space-y-4">
+                <h4 class="text-white font-bold text-sm border-b border-devo-gray pb-2 mb-3">خيارات التصميم والتحكم</h4>
+                
+                <p class="text-[11px] text-devo-muted leading-relaxed">
+                    سيتم توليد باركود لـ <span id="bulk-barcode-count" class="text-devo-orange font-bold">0</span> موديل تم اختيارها.
+                </p>
+
+                <!-- قسم قوالب التصميم -->
+                <div class="bg-devo-black/40 p-3 rounded-xl border border-devo-gray space-y-2 mb-3">
+                    <label class="block text-xs font-bold text-devo-muted">قوالب الطباعة المحفوظة</label>
+                    <div class="flex gap-2">
+                        <select id="bulk-barcode-template-select" onchange="loadBarcodeTemplate()" class="flex-1 bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-devo-orange outline-none cursor-pointer">
+                            <option value="">-- إعدادات يدوية (مخصصة) --</option>
+                        </select>
+                        <button type="button" onclick="deleteBarcodeTemplate()" id="btn-delete-barcode-template" class="px-2.5 bg-devo-error/20 hover:bg-devo-error text-devo-error hover:text-white rounded-lg text-xs transition-colors hidden" title="حذف القالب المحدد">
+                            <i class="ph ph-trash"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="flex gap-2 pt-1 border-t border-devo-gray/50">
+                        <input type="text" id="bulk-barcode-template-name" placeholder="اسم القالب الجديد..." class="flex-1 bg-devo-black border border-devo-gray rounded-lg px-2 py-1.5 text-xs text-white focus:border-devo-orange outline-none">
+                        <button type="button" onclick="saveBarcodeTemplate()" class="px-3 bg-devo-success/20 hover:bg-devo-success text-devo-success hover:text-white rounded-lg text-xs font-bold transition-colors">
+                            <i class="ph ph-plus-circle inline align-middle"></i> حفظ القالب
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">نوع الكود</label>
+                        <select id="bulk-barcode-type" onchange="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none cursor-pointer">
+                            <option value="barcode">باركود شريطي (1D)</option>
+                            <option value="qrcode">كيو آر كود (2D)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">كود التشفير</label>
+                        <select id="bulk-barcode-value-source" onchange="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none cursor-pointer">
+                            <option value="factory">كود المصنع (Factory)</option>
+                            <option value="system">كود السيستم (System)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">عرض الورقة (سم)</label>
+                        <input type="number" id="bulk-barcode-paper-w" value="4" step="0.1" min="2" max="15" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-devo-muted mb-1">ارتفاع الورقة (سم)</label>
+                        <input type="number" id="bulk-barcode-paper-h" value="5" step="0.1" min="2" max="15" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-[10px] font-bold text-devo-muted mb-1">خط الاسم (px)</label>
+                        <input type="number" id="bulk-barcode-font-size-name" value="11" min="6" max="24" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-devo-muted mb-1">خط التفاصيل (px)</label>
+                        <input type="number" id="bulk-barcode-font-size-details" value="9" min="6" max="24" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-devo-muted mb-1">خط السعر (px)</label>
+                        <input type="number" id="bulk-barcode-font-size-price" value="12" min="6" max="24" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                    </div>
+                </div>
+
+                <div class="space-y-2 border-t border-devo-gray/50 pt-3">
+                    <label class="flex items-center gap-3 cursor-pointer text-xs text-white">
+                        <input type="checkbox" id="bulk-barcode-show-name" checked onchange="updateBarcodePreview()" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                        <span>إظهار اسم الموديل</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer text-xs text-white">
+                        <input type="checkbox" id="bulk-barcode-show-code" checked onchange="updateBarcodePreview()" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                        <span>إظهار كود الموديل</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer text-xs text-white">
+                        <input type="checkbox" id="bulk-barcode-show-sizes" checked onchange="updateBarcodePreview()" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                        <span>إظهار قائمة المقاسات بداخل الصنف</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer text-xs text-white">
+                        <input type="checkbox" id="bulk-barcode-show-price" checked onchange="updateBarcodePreview()" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                        <span>إظهار السعر أسفل الباركود</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- panel 2: Live Preview (المعاينة اللحظية) -->
+            <div class="w-full md:w-[320px] bg-devo-black border border-devo-gray p-4 rounded-xl flex flex-col items-center justify-center min-h-[300px]">
+                <h4 class="text-devo-muted font-bold text-xs mb-3 text-center w-full">المعاينة الحية للملصق</h4>
+                
+                <!-- The mock label wrapper, matching proportions -->
+                <div class="flex items-center justify-center bg-devo-gray/20 p-6 rounded-lg w-full flex-1 border border-dashed border-devo-gray/50 overflow-auto">
+                    <div id="barcode-preview-card" class="bg-white text-black flex flex-col justify-between items-center text-center p-2 box-border shadow-lg" style="width: 4cm; height: 5cm;">
+                        <div>
+                            <div id="prev-name" class="font-bold text-center" style="font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; word-break: break-word;">اسم الموديل التجريبي</div>
+                            <div id="prev-code" class="text-black font-mono font-bold" style="font-size: 9px; margin-top: 1px;">CODE12345</div>
+                            <div id="prev-sizes" class="text-black font-mono font-bold" style="font-size: 8px; margin-top: 1px;">S, M, L, XL</div>
+                        </div>
+                        <div id="prev-code-container" class="flex-1 flex items-center justify-center w-full overflow-hidden my-1">
+                            <!-- JS will render SVG or Image here -->
+                            <svg id="prev-barcode-svg" class="max-w-full max-h-full"></svg>
+                            <img id="prev-qrcode-img" class="max-w-full max-h-full hidden" src="" alt="QR Code">
+                        </div>
+                        <div id="prev-price" class="font-bold border-t border-dashed border-black w-full pt-1" style="font-size: 12px;">150 ج.م</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-5 border-t border-devo-gray flex items-center justify-end gap-2 bg-devo-black/50 rounded-b-2xl shrink-0">
+            <button type="button" onclick="closeBulkBarcodeModal()" class="px-5 py-2.5 rounded-xl border border-devo-gray text-white text-sm hover:bg-devo-gray transition-colors">إلغاء</button>
+            <button type="button" id="btn-bulk-barcode-print" onclick="generateAndPrintBulkBarcodes()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-8 py-2.5 rounded-xl text-sm font-bold shadow-lg transition-colors flex items-center justify-center gap-1.5">
+                <i class="ph ph-printer text-lg"></i> بدء الطباعة
+            </button>
         </div>
     </div>
 </div>
@@ -2913,7 +3295,21 @@
             </div>
         </div>
     </div>
-        </main> <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
+</div>
+
+<footer class="bg-devo-black border-t border-devo-gray py-3 px-6 shrink-0 flex flex-col md:flex-row items-center justify-between text-[11px] z-10">
+    <div class="text-devo-muted font-medium mb-2 md:mb-0">
+        &copy; <span id="current-year"></span> DEVO Collection. جميع الحقوق محفوظة للمصنع.
+    </div>
+    <script>document.getElementById('current-year').textContent = new Date().getFullYear();</script>
+    
+    <div class="flex flex-wrap items-center justify-center gap-1.5 text-devo-muted bg-devo-dark py-1 px-3 rounded-full border border-devo-gray/50 shadow-sm">
+        <i class="ph-fill ph-code text-devo-orange text-sm"></i>
+        <span class="text-white font-medium text-[11px]">Developed by <a href="https://www.facebook.com/share/1NiodPNtXF/" target="_blank" class="text-devo-orange font-bold hover:underline transition-colors tracking-wide">UltraSoft</a></span>
+    </div>
+</footer>
+
+</main> <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="module" src="./src/js/pages/admin/router.js"></script>
     <script type="module" src="./src/js/pages/admin/definitions.js"></script>

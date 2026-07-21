@@ -1,10 +1,64 @@
 import { findModelByCode } from './gallery.js';
 import { showToast } from '../../components/toast.js';
+import { supabase } from '../../config/supabase.js';
 
 let html5QrCode = null;
 let isScannerRunning = false;
 let isScannerLocked = false;
 let selectedCameraId = null;
+let scanMode = 'both';
+let matchType = 'both';
+
+async function fetchBarcodeSettings() {
+    try {
+        const { data, error } = await supabase
+            .from('home_settings')
+            .select('*')
+            .in('setting_key', ['barcode_scan_mode', 'barcode_match_type']);
+        if (!error && data) {
+            data.forEach(item => {
+                if (item.setting_key === 'barcode_scan_mode') scanMode = item.setting_value;
+                if (item.setting_key === 'barcode_match_type') matchType = item.setting_value;
+            });
+        }
+        
+        // Dynamically update placeholder
+        const manualInput = document.getElementById('barcode-manual-input');
+        if (manualInput) {
+            if (matchType === 'system') {
+                manualInput.placeholder = "اكتب كود السيستم...";
+            } else if (matchType === 'factory') {
+                manualInput.placeholder = "اكتب كود المصنع...";
+            } else {
+                manualInput.placeholder = "اكتب كود المصنع أو السيستم...";
+            }
+        }
+    } catch (e) {
+        console.error("Failed to fetch barcode settings:", e);
+    }
+}
+
+function createScannerInstance() {
+    const configs = {};
+    if (window.Html5QrcodeSupportedFormats) {
+        if (scanMode === 'qr') {
+            configs.formatsToSupport = [window.Html5QrcodeSupportedFormats.QR_CODE];
+        } else if (scanMode === 'barcode') {
+            configs.formatsToSupport = [
+                window.Html5QrcodeSupportedFormats.EAN_13,
+                window.Html5QrcodeSupportedFormats.EAN_8,
+                window.Html5QrcodeSupportedFormats.CODE_39,
+                window.Html5QrcodeSupportedFormats.CODE_128,
+                window.Html5QrcodeSupportedFormats.CODE_93,
+                window.Html5QrcodeSupportedFormats.CODABAR,
+                window.Html5QrcodeSupportedFormats.UPC_A,
+                window.Html5QrcodeSupportedFormats.UPC_E,
+                window.Html5QrcodeSupportedFormats.ITF
+            ];
+        }
+    }
+    return new window.Html5Qrcode("barcode-reader", configs);
+}
 
 export function initBarcode() {
     const btnToggleScan = document.getElementById('btn-toggle-scan');
@@ -14,14 +68,16 @@ export function initBarcode() {
 
     if (!btnToggleScan || !btnSubmitManualCode || !manualInput) return;
 
-    // Initialize Html5Qrcode instance dynamically once libraries are loaded
-    try {
-        if (window.Html5Qrcode) {
-            html5QrCode = new window.Html5Qrcode("barcode-reader");
+    // Fetch barcode settings and initialize scanner
+    fetchBarcodeSettings().then(() => {
+        try {
+            if (window.Html5Qrcode && !html5QrCode) {
+                html5QrCode = createScannerInstance();
+            }
+        } catch (e) {
+            console.error("Failed to initialize Html5Qrcode:", e);
         }
-    } catch (e) {
-        console.error("Failed to initialize Html5Qrcode:", e);
-    }
+    });
 
     // Toggle scanning button click
     btnToggleScan.addEventListener('click', () => {
@@ -98,14 +154,16 @@ async function startScanning() {
         return;
     }
 
-    if (!html5QrCode) {
-        try {
-            html5QrCode = new window.Html5Qrcode("barcode-reader");
-        } catch (e) {
-            console.error("Failed to create Html5Qrcode instance:", e);
-            showToast("حدث خطأ أثناء تهيئة الكاميرا.", "error");
-            return;
-        }
+    // Refresh settings before scanning to adapt to any recent admin changes
+    await fetchBarcodeSettings();
+
+    // Recreate scanner with latest settings
+    try {
+        html5QrCode = createScannerInstance();
+    } catch (e) {
+        console.error("Failed to create Html5Qrcode instance:", e);
+        showToast("حدث خطأ أثناء تهيئة الكاميرا.", "error");
+        return;
     }
     
     const btnToggleScan = document.getElementById('btn-toggle-scan');
@@ -203,7 +261,7 @@ function onScanSuccess(decodedText) {
     playBeepSound();
 
     const code = decodedText.trim();
-    const model = findModelByCode(code);
+    const model = findModelByCode(code, matchType);
 
     if (model) {
         showToast(`تم مسح الباركود بنجاح. الموديل: ${model.name}`, 'success');
@@ -226,7 +284,7 @@ function handleManualCodeSubmit() {
         return showToast("يرجى إدخال كود الموديل للبحث", "warning");
     }
 
-    const model = findModelByCode(code);
+    const model = findModelByCode(code, matchType);
     if (model) {
         showToast(`تم العثور على الموديل: ${model.name}`, 'success');
         window.openModelViewer(model.id);

@@ -769,11 +769,19 @@ function updateFloatingCart() {
     }
 }
 
-export function findModelByCode(code) {
+export function findModelByCode(code, matchType = 'both') {
     if (!code) return null;
     const cleanCode = code.trim().toLowerCase();
-    return allModels.find(m => 
-        (m.system_code && m.system_code.toString().toLowerCase() === cleanCode) || 
-        (m.factory_code && m.factory_code.toString().toLowerCase() === cleanCode)
-    );
+    return allModels.find(m => {
+        const isSystemMatch = m.system_code && m.system_code.toString().toLowerCase() === cleanCode;
+        const isFactoryMatch = m.factory_code && m.factory_code.toString().toLowerCase() === cleanCode;
+        
+        if (matchType === 'system') {
+            return isSystemMatch;
+        } else if (matchType === 'factory') {
+            return isFactoryMatch;
+        } else {
+            return isSystemMatch || isFactoryMatch;
+        }
+    });
 }

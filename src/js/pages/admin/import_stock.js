@@ -115,7 +115,7 @@ export async function initImportStockView() {
 }
 
 // 🌟 1. Load active models and colors from Supabase 🌟
-async function loadInitialData() {
+export async function loadInitialData() {
     try {
         // Fetch colors
         const { data: colorsData, error: colorsError } = await supabase

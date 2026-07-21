@@ -21,7 +21,7 @@ export async function initUsersView() {
 }
 
 // --- Data Fetching ---
-async function loadUsers() {
+export async function loadUsers() {
     const container = document.getElementById('users-container');
     container.innerHTML = `<div class="col-span-full py-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></div>`;
 

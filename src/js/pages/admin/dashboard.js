@@ -62,7 +62,7 @@ export async function initDashboard() {
 // ==========================================
 // 🌟 1. المسح الشامل لقاعدة البيانات 🌟
 // ==========================================
-async function fetchDashboardData() {
+export async function fetchDashboardData() {
     // 1. جلب الأوردرات ومعها عناصر الأوردر لحساب "إجمالي القطع المباعة" بدقة
     const { data: ordersData } = await supabase
         .from('orders')

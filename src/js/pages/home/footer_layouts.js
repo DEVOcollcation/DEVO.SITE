@@ -80,10 +80,7 @@ function buildCopyrightBar() {
             </div>
             <div class="flex flex-wrap items-center justify-center gap-1.5 text-devo-muted bg-devo-black py-1.5 px-3 rounded-full border border-devo-gray/60 shadow-sm">
                 <i class="ph-fill ph-code text-devo-orange text-sm"></i>
-                <a href="https://ahmed-attia-portfolio-ahm3d0xs-projects.vercel.app/" target="_blank" class="text-white font-bold hover:text-devo-orange transition-colors tracking-wide">Ahmed M. Attia</a>
-                <span class="font-medium">Developer</span>
-                <span class="text-devo-gray mx-0.5">|</span>
-                <a href="https://www.linkedin.com/in/ahmed-m-attia-757aa6292/" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors flex items-center" title="LinkedIn Profile"><i class="ph-fill ph-linkedin-logo text-sm"></i></a>
+                <span class="text-white font-medium text-xs">Developed by <a href="https://www.facebook.com/share/1NiodPNtXF/" target="_blank" class="text-devo-orange font-bold hover:underline transition-colors tracking-wide">UltraSoft</a></span>
             </div>
         </div>
     `;

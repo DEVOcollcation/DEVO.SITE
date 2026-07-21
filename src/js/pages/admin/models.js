@@ -67,20 +67,46 @@ export async function initModelsView() {
 // ==========================================
 // 🌟 1. البيانات الأساسية 🌟
 // ==========================================
-async function loadDefinitionsCache() {
+export async function loadDefinitionsCache() {
     const [cats, clss, szs, clrs] = await Promise.all([
         supabase.from('categories').select('id, name'),
         supabase.from('classes').select('id, name, class_sizes(size_id, sizes(id, name))'),
         supabase.from('sizes').select('id, name'),
-        supabase.from('colors').select('id, name')
+        supabase.from('colors').select('id, name, color_code')
     ]);
-    defCache = { cats: cats.data, clss: clss.data, szs: szs.data, clrs: clrs.data };
+    defCache = { cats: cats.data || [], clss: clss.data || [], szs: szs.data || [], clrs: clrs.data || [] };
     
-    document.getElementById('filter-category').innerHTML += defCache.cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    document.getElementById('filter-class').innerHTML += defCache.clss.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    const catSelect = document.getElementById('filter-category');
+    if (catSelect) {
+        const cur = catSelect.value;
+        catSelect.innerHTML = `<option value="">جميع التصنيفات</option>` + defCache.cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        catSelect.value = cur;
+    }
+    const classSelect = document.getElementById('filter-class');
+    if (classSelect) {
+        const cur = classSelect.value;
+        classSelect.innerHTML = `<option value="">جميع الفئات</option>` + defCache.clss.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        classSelect.value = cur;
+    }
+
+    const mCatSelect = document.getElementById('m-category');
+    if (mCatSelect) {
+        const cur = mCatSelect.value;
+        mCatSelect.innerHTML = defCache.cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        if (cur) mCatSelect.value = cur;
+    }
+
+    const mClassSelect = document.getElementById('m-class');
+    if (mClassSelect) {
+        const cur = mClassSelect.value;
+        mClassSelect.innerHTML = defCache.clss.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        if (cur) mClassSelect.value = cur;
+    }
+
+    window.allAvailableColors = defCache.clrs;
 }
 
-async function fetchAllModelsChunked() {
+export async function fetchAllModelsChunked() {
     const container = document.getElementById('models-container');
     if(container) container.innerHTML = `<div class="col-span-full py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i><p class="mt-2 text-devo-muted">جاري تحميل قاعدة بيانات الموديلات...</p></div>`;
 
@@ -401,11 +427,16 @@ window.changePage = (newPage) => {
 };
 
 window.refreshModelsData = async () => {
-    const icon = document.getElementById('refresh-icon');
-    if (icon) icon.classList.add('animate-spin');
-    await fetchAllModelsChunked();
-    if (icon) icon.classList.remove('animate-spin');
-    showToast('تم تحديث البيانات', 'success');
+    if (typeof window.refreshAllSystemData === 'function') {
+        await window.refreshAllSystemData();
+    } else {
+        const icon = document.getElementById('refresh-icon');
+        if (icon) icon.classList.add('animate-spin');
+        await loadDefinitionsCache();
+        await fetchAllModelsChunked();
+        if (icon) icon.classList.remove('animate-spin');
+        showToast('تم تحديث البيانات', 'success');
+    }
 };
 
 
@@ -658,6 +689,34 @@ window.shareAdminModel = async (id) => {
 // ==========================================
 // 🌟 5. عمليات الإضافة، التعديل، والحذف 🌟
 // ==========================================
+let currentModalClassSizesCount = 1;
+
+function getCurrentModalClassSizesCount() {
+    const classId = document.getElementById('m-class')?.value;
+    if (!classId) return 1;
+    const selectedClass = defCache.clss?.find(c => c.id === classId);
+    return (selectedClass && selectedClass.class_sizes && selectedClass.class_sizes.length > 0) 
+        ? selectedClass.class_sizes.length 
+        : 1;
+}
+
+function handleClassChange(newClassId) {
+    const S_new = getCurrentModalClassSizesCount();
+    
+    const qtyInputs = document.querySelectorAll('#m-inventory-container input[name="inv-qty"]');
+    qtyInputs.forEach(input => {
+        const rawPieces = parseFloat(input.dataset.pieces);
+        const pieces = !isNaN(rawPieces) ? rawPieces : ((parseFloat(input.value) || 0) * currentModalClassSizesCount);
+        
+        const newSeries = S_new > 0 ? Math.floor(pieces / S_new) : pieces;
+        input.value = newSeries;
+        input.dataset.pieces = pieces;
+    });
+    
+    currentModalClassSizesCount = S_new;
+    renderAutoSizes(newClassId);
+}
+
 window.openModelModal = async (id = null) => {
     const form = document.getElementById('model-form');
     form.reset();
@@ -672,11 +731,14 @@ window.openModelModal = async (id = null) => {
     const submitBtn = form.querySelector('button[type="submit"]');
 
     const classSelect = document.getElementById('m-class');
-    classSelect.onchange = (e) => renderAutoSizes(e.target.value);
+    classSelect.onchange = (e) => handleClassChange(e.target.value);
 
     if (id) {
         const model = allModels.find(m => m.id === id);
         if (!model) return;
+
+        const initialClass = defCache.clss.find(c => c.id === model.class_id);
+        currentModalClassSizesCount = (initialClass && initialClass.class_sizes && initialClass.class_sizes.length > 0) ? initialClass.class_sizes.length : 1;
 
         modalTitle.innerHTML = `<i class="ph ph-pencil-simple text-devo-orange text-2xl"></i> تعديل الموديل`;
         submitBtn.innerHTML = `حفظ التعديلات`;
@@ -717,6 +779,7 @@ window.openModelModal = async (id = null) => {
         submitBtn.innerHTML = `حفظ الموديل`;
         document.getElementById('m-status').checked = true;
         document.getElementById('m-status-text').textContent = 'نشط';
+        currentModalClassSizesCount = getCurrentModalClassSizesCount();
         renderAutoSizes(classSelect.value);
         invContainer.innerHTML = '';
         addInventoryRow();
@@ -744,18 +807,31 @@ window.addInventoryRow = (colorId = '', totalQty = '', soldQty = 0) => {
     row.className = 'flex gap-2 items-center';
     const isExisting = colorId !== '';
     
+    const qtyNum = parseFloat(totalQty) || 0;
+    const initialPieces = qtyNum * currentModalClassSizesCount;
+    
     row.innerHTML = `
         <select name="inv-color" ${isExisting ? 'disabled' : ''} class="flex-[2] bg-devo-black border border-devo-gray rounded px-3 py-2 text-white text-xs outline-none focus:border-devo-orange ${isExisting ? 'opacity-70 cursor-not-allowed' : ''}">
             <option value="" disabled ${!isExisting ? 'selected' : ''}>اختر اللون</option>
             ${window.allAvailableColors.map(c => `<option value="${c.id}" ${c.id === colorId ? 'selected' : ''}>${c.name}</option>`).join('')}
         </select>
         ${isExisting ? `<input type="hidden" name="inv-color-val" value="${colorId}">` : ''}
-        <input type="number" name="inv-qty" placeholder="إجمالي السريات" min="${soldQty}" value="${totalQty}" data-sold="${soldQty}" class="flex-1 bg-devo-black border border-devo-gray rounded px-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+        <input type="number" name="inv-qty" placeholder="إجمالي السريات" min="${soldQty}" value="${totalQty}" data-sold="${soldQty}" data-pieces="${initialPieces}" class="flex-1 bg-devo-black border border-devo-gray rounded px-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
         ${isExisting && soldQty > 0 
             ? `<button type="button" onclick="showToast('لا يمكن حذف لون تم السحب منه.', 'warning')" class="p-2 text-devo-grayHover cursor-not-allowed rounded"><i class="ph ph-trash"></i></button>` 
             : `<button type="button" onclick="this.parentElement.remove()" class="p-2 text-devo-error hover:bg-devo-error/20 rounded transition-colors"><i class="ph ph-trash"></i></button>`
         }
     `;
+    
+    const qtyInput = row.querySelector('input[name="inv-qty"]');
+    if (qtyInput) {
+        qtyInput.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            const currentS = getCurrentModalClassSizesCount();
+            e.target.dataset.pieces = val * currentS;
+        });
+    }
+
     container.appendChild(row);
 };
 
@@ -833,6 +909,7 @@ async function handleSaveModel(e) {
 
         showToast((id ? 'تم الحفظ' : 'تمت الإضافة') + statusMessage, 'success');
         closeModelModal();
+        if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
     } catch (err) {
         if (err.code === '23505') showToast('كود السيستم مستخدم بالفعل!', 'error');
         else showToast(err.message, 'error');
@@ -856,6 +933,7 @@ window.handleDeleteModel = async (id) => {
                 return;
             }
             showToast('تم حذف الموديل بنجاح', 'success');
+            if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
         } catch (err) {
             showToast('حدث خطأ غير متوقع أثناء محاولة الحذف', 'error');
         }

@@ -53,7 +53,7 @@ window.handleDefSearch = () => {
     renderTable(filtered);
 };
 
-async function loadCurrentTabData() {
+export async function loadCurrentTabData() {
     const tableBody = document.getElementById('def-table-body');
     const emptyState = document.getElementById('def-empty-state');
     
@@ -220,6 +220,7 @@ async function handleSaveDefinition(e) {
         showToast(id ? 'تم تحديث البيانات بنجاح' : 'تمت الإضافة بنجاح', 'success');
         closeDefinitionModal();
         await loadCurrentTabData();
+        if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
 
     } catch (error) {
         showToast('خطأ: قد يكون هذا الاسم أو الكود مسجلاً بالفعل', 'error');
@@ -268,6 +269,7 @@ window.handleDeleteDefinition = async (table, id) => {
     } else {
         showToast('تم الحذف بنجاح', 'success');
         await loadCurrentTabData();
+        if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
     }
 };
 
@@ -419,6 +421,7 @@ window.executeColorExcelImport = async () => {
         if (typeof window.switchDefTab === 'function') {
             await window.switchDefTab('colors');
         }
+        if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
 
     } catch (error) {
         console.error(error);

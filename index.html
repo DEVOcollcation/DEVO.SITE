@@ -162,6 +162,30 @@
             display: flex; align-items: center; justify-content: center;
             text-align: center; line-height: 1; padding: 0;
         }
+        
+        /* Scrollbar Hiding Utility */
+        .scrollbar-none::-webkit-scrollbar { display: none !important; }
+        .scrollbar-none { -ms-overflow-style: none !important; scrollbar-width: none !important; }
+
+        /* Ken Burns Effect for Product Images */
+        @keyframes kenburns {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+            100% { transform: scale(1); }
+        }
+        .animate-kenburns {
+            animation: kenburns 25s infinite ease-in-out;
+        }
+
+        /* Drift Effect for Blur Backgrounds */
+        @keyframes drift {
+            0% { transform: scale(1.25) translate(0, 0); }
+            50% { transform: scale(1.32) translate(1%, 1%); }
+            100% { transform: scale(1.25) translate(0, 0); }
+        }
+        .animate-drift {
+            animation: drift 30s infinite ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-devo-black text-devo-text overflow-x-hidden flex flex-col min-h-screen">
@@ -199,9 +223,9 @@
                 </div>
             </section>
 
-            <section class="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto -mt-16 relative z-20">
-                <div id="display-promo-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    <div class="col-span-full text-center text-devo-muted py-10"><i class="ph ph-spinner animate-spin text-3xl"></i></div>
+            <section class="py-16 px-0 sm:px-6 lg:px-8 max-w-7xl mx-auto -mt-16 relative z-20">
+                <div id="display-promo-cards" class="flex md:grid md:grid-cols-2 lg:grid-cols-3 overflow-x-auto md:overflow-x-visible snap-x snap-mandatory gap-4 sm:gap-6 pb-4 md:pb-0 scrollbar-none w-full px-4 md:px-0">
+                    <div class="col-span-full text-center text-devo-muted py-10 w-full"><i class="ph ph-spinner animate-spin text-3xl"></i></div>
                 </div>
             </section>
         </div>
@@ -460,13 +484,13 @@
 
                     <div class="border border-black mb-2">
                         <table id="invoice-items-table" class="w-full text-right text-[11px]">
-                            <thead class="bg-black text-white">
+                            <thead class="bg-gray-100 text-black border-b border-gray-300">
                                 <tr>
-                                    <th class="p-1 border-l border-gray-700 w-8 text-center">م</th>
-                                    <th class="p-1 border-l border-gray-700">الموديل</th>
-                                    <th class="p-1 border-l border-gray-700 text-center">اللون</th>
-                                    <th class="p-1 text-center border-l border-gray-700">الكمية</th>
-                                    <th class="p-1 text-center border-l border-gray-700">السعر</th>
+                                    <th class="p-1 border-l border-gray-300 w-8 text-center">م</th>
+                                    <th class="p-1 border-l border-gray-300">الموديل</th>
+                                    <th class="p-1 border-l border-gray-300 text-center">اللون</th>
+                                    <th class="p-1 text-center border-l border-gray-300">الكمية</th>
+                                    <th class="p-1 text-center border-l border-gray-300">السعر</th>
                                     <th class="p-1 text-center">الإجمالي</th>
                                 </tr>
                             </thead>
@@ -485,17 +509,17 @@
                                 <span class="font-bold text-gray-700">المدفوع:</span>
                                 <span class="font-black text-green-700" id="inv-deposit">0</span>
                             </div>
-                            <div class="flex justify-between p-2 bg-black text-white">
+                            <div class="flex justify-between p-2 bg-gray-100 text-black border-t border-gray-300">
                                 <span class="font-bold text-xs">المتبقي:</span>
                                 <span class="font-black text-sm" id="inv-remaining">0</span>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="mt-4 pt-2 border-t border-dashed border-gray-400 flex justify-center items-center text-[9px] text-gray-500 gap-1.5">
-                        <span>Engineered by</span>
-                        <span class="font-black text-black">Ahmed M. Attia</span>
-                        <i class="ph-fill ph-code text-gray-800 text-xs"></i>
+                    <div class="mt-4 pt-2 border-t border-dashed border-gray-400 flex justify-center items-center text-[9px] text-gray-500 gap-1">
+                        <span>Developed by</span>
+                        <a href="https://www.facebook.com/share/1NiodPNtXF/" target="_blank" class="font-black text-black hover:underline">UltraSoft</a>
+                        <span>- +201140409832</span>
                     </div>
 
                 </div>

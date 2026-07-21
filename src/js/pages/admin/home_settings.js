@@ -35,7 +35,7 @@ export async function initHomeSettingsView() {
 // 1. Hero Settings Logic + Layout Settings
 // ==========================================
 
-async function loadHeroSettings() {
+export async function loadHeroSettings() {
     const { data, error } = await supabase.from('home_settings').select('*');
     if (error || !data) return;
 
@@ -71,6 +71,8 @@ async function loadHeroSettings() {
         if (document.getElementById('hs-bg-enable-barcode')) document.getElementById('hs-bg-enable-barcode').value = map['bg_enable_barcode'] || 'false';
         if (document.getElementById('hs-bg-enable-cart')) document.getElementById('hs-bg-enable-cart').value = map['bg_enable_cart'] || 'false';
         if (document.getElementById('hs-bg-enable-orders')) document.getElementById('hs-bg-enable-orders').value = map['bg_enable_orders'] || 'false';
+        if (document.getElementById('hs-barcode-scan-mode')) document.getElementById('hs-barcode-scan-mode').value = map['barcode_scan_mode'] || 'both';
+        if (document.getElementById('hs-barcode-match-type')) document.getElementById('hs-barcode-match-type').value = map['barcode_match_type'] || 'both';
     }
 
     // تعبئة قوائم خيارات الهيدر والفوتر
@@ -186,7 +188,7 @@ function setupHeroPreviewListeners() {
         'hs-bg-show', 'hs-bg-blend', 'hs-bg-glass', 'hs-title-color', 'hs-subtitle-color',
         'hs-bg-edge-feather', 'hs-bg-opacity', 'hs-bg-overlay', 'hs-bg-blur',
         'hs-glass-opacity', 'hs-glass-blur', 'hs-bg-enable-gallery', 'hs-bg-enable-barcode',
-        'hs-bg-enable-cart', 'hs-bg-enable-orders'
+        'hs-bg-enable-cart', 'hs-bg-enable-orders', 'hs-barcode-scan-mode', 'hs-barcode-match-type'
     ];
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -289,7 +291,9 @@ window.saveHeroSettings = async () => {
             { setting_key: 'bg_enable_gallery', setting_value: document.getElementById('hs-bg-enable-gallery')?.value || 'false' },
             { setting_key: 'bg_enable_barcode', setting_value: document.getElementById('hs-bg-enable-barcode')?.value || 'false' },
             { setting_key: 'bg_enable_cart', setting_value: document.getElementById('hs-bg-enable-cart')?.value || 'false' },
-            { setting_key: 'bg_enable_orders', setting_value: document.getElementById('hs-bg-enable-orders')?.value || 'false' }
+            { setting_key: 'bg_enable_orders', setting_value: document.getElementById('hs-bg-enable-orders')?.value || 'false' },
+            { setting_key: 'barcode_scan_mode', setting_value: document.getElementById('hs-barcode-scan-mode')?.value || 'both' },
+            { setting_key: 'barcode_match_type', setting_value: document.getElementById('hs-barcode-match-type')?.value || 'both' }
         ];
 
         const { error } = await supabase.from('home_settings').upsert(updates, { onConflict: 'setting_key' });
@@ -336,15 +340,25 @@ function renderPromoCards() {
             ? `<img src="${imgUrl}" class="w-12 h-12 rounded-lg object-cover border border-devo-gray shrink-0">` 
             : `<div class="w-12 h-12 rounded-lg bg-devo-gray flex items-center justify-center text-white shrink-0"><i class="ph ph-star text-xl"></i></div>`;
 
+        const lines = card.description ? card.description.split('\n').map(l => l.trim()).filter(l => l.length > 0) : [];
+        let descHtml = '';
+        if (lines.length > 1) {
+            descHtml = `<ul class="text-devo-muted text-[10px] sm:text-xs leading-relaxed space-y-0.5 flex flex-col items-start w-full list-none">` + 
+                lines.map(line => `<li class="flex items-center gap-1.5 text-right"><span class="w-1 h-1 rounded-full bg-devo-orange shrink-0"></span><span>${line}</span></li>`).join('') + 
+                `</ul>`;
+        } else {
+            descHtml = `<p class="text-devo-muted text-xs leading-relaxed line-clamp-2">${card.description || ''}</p>`;
+        }
+
         return `
         <div class="bg-devo-black border border-devo-gray rounded-xl p-4 relative flex flex-col transition-colors hover:border-devo-info ${!card.is_active ? 'opacity-50 grayscale' : ''}">
             ${card.badge_text ? `<span class="absolute top-0 right-0 ${card.badge_color} text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg rounded-tr-xl">${card.badge_text}</span>` : ''}
             
             <div class="flex items-start gap-3 mt-2">
                 ${imgHtml}
-                <div>
+                <div class="min-w-0 flex-1">
                     <h4 class="text-white font-bold text-sm leading-tight mb-1">${card.title}</h4>
-                    <p class="text-devo-muted text-xs leading-relaxed line-clamp-2">${card.description}</p>
+                    ${descHtml}
                 </div>
             </div>
 

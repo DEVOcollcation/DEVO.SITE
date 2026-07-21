@@ -117,7 +117,7 @@ document.addEventListener('click', () => {
     allMenus.forEach(m => m.classList.add('hidden'));
 });
 
-async function fetchBulkFilterOptions() {
+export async function fetchBulkFilterOptions() {
     try {
         const [cats, clss, colors, sizes] = await Promise.all([
             supabase.from('categories').select('id, name'),
@@ -164,7 +164,7 @@ async function fetchBulkFilterOptions() {
     }
 }
 
-async function fetchBulkModels() {
+export async function fetchBulkModels() {
     const tbody = document.getElementById('bulk-table-body');
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري تحميل كل الموديلات...</td></tr>`;
 
@@ -627,6 +627,37 @@ window.executeBulkEdit = async () => {
                 const chunk = updatedModels.slice(i, i + CHUNK_SIZE);
                 const { error } = await supabase.from('models').upsert(chunk);
                 if (error) throw error;
+            }
+
+            if (action === 'change_class' && classSelectVal) {
+                const newClass = defCache.clss.find(c => c.id === classSelectVal);
+                const S_new = newClass?.class_sizes?.length || 1;
+                
+                const inventoryUpdates = [];
+                modelsToEdit.forEach(m => {
+                    const oldClass = defCache.clss.find(c => c.id === m.class_id);
+                    const S_old = oldClass?.class_sizes?.length || 1;
+                    if (S_old !== S_new && m.model_inventory && m.model_inventory.length > 0) {
+                        m.model_inventory.forEach(inv => {
+                            const totalPieces = (inv.available_series || 0) * S_old;
+                            const newSeries = Math.floor(totalPieces / S_new);
+                            inventoryUpdates.push({
+                                id: inv.id,
+                                model_id: m.id,
+                                color_id: inv.color_id,
+                                available_series: newSeries
+                            });
+                        });
+                    }
+                });
+                
+                if (inventoryUpdates.length > 0) {
+                    for (let i = 0; i < inventoryUpdates.length; i += CHUNK_SIZE) {
+                        const chunk = inventoryUpdates.slice(i, i + CHUNK_SIZE);
+                        const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'id' });
+                        if (error) throw error;
+                    }
+                }
             }
 
             showToast(`تم تعديل ${selectedModelIds.size} موديل بنجاح!`, 'success');

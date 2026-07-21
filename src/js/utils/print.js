@@ -103,17 +103,17 @@ export function printOrderCustomerInvoice(o) {
         </div>
         <div style="background: #f3f4f6; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; font-size: 12px;"><b>العميل:</b> ${o.customer_name} &nbsp;|&nbsp; <b>العنوان:</b> ${o.address || '-'} &nbsp;|&nbsp; <b>هاتف:</b> <span dir="ltr">${o.phone_1}</span></div>
         <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; border: 1px solid black;">
-            <thead style="background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><tr><th style="padding: 6px;">م</th><th style="padding: 6px;">الموديل</th><th style="padding: 6px;">اللون</th><th style="padding: 6px;">الكمية (ق)</th><th style="padding: 6px;">السعر</th><th style="padding: 6px;">الإجمالي</th></tr></thead>
+            <thead style="background: #e5e7eb !important; color: black !important; -webkit-print-color-adjust: exact;"><tr><th style="padding: 6px; border: 1px solid black;">م</th><th style="padding: 6px; border: 1px solid black;">الموديل</th><th style="padding: 6px; border: 1px solid black;">اللون</th><th style="padding: 6px; border: 1px solid black;">الكمية (ق)</th><th style="padding: 6px; border: 1px solid black;">السعر</th><th style="padding: 6px; border: 1px solid black;">الإجمالي</th></tr></thead>
             <tbody>${custHtml}</tbody>
         </table>
         <div style="display: flex; justify-content: flex-end; page-break-inside: avoid;">
             <div style="border: 2px solid black; width: 250px; border-radius: 4px; overflow: hidden;">
                 <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px;"><span>الإجمالي:</span> <b>${o.total_price}</b></div>
                 <div style="padding: 6px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 12px; background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><span>المدفوع:</span> <b style="color: green;">${o.deposit}</b></div>
-                <div style="padding: 8px; display: flex; justify-content: space-between; font-size: 14px; background: black !important; color: white !important; -webkit-print-color-adjust: exact;"><span>المتبقي:</span> <b>${remaining} ج.م</b></div>
+                <div style="padding: 8px; display: flex; justify-content: space-between; font-size: 14px; background: #e5e7eb !important; color: black !important; font-weight: bold; border-top: 1px solid #ccc; -webkit-print-color-adjust: exact;"><span>المتبقي:</span> <b>${remaining} ج.م</b></div>
             </div>
         </div>
-        <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">Engineered by Ahmed M. Attia</div>
+        <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">Developed by <a href="https://www.facebook.com/share/1NiodPNtXF/" target="_blank" style="color: inherit; text-decoration: none; font-weight: bold;">UltraSoft</a> - +201140409832</div>
         </body>
         </html>
     `;

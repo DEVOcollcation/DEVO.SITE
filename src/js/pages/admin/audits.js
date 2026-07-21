@@ -47,7 +47,7 @@ export async function initAuditsView() {
     isInitialized = true;
 }
 
-async function fetchAudits() {
+export async function fetchAudits() {
     const { data, error } = await supabase
         .from('inventory_audits')
         .select(`

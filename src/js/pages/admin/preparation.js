@@ -41,7 +41,7 @@ export async function initPreparationView() {
 // ============================================================
 // 1. Fetch orders from Supabase view
 // ============================================================
-async function fetchOrders() {
+export async function fetchOrders() {
     setTableLoading(true);
 
     const { data, error } = await supabase

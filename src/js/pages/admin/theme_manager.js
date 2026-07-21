@@ -31,7 +31,7 @@ export async function initThemeManagerView() {
 }
 
 // --- Load and Render Themes ---
-async function loadThemes() {
+export async function loadThemes() {
   const container = document.getElementById('themes-grid-container');
   container.innerHTML = `
     <div class="col-span-full py-12 text-center text-devo-muted">

@@ -39,7 +39,7 @@ export async function initAdminOrdersView() {
 // ==========================================
 // 🌟 1. استدعاء البيانات الأساسي 🌟
 // ==========================================
-async function fetchAdminOrders() {
+export async function fetchAdminOrders() {
     const tBody = document.getElementById('ao-table-body');
     if(tBody && allAdminOrders.length === 0) tBody.innerHTML = `<tr><td colspan="9" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></td></tr>`;
 
@@ -613,7 +613,7 @@ window.printAdminOrder = async (id, type) => {
                     .erp-totals-wrapper { display: flex; justify-content: flex-end; page-break-inside: avoid; }
                     .erp-totals { width: 220px; border: 1.5px solid black; border-radius: 3px; overflow: hidden; }
                     .erp-totals .row { display: flex; justify-content: space-between; padding: 4px 6px; border-bottom: 1px solid #aaa; font-size: 12px; }
-                    .erp-totals .row:last-child { border-bottom: none; background: black !important; color: white !important; font-size: 14px; font-weight: bold; padding: 6px; -webkit-print-color-adjust: exact;}
+                    .erp-totals .row:last-child { border-bottom: none; background: #e5e7eb !important; color: black !important; font-size: 14px; font-weight: bold; padding: 6px; border-top: 1px solid #aaa; -webkit-print-color-adjust: exact;}
                     .erp-footer { text-align: center; margin-top: 10px; padding-top: 4px; border-top: 1px dashed #999; font-size: 9px; color: #555; position: fixed; bottom: 0; width: 100%; }
                 </style>
             </head>
@@ -631,7 +631,7 @@ window.printAdminOrder = async (id, type) => {
                     <tbody>${itemsHtml}</tbody>
                 </table>
                 <div class="erp-totals-wrapper"><div class="erp-totals"><div class="row"><b>الإجمالي الكلي:</b> <b>${o.total_price}</b></div><div class="row" style="background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><b>المدفوع:</b> <b>${o.deposit}</b></div><div class="row"><b>المتبقي:</b> <span>${remaining} ج.م</span></div></div></div>
-                <div class="erp-footer">Printed by DEVO System | Engineer Ahmed M. Attia</div>
+                <div class="erp-footer">Developed by <a href="https://www.facebook.com/share/1NiodPNtXF/" target="_blank" style="color: inherit; text-decoration: none; font-weight: bold;">UltraSoft</a> - +201140409832</div>
             </body>
             </html>
         `;
@@ -655,11 +655,27 @@ window.deleteOrder = async (id) => {
     }
 };
 
+function formatOrderExportNotes(o) {
+    const depositVal = parseFloat(o.deposit);
+    const hasDeposit = !isNaN(depositVal) && depositVal > 0;
+    const depositText = hasDeposit ? `العربون ${o.deposit}` : '';
+    const mainNotes = o.notes ? String(o.notes).trim() : '';
+
+    if (depositText && mainNotes) {
+        return `${depositText} - ${mainNotes}`;
+    } else if (depositText) {
+        return depositText;
+    } else {
+        return mainNotes;
+    }
+}
+
 window.exportOrdersToExcel = () => {
     if (allAdminOrders.length === 0) return showToast('لا توجد بيانات للتصدير', 'warning');
     showToast('جاري تجهيز ملف الإكسيل...', 'info');
     const excelData = [];
     allAdminOrders.forEach(o => {
+        const orderNotes = formatOrderExportNotes(o);
         (o.order_items || []).forEach((i, idx) => {
             const classSizes = i.models?.classes?.class_sizes || [];
             const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1); 
@@ -667,11 +683,9 @@ window.exportOrdersToExcel = () => {
             const unitPrice = sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0);
 
             excelData.push({
-                'رقم الفاتورة': '',
-                'كود العميل': '',
-                'الملاحظات': idx === 0 ? (o.notes || '') : '',
+                'الملاحظات': idx === 0 ? orderNotes : '',
                 'كود المخزن': 1,
-                'كود الصنف': i.models?.system_code || '',
+                'كودالصنف': i.models?.system_code || '',
                 'عدد': piecesQty,
                 'الفئة': unitPrice,
                 'هدية': '',
@@ -687,9 +701,9 @@ window.exportOrdersToExcel = () => {
     if (!worksheet['!views']) worksheet['!views'] = [];
     worksheet['!views'].push({ rightToLeft: true });
     worksheet['!cols'] = [
-        { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 15 }, 
-        { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, 
-        { wch: 15 }, { wch: 15 }, { wch: 12 }
+        { wch: 30 }, { wch: 12 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, 
+        { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, 
+        { wch: 12 }
     ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "الأوردرات");
@@ -707,6 +721,7 @@ window.exportSingleOrderToExcel = async (id) => {
     const cleanCustomerName = (o.customer_name || 'Customer').replace(/[^a-zA-Z0-9\u0600-\u06FF\s]/g, '').replace(/\s+/g, '_').trim();
     const dateStr = new Date(o.created_at).toISOString().split('T')[0];
     const fileName = `${cleanCustomerName}_ORD${o.invoice_number}_${dateStr}.xlsx`;
+    const orderNotes = formatOrderExportNotes(o);
 
     const excelData = (o.order_items || []).map((i, idx) => {
         const classSizes = i.models?.classes?.class_sizes || [];
@@ -715,11 +730,9 @@ window.exportSingleOrderToExcel = async (id) => {
         const unitPrice = sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0);
 
         return {
-            'رقم الفاتورة': '',
-            'كود العميل': '',
-            'الملاحظات': idx === 0 ? (o.notes || '') : '',
+            'الملاحظات': idx === 0 ? orderNotes : '',
             'كود المخزن': 1,
-            'كود الصنف': i.models?.system_code || '',
+            'كودالصنف': i.models?.system_code || '',
             'عدد': piecesQty,
             'الفئة': unitPrice,
             'هدية': '',
@@ -735,9 +748,9 @@ window.exportSingleOrderToExcel = async (id) => {
     if (!worksheet['!views']) worksheet['!views'] = [];
     worksheet['!views'].push({ rightToLeft: true });
     worksheet['!cols'] = [
-        { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 15 }, 
-        { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, 
-        { wch: 15 }, { wch: 15 }, { wch: 12 }
+        { wch: 30 }, { wch: 12 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, 
+        { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, 
+        { wch: 12 }
     ];
 
     const workbook = XLSX.utils.book_new();
