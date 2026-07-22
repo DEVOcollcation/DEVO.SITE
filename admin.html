@@ -2565,8 +2565,9 @@
         </div>
 
         <!-- Right: Send Custom Notification Form (Width 1/3) -->
-        <div class="w-full lg:w-80 space-y-4 shrink-0">
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl shadow-sm space-y-4 sticky top-24">
+        <div class="w-full lg:w-80 space-y-4 shrink-0 lg:sticky lg:top-24">
+            <!-- Broadcast Card -->
+            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl shadow-sm space-y-4">
                 <div>
                     <h3 class="text-sm font-bold text-white flex items-center gap-2">
                         <i class="ph ph-broadcast text-devo-orange text-lg"></i> بث إشعار عام مخصص
@@ -2588,6 +2589,39 @@
                     
                     <button onclick="broadcastCustomNotification()" id="broadcast-btn" class="w-full py-2.5 rounded-lg bg-devo-orange hover:bg-devo-orangeHover text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-md">
                         <i class="ph ph-paper-plane-tilt text-base"></i> بث التنبيه الآن
+                    </button>
+                </div>
+            </div>
+
+            <!-- Telegram Settings Card -->
+            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl shadow-sm space-y-4">
+                <div>
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-telegram-logo text-blue-400 text-lg"></i> إعدادات بوت التليجرام
+                    </h3>
+                    <p class="text-[11px] text-devo-muted mt-1">تفعيل إرسال الإشعارات لهاتفك عبر التليجرام لتصلك حتى والموقع مغلق تماماً.</p>
+                </div>
+                
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[11px] font-bold text-devo-muted">تفعيل التنبيهات عبر التليجرام</label>
+                        <input type="checkbox" id="telegram-enabled" class="rounded border-devo-gray text-devo-orange focus:ring-devo-orange bg-devo-black w-4 h-4 cursor-pointer">
+                    </div>
+                    
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-bold text-devo-muted">توكن البوت (Bot Token)</label>
+                        <input type="password" id="telegram-bot-token" placeholder="أدخل Bot Token من @BotFather" 
+                            class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none">
+                    </div>
+                    
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-bold text-devo-muted">معرّف المحادثة/المجموعة (Chat ID)</label>
+                        <input type="text" id="telegram-chat-id" placeholder="مثال: -100123456789 أو 12345678" 
+                            class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none">
+                    </div>
+                    
+                    <button onclick="saveTelegramSettings()" id="save-tg-btn" class="w-full py-2.5 rounded-lg bg-devo-gray hover:bg-white/10 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray shadow-md">
+                        <i class="ph ph-floppy-disk text-base"></i> حفظ إعدادات تليجرام
                     </button>
                 </div>
             </div>

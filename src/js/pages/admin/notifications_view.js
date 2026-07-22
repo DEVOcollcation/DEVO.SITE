@@ -9,6 +9,7 @@ let activeFilter = 'all'; // 'all', 'unread', 'archived'
 export async function initNotificationsView() {
     setupWindowBindings();
     await fetchNotifications();
+    await loadTelegramSettings();
     
     // الاستماع لحدث تلقي إشعار جديد لتحديث القائمة تلقائياً
     window.addEventListener('devo:notifications-received', handleRealtimeRefresh);
@@ -30,6 +31,7 @@ function setupWindowBindings() {
     window.toggleNotificationArchive = toggleNotificationArchive;
     window.deleteNotification = deleteNotification;
     window.viewNotificationTarget = viewNotificationTarget;
+    window.saveTelegramSettings = saveTelegramSettings;
 }
 
 // 1. جلب الإشعارات بالكامل من قاعدة البيانات
@@ -399,5 +401,80 @@ export function viewNotificationTarget(orderId) {
                 setTimeout(() => row.classList.remove('bg-devo-orange/30'), 3000);
             }
         }, 500);
+    }
+}
+
+// 9. جلب إعدادات تليجرام من جدول home_settings
+async function loadTelegramSettings() {
+    try {
+        const { data, error } = await supabase
+            .from('home_settings')
+            .select('*')
+            .in('setting_key', ['telegram_enabled', 'telegram_bot_token', 'telegram_chat_id']);
+            
+        if (error) throw error;
+        
+        const settings = {};
+        if (data) {
+            data.forEach(item => settings[item.setting_key] = item.setting_value);
+        }
+        
+        const enabledInput = document.getElementById('telegram-enabled');
+        const tokenInput = document.getElementById('telegram-bot-token');
+        const chatInput = document.getElementById('telegram-chat-id');
+        
+        if (enabledInput) enabledInput.checked = settings['telegram_enabled'] === 'true';
+        if (tokenInput) tokenInput.value = settings['telegram_bot_token'] || '';
+        if (chatInput) chatInput.value = settings['telegram_chat_id'] || '';
+    } catch (e) {
+        console.error('Error loading Telegram settings:', e);
+    }
+}
+
+// 10. حفظ إعدادات تليجرام في جدول home_settings
+export async function saveTelegramSettings() {
+    const enabledInput = document.getElementById('telegram-enabled');
+    const tokenInput = document.getElementById('telegram-bot-token');
+    const chatInput = document.getElementById('telegram-chat-id');
+    const btn = document.getElementById('save-tg-btn');
+    
+    if (!enabledInput || !tokenInput || !chatInput) return;
+    
+    const enabled = enabledInput.checked ? 'true' : 'false';
+    const token = tokenInput.value.trim();
+    const chat = chatInput.value.trim();
+    
+    if (enabled === 'true' && (!token || !chat)) {
+        showToast('يرجى إدخال التوكن ومعرّف المحادثة لتفعيل التنبيهات', 'warning');
+        return;
+    }
+    
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري الحفظ...`;
+    }
+    
+    try {
+        const updates = [
+            { setting_key: 'telegram_enabled', setting_value: enabled },
+            { setting_key: 'telegram_bot_token', setting_value: token },
+            { setting_key: 'telegram_chat_id', setting_value: chat }
+        ];
+        
+        const { error } = await supabase
+            .from('home_settings')
+            .upsert(updates, { onConflict: 'setting_key' });
+            
+        if (error) throw error;
+        
+        showToast('تم حفظ إعدادات تليجرام بنجاح 💾', 'success');
+    } catch (e) {
+        console.error('Error saving Telegram settings:', e);
+        showToast('خطأ أثناء حفظ الإعدادات في قاعدة البيانات', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-floppy-disk text-base"></i> حفظ إعدادات تليجرام`;
+        }
     }
 }

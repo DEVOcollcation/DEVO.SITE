@@ -15,8 +15,18 @@ CREATE TABLE IF NOT EXISTS public.system_notifications (
     CONSTRAINT system_notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.system_users(id) ON DELETE CASCADE
 );
 
--- تمكين الاستماع اللحظي (Realtime) للجدول في Supabase
-alter publication supabase_realtime add table public.system_notifications;
+-- تمكين الاستماع اللحظي (Realtime) للجدول في Supabase بشكل آمن (idempotent) لتجنب أخطاء إعادة التشغيل
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_rel pr
+        JOIN pg_publication p ON p.oid = pr.prpubid
+        JOIN pg_class c ON c.oid = pr.prrelid
+        WHERE p.pubname = 'supabase_realtime' AND c.relname = 'system_notifications'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.system_notifications;
+    END IF;
+END $$;
 
 -- ⚠️ هام جداً: تعطيل سياسة حماية الصفوف (RLS) لأن تطبيقك يستخدم تسجيل دخول مخصص بجدول system_users
 -- مما يجعل المتصفح يعمل بصلاحية (anon/public) ويؤدي لظهور خطأ 401 عند إدخال أو جلب إشعارات.
@@ -115,3 +125,53 @@ CREATE TRIGGER trg_inventory_out_of_stock
 AFTER INSERT OR UPDATE ON public.model_inventory
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_inventory_out_of_stock();
+
+-- ============================================================
+-- 4. إعداد وتفعيل إرسال الإشعارات إلى بوت التليجرام (Telegram Bot)
+-- ============================================================
+
+-- تفعيل امتداد pg_net المخصص لإرسال طلبات HTTP غير الحظرية في الخلفية من داتا بيز Supabase
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- وظيفة إرسال الإشعار للتليجرام
+CREATE OR REPLACE FUNCTION public.send_telegram_notification_trigger()
+RETURNS TRIGGER AS $$
+DECLARE
+    bot_token text;
+    chat_id text;
+    is_tg_enabled text;
+    formatted_message text;
+BEGIN
+    -- جلب إعدادات تليجرام الحالية من جدول الإعدادات
+    SELECT setting_value INTO bot_token FROM public.home_settings WHERE setting_key = 'telegram_bot_token';
+    SELECT setting_value INTO chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
+    SELECT setting_value INTO is_tg_enabled FROM public.home_settings WHERE setting_key = 'telegram_enabled';
+
+    -- التحقق من تفعيل الخدمة ووجود التوكن ومعرف الشات
+    IF (is_tg_enabled = 'true' AND bot_token IS NOT NULL AND chat_id IS NOT NULL AND bot_token <> '' AND chat_id <> '') THEN
+        -- تنسيق الرسالة بشكل أنيق للتيليجرام باستخدام HTML
+        formatted_message := '<b>' || COALESCE(NEW.title, 'تنبيه جديد') || '</b>' || E'\n\n' || COALESCE(NEW.body, '');
+
+        -- إرسال الطلب غير الحظري للخلفية لضمان سرعة المعاملات بالداتا بيز وعدم حظرها
+        PERFORM net.http_post(
+            url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
+            body := jsonb_build_object(
+                'chat_id', chat_id,
+                'text', formatted_message,
+                'parse_mode', 'HTML'
+            )::text,
+            headers := '{"Content-Type": "application/json"}'::jsonb
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ربط التريجر بجدول الإشعارات المركزي
+DROP TRIGGER IF EXISTS trg_send_telegram_notification ON public.system_notifications;
+CREATE TRIGGER trg_send_telegram_notification
+AFTER INSERT ON public.system_notifications
+FOR EACH ROW
+EXECUTE FUNCTION public.send_telegram_notification_trigger();
+
