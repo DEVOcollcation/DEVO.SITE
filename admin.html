@@ -275,6 +275,46 @@
                     <span class="hidden sm:inline">تحديث البيانات</span>
                 </button>
                 
+                <!-- زر الإشعارات اللحظية وقائمته المنسدلة -->
+                <div class="relative" id="notifications-menu-container">
+                    <button id="notifications-bell-btn" title="تنبيهات الأوردرات الجديدة" 
+                        class="p-2 bg-devo-gray hover:bg-devo-orange/20 hover:text-devo-orange text-white border border-devo-gray hover:border-devo-orange/30 rounded-lg transition-all flex items-center justify-center shadow-sm cursor-pointer relative">
+                        <i class="ph ph-bell text-xl" id="notifications-bell-icon"></i>
+                        <span id="notifications-badge" class="absolute -top-1.5 -right-1.5 bg-devo-error text-white text-[10px] font-black w-5 h-5 rounded-full items-center justify-center border-2 border-devo-black hidden animate-pulse">0</span>
+                    </button>
+                    
+                    <!-- القائمة المنسدلة للإشعارات -->
+                    <div id="notifications-dropdown" class="absolute left-0 mt-2 w-80 bg-devo-dark border border-devo-gray rounded-xl shadow-2xl hidden z-50 overflow-hidden">
+                        <div class="p-4 border-b border-devo-gray flex items-center justify-between">
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <i class="ph ph-bell-ringing text-devo-orange"></i> الإشعارات اللحظية
+                            </h3>
+                            <button id="clear-notifications-btn" class="text-xs text-devo-muted hover:text-devo-error transition-colors flex items-center gap-1">
+                                <i class="ph ph-trash"></i> مسح الكل
+                            </button>
+                        </div>
+                        
+                        <!-- الخيارات: كتم الصوت وتفعيل إشعارات سطح المكتب -->
+                        <div class="px-4 py-2 bg-devo-black/40 border-b border-devo-gray/50 flex items-center justify-between text-xs text-devo-muted">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+                                <input type="checkbox" id="toggle-sound-checkbox" class="rounded border-devo-gray text-devo-orange focus:ring-devo-orange bg-devo-black w-3.5 h-3.5">
+                                <span>تنبيه صوتي</span>
+                            </label>
+                            <button id="request-desktop-notifications-btn" class="hover:text-devo-orange transition-colors flex items-center gap-1">
+                                <i class="ph ph-desktop"></i> <span>تفعيل إشعارات سطح المكتب</span>
+                            </button>
+                        </div>
+                        
+                        <!-- قائمة الإشعارات -->
+                        <div id="notifications-list" class="max-h-64 overflow-y-auto divide-y divide-devo-gray/30 custom-scrollbar">
+                            <div class="p-8 text-center text-xs text-devo-muted flex flex-col items-center gap-2">
+                                <i class="ph ph-bell-slash text-2xl opacity-40"></i>
+                                لا توجد إشعارات جديدة حالياً
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <button id="logout-btn" class="px-4 py-2 text-sm font-medium text-devo-muted hover:text-devo-error transition-colors flex items-center gap-2">
                     <span>تسجيل الخروج</span>
                     <i class="ph ph-sign-out text-lg"></i>

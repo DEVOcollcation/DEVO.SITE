@@ -5,6 +5,7 @@ import { initHomeSettingsView } from './home_settings.js';
 import { initUsersView } from './users.js';
 import { initAuditsView } from './audits.js';
 import { syncActiveTheme } from '../../services/theme.js';
+import { initNotifications } from '../../services/notifications.js';
 
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
@@ -183,6 +184,9 @@ async function initRouter() {
     // Wait for authentication before rendering anything
     const isAuth = await authenticateAdmin();
     if (!isAuth) return;
+
+    // تهيئة نظام الإشعارات اللحظية للأدمن
+    initNotifications();
 
     // Attach click events to Sidebar Links
     navLinks.forEach(link => {
