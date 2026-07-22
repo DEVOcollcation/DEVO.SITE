@@ -6,12 +6,27 @@ let soundEnabled = localStorage.getItem('devo_notifications_sound') !== 'false';
 let desktopEnabled = Notification.permission === 'granted';
 let originalTitle = document.title || 'DEVO | لوحة تحكم الإدارة';
 let realtimeChannel = null;
+let currentUser = null;
 
 // تهيئة نظام الإشعارات اللحظية
-export function initNotifications() {
+export async function initNotifications() {
+    loadUserSession();
     setupUI();
+    await fetchUnreadNotifications();
     setupRealtimeSubscription();
-    updateAppBadge(0);
+
+    // الاستماع لحدث التحديث اليدوي من صفحة إدارة الإشعارات لإعادة الجلب
+    window.addEventListener('devo:notifications-updated', async () => {
+        await fetchUnreadNotifications();
+    });
+}
+
+// تحميل بيانات الجلسة الحالية للمستخدم
+function loadUserSession() {
+    const sessionStr = localStorage.getItem('devo_session');
+    if (sessionStr) {
+        try { currentUser = JSON.parse(sessionStr); } catch (e) {}
+    }
 }
 
 // إعداد عناصر واجهة المستخدم والتحكم بالإشعارات
@@ -24,7 +39,7 @@ function setupUI() {
 
     if (!bellBtn || !dropdown) return;
 
-    // فتح وإغلاق القائمة المنسدلة
+    // فتح وإغلاق القائمة المنسدلة للجرس
     bellBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         dropdown.classList.toggle('hidden');
@@ -50,14 +65,29 @@ function setupUI() {
         });
     }
 
-    // مسح كافة التنبيهات
+    // مسح كافة التنبيهات وتحديدها كمقروءة بالداتا بيز
     if (clearBtn) {
-        clearBtn.addEventListener('click', (e) => {
+        clearBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            unreadOrders = [];
-            updateNotificationsListUI();
-            updateAppBadge(0);
-            showToast('تم مسح جميع الإشعارات', 'info');
+            if (unreadOrders.length === 0) return;
+            const ids = unreadOrders.map(o => o.id);
+            try {
+                const { error } = await supabase
+                    .from('system_notifications')
+                    .update({ is_read: true })
+                    .in('id', ids);
+
+                if (error) throw error;
+
+                unreadOrders = [];
+                updateNotificationsListUI();
+                updateAppBadge(0);
+                showToast('تم مسح جميع الإشعارات وتحديدها كمقروءة', 'success');
+                window.dispatchEvent(new CustomEvent('devo:notifications-updated'));
+            } catch (err) {
+                console.error('Failed to clear notifications:', err);
+                showToast('خطأ أثناء مسح الإشعارات', 'error');
+            }
         });
     }
 
@@ -73,7 +103,7 @@ function setupUI() {
                 if (desktopEnabled) {
                     showToast('تم تفعيل إشعارات سطح المكتب بنجاح 🔔', 'success');
                     sendDesktopNotification('تم تفعيل الإشعارات بنجاح!', {
-                        body: 'ستتلقى إشعارات هنا عند وصول أوردرات جديدة.'
+                        body: 'ستتلقى إشعارات هنا عند حدوث تغييرات بالسيستم.'
                     });
                 } else {
                     showToast('تم رفض صلاحية الإشعارات', 'error');
@@ -104,51 +134,88 @@ function updateDesktopBtnUI() {
     }
 }
 
-// الاتصال اللحظي بـ Supabase لمراقبة الطلبات الجديدة
+// جلب الإشعارات غير المقروءة والموجهة للمستخدم الحالي من الداتابيز
+export async function fetchUnreadNotifications() {
+    try {
+        let query = supabase
+            .from('system_notifications')
+            .select('*')
+            .eq('is_read', false)
+            .eq('is_archived', false)
+            .order('created_at', { ascending: false });
+
+        if (currentUser) {
+            if (currentUser.role === 'worker') {
+                // العمال يستقبلون فقط التنبيهات الموجهة لهم مباشرة (كإسناد طلب لهم)
+                query = query.eq('user_id', currentUser.id);
+            } else {
+                // المسؤولون يستقبلون الإشعارات العامة (user_id IS NULL) والإشعارات الموجهة لهم شخصياً
+                query = query.or(`user_id.is.null,user_id.eq.${currentUser.id}`);
+            }
+        } else {
+            query = query.is('user_id', null);
+        }
+
+        const { data, error } = await query;
+        if (!error && data) {
+            unreadOrders = data;
+            updateNotificationsListUI();
+            updateAppBadge(unreadOrders.length);
+        }
+    } catch (e) {
+        console.error('Error fetching unread notifications:', e);
+    }
+}
+
+// الاتصال اللحظي بـ Supabase لمراقبة جدول الإشعارات
 function setupRealtimeSubscription() {
     if (realtimeChannel) {
         realtimeChannel.unsubscribe();
     }
 
-    realtimeChannel = supabase.channel('global_orders_notifications')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
-            console.log('🔔 رادار الإشعارات: التقاط طلب جديد!', payload.new);
-            
+    realtimeChannel = supabase.channel('global_system_notifications_tracker')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'system_notifications' }, async (payload) => {
+            const newNotif = payload.new;
+
+            // فلترة الإشعار: هل هذا الإشعار موجه للمستخدم الحالي أم لا؟
+            if (currentUser) {
+                if (currentUser.role === 'worker') {
+                    if (newNotif.user_id !== currentUser.id) return; // تجاهل التنبيهات التي ليست له
+                } else {
+                    if (newNotif.user_id !== null && newNotif.user_id !== currentUser.id) return; // تجاهل التنبيهات الخاصة ببعض العمال الآخرين
+                }
+            } else {
+                if (newNotif.user_id !== null) return; // تجاهل التنبيهات الخاصة بالعمال
+            }
+
             // تشغيل التنبيه الصوتي
             playChimeSound();
 
-            // جلب تفاصيل إضافية للطلب لعرضها بشكل جميل
-            const { data, error } = await supabase
-                .from('orders')
-                .select('id, customer_name, total_price')
-                .eq('id', payload.new.id)
-                .maybeSingle();
-                
-            const orderInfo = data || payload.new;
+            // إضافة الطلب إلى أعلى قائمة غير المقروء محلياً
+            unreadOrders.unshift(newNotif);
+
+            // إظهار توست بالتحذير
+            let toastType = 'warning';
+            if (newNotif.type === 'out_of_stock') toastType = 'error';
+            else if (newNotif.type === 'order_created') toastType = 'success';
             
-            // إضافة الطلب إلى أعلى قائمة غير المقروء
-            unreadOrders.unshift({
-                id: orderInfo.id,
-                customer_name: orderInfo.customer_name || 'عميل غير معروف',
-                total_price: orderInfo.total_price || 0,
-                created_at: new Date().toISOString()
+            showToast(`🚨 ${newNotif.title}\n${newNotif.body}`, toastType);
+
+            // إرسال إشعار سطح المكتب للمتصفح
+            sendDesktopNotification(newNotif.title, {
+                body: newNotif.body,
+                tag: `notification-${newNotif.id}`
             });
 
-            // إظهار توست تحذيري مميز
-            showToast(`🚨 أوردر جديد قد وصل! برقم #${orderInfo.id} للعميل: ${orderInfo.customer_name}`, 'warning');
-
-            // إرسال إشعار سطح المكتب
-            sendDesktopNotification(`أوردر جديد قد وصل! #${orderInfo.id}`, {
-                body: `العميل: ${orderInfo.customer_name}\nالإجمالي: ${orderInfo.total_price} ج.م`,
-                tag: `new-order-${orderInfo.id}`
-            });
-
-            // تحديث الواجهة والعداد
+            // تحديث الواجهة والعدادات
             updateNotificationsListUI();
             updateAppBadge(unreadOrders.length);
+
+            // إرسال حدث عام لتحديث صفحة الإشعارات بالأدمن لو كانت مفتوحة حالياً
+            window.dispatchEvent(new CustomEvent('devo:notifications-received'));
         })
         .subscribe((status, err) => {
-            console.log('📡 حالة اتصال رادار الإشعارات اللحظية:', status);
+            console.log('📡 حالة اتصال رادار الإشعارات المركزي:', status);
             if (err) console.error('⚠️ خطأ في اتصال قناة الإشعارات:', err);
         });
 }
@@ -181,58 +248,92 @@ function updateNotificationsListUI() {
 
     listContainer.innerHTML = unreadOrders.map(o => {
         const timeStr = new Date(o.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        
+        let colorClass = 'bg-devo-orange';
+        if (o.type === 'out_of_stock') colorClass = 'bg-devo-error';
+        else if (o.type === 'order_created') colorClass = 'bg-devo-success';
+        else if (o.type === 'order_assigned') colorClass = 'bg-blue-500';
+
         return `
             <div class="p-3 hover:bg-devo-gray/30 border-b border-devo-gray/20 transition-all cursor-pointer flex flex-col gap-1 text-right" data-order-id="${o.id}">
                 <div class="flex justify-between items-center">
                     <span class="text-xs font-bold text-white flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 bg-devo-orange rounded-full animate-ping"></span>
-                        أوردر جديد #${o.id}
+                        <span class="w-1.5 h-1.5 ${colorClass} rounded-full animate-ping"></span>
+                        ${o.title}
                     </span>
                     <span class="text-[10px] text-devo-muted font-medium">${timeStr}</span>
                 </div>
-                <div class="text-xs text-devo-muted flex justify-between items-center mt-1">
-                    <span class="truncate max-w-[170px] text-devo-text">${o.customer_name}</span>
-                    <span class="text-devo-orange font-bold font-mono">${o.total_price.toLocaleString('ar-EG')} ج.م</span>
+                <div class="text-[11px] text-devo-muted mt-1 leading-relaxed truncate max-w-[280px]">
+                    ${o.body}
                 </div>
             </div>
         `;
     }).join('');
 
-    // ربط الضغط على الإشعار بالتنقل
+    // ربط الضغط على الإشعار بالتنقل والتحديث
     listContainer.querySelectorAll('[data-order-id]').forEach(el => {
         el.addEventListener('click', () => {
-            const orderId = el.getAttribute('data-order-id');
-            handleNotificationClick(orderId);
+            const notifId = el.getAttribute('data-order-id');
+            handleNotificationClick(notifId);
         });
     });
 }
 
 // معالجة الضغط على إشعار محدد
-function handleNotificationClick(orderId) {
-    // إزالة الطلب من قائمة الإشعارات
-    unreadOrders = unreadOrders.filter(o => String(o.id) !== String(orderId));
+async function handleNotificationClick(notifId) {
+    const notif = unreadOrders.find(o => String(o.id) === String(notifId));
+    if (!notif) return;
+
+    // إزالة الطلب محلياً
+    unreadOrders = unreadOrders.filter(o => String(o.id) !== String(notifId));
     updateNotificationsListUI();
     updateAppBadge(unreadOrders.length);
 
-    // الانتقال إلى تبويب إدارة الأوردات
-    const adminOrdersLink = document.querySelector('[data-target="view-admin-orders"]');
-    if (adminOrdersLink) {
-        // محاكاة الضغط لتبديل الواجهة
-        adminOrdersLink.click();
+    // تحديث المقروئية بالداتابيز
+    try {
+        await supabase
+            .from('system_notifications')
+            .update({ is_read: true })
+            .eq('id', notifId);
+        
+        // إرسال تنبيه لتحديث صفحة الإشعارات لو كانت مفتوحة
+        window.dispatchEvent(new CustomEvent('devo:notifications-updated'));
+    } catch (err) {
+        console.error(err);
     }
 
-    // الانتقال والوميض للأوردر المحدد في الجدول
-    setTimeout(() => {
-        const row = document.getElementById(`admin-order-row-${orderId}`);
-        if (row) {
-            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // تأثير وميض برتقالي جميل لجلب انتباه العين
-            row.classList.add('bg-devo-orange/30', 'transition-all', 'duration-500');
-            setTimeout(() => row.classList.remove('bg-devo-orange/30'), 3000);
+    // الانتقال والتوجيه التلقائي حسب نوع ومحتوى الإشعار
+    if (notif.metadata) {
+        if (notif.metadata.order_id) {
+            const adminOrdersLink = document.querySelector('[data-target="view-admin-orders"]');
+            if (adminOrdersLink) {
+                adminOrdersLink.click();
+            }
+            setTimeout(() => {
+                const row = document.getElementById(`admin-order-row-${notif.metadata.order_id}`);
+                if (row) {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('bg-devo-orange/30', 'transition-all', 'duration-500');
+                    setTimeout(() => row.classList.remove('bg-devo-orange/30'), 3000);
+                }
+            }, 500);
+        } else if (notif.metadata.model_id) {
+            const modelsLink = document.querySelector('[data-target="view-models"]');
+            if (modelsLink) {
+                modelsLink.click();
+            }
+            // إذا كان كود الموديل معروفاً، نضعه بفلتر البحث
+            setTimeout(() => {
+                const searchInput = document.getElementById('model-search');
+                if (searchInput) {
+                    searchInput.value = notif.metadata.model_code || '';
+                    searchInput.dispatchEvent(new Event('input'));
+                }
+            }, 500);
         }
-    }, 500);
+    }
 
-    // إغلاق القائمة المنسدلة بعد الضغط
+    // إغلاق القائمة المنسدلة
     const dropdown = document.getElementById('notifications-dropdown');
     if (dropdown) dropdown.classList.add('hidden');
 }
@@ -244,7 +345,7 @@ export function playChimeSound() {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
 
-        // النغمة الأولى: C5 (523.25 Hz)
+        // النغمة الأولى: C5
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sine';
@@ -259,7 +360,7 @@ export function playChimeSound() {
         osc1.start(now);
         osc1.stop(now + 0.4);
 
-        // النغمة الثانية: E5 (659.25 Hz) بعد فترة بسيطة
+        // النغمة الثانية: E5 بعد 0.12 ثانية
         const osc2 = audioCtx.createOscillator();
         const gain2 = audioCtx.createGain();
         osc2.type = 'sine';
@@ -303,7 +404,6 @@ export function sendDesktopNotification(title, options = {}) {
 
 // تحديث شارة أيقونة التطبيق وعنوان الصفحة
 export function updateAppBadge(count) {
-    // 1. تحديث شارة التطبيق المدمج (لأنظمة الديسكتوب و PWA)
     if ('setAppBadge' in navigator) {
         if (count > 0) {
             navigator.setAppBadge(count).catch(e => console.warn('setAppBadge failed', e));
@@ -312,7 +412,6 @@ export function updateAppBadge(count) {
         }
     }
     
-    // 2. تحديث عنوان التبويب بالمتصفح
     if (count > 0) {
         document.title = `(${count}) ${originalTitle}`;
     } else {

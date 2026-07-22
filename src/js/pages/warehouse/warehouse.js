@@ -2,6 +2,7 @@ import { supabase } from '../../config/supabase.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
+import { initNotifications } from '../../services/notifications.js';
 
 // ============================================================
 // State
@@ -101,6 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadOrderList();
     setupRealtimeOrders();
+    initNotifications(); // تهيئة استقبال التنبيهات اللحظية الموجهة للعامل
     setupEventDelegation();   // ← replaces all inline onclick on color rows
     setupSwipeNavigation();   // ← swipe left/right for card mode
 

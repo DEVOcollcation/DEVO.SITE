@@ -128,6 +128,13 @@ async function loadViewLogic(targetId) {
         return; 
     }
 
+    if (targetId === 'view-notifications' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return; 
+    }
+
     switch (targetId) {
             case 'view-dashboard':
             const { initDashboard } = await import('./dashboard.js');
@@ -173,6 +180,10 @@ async function loadViewLogic(targetId) {
         case 'view-theme-manager':
             const { initThemeManagerView } = await import('./theme_manager.js');
             await initThemeManagerView();
+            break;
+        case 'view-notifications':
+            const { initNotificationsView } = await import('./notifications_view.js');
+            await initNotificationsView();
             break;
     }
 }

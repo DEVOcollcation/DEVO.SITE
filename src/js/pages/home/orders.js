@@ -478,7 +478,7 @@ window.toggleArchive = async (id, archiveStatus) => {
 
 // 🌟 دالة مساعدة لفك روابط الصور لكي تظهر في السلة بعد التعديل 🌟
 function resolveImageUrl(url) {
-    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.jpeg';
+    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.png';
     try {
         if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
             const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
@@ -536,7 +536,7 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', async () 
 
     // 🌟 الإصلاح الجذري لمعادلة الأسعار والصور عند إرسالها للسلة 🌟
     const newCart = targetOrder.order_items.map(item => {
-        let imgUrl = './src/assets/icons/devo.jpeg';
+        let imgUrl = './src/assets/icons/devo.png';
         if (item.models?.model_images && item.models.model_images.length > 0) {
             imgUrl = resolveImageUrl(item.models.model_images[0].image_url);
         }

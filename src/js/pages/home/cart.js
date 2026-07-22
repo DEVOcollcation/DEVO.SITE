@@ -253,7 +253,7 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
         html += `
             <div class="cart-item-card flex flex-col sm:flex-row gap-3 md:gap-4 p-3.5 ${cardClass} border rounded-xl relative transition-all duration-300 mb-4 shadow-sm" data-search="${modelGroup.modelName} ${modelGroup.factoryCode || ''}">
                 <div class="flex gap-3 md:gap-4 items-start">
-                    <img src="${modelGroup.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover bg-devo-black shrink-0 ${imgClass}" onerror="this.src='./src/assets/icons/devo.jpeg'">
+                    <img src="${modelGroup.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover bg-devo-black shrink-0 ${imgClass}" onerror="this.src='./src/assets/icons/devo.png'">
                 </div>
 
                 <div class="flex flex-col flex-1 justify-between">

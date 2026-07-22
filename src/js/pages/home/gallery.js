@@ -220,7 +220,7 @@ function updateModelViewerDOM(id) {
 // 🌟 3. الفلترة والرسم (Pagination) 🌟
 // ==========================================
 function resolveImageUrl(url) {
-    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.jpeg';
+    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.png';
     try {
         if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
             const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
@@ -330,7 +330,7 @@ function generateGalleryCardHTML(m) {
         <div class="h-44 sm:h-64 md:h-72 bg-devo-black relative overflow-hidden flex items-center justify-center p-1">
             <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" onerror="this.src='./src/assets/icons/devo.jpeg'" loading="lazy">
+            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy">
         </div>
         <div class="p-2.5 sm:p-4 flex flex-col flex-1 justify-between z-10 relative bg-devo-dark border-t border-devo-gray/30">
             <div>
@@ -398,9 +398,9 @@ window.openModelViewer = (id, skipHistory = false) => {
         <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-56 sm:h-72 md:h-[380px] mb-2 sm:mb-3 flex items-center justify-center p-1.5 relative">
             <img src="${mainImg}" id="viewer-blur-bg" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 w-full h-full object-contain" onerror="this.src='./src/assets/icons/devo.jpeg'">
+            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 w-full h-full object-contain" onerror="this.src='./src/assets/icons/devo.png'">
         </div>
-        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-contain p-1 bg-devo-black cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}</div>` : ''}
+        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-contain p-1 bg-devo-black cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.png'">`).join('')}</div>` : ''}
     `;
 
     const renderSizesTags = classSizes.length > 0 

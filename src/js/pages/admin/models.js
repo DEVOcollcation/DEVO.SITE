@@ -258,7 +258,7 @@ function setupAdminRealtimeTracker() {
 }
 
 function resolveImageUrl(url) {
-    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.jpeg';
+    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.png';
     try {
         if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
             const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
@@ -377,7 +377,7 @@ function generateModelCardHTML(m) {
         <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl p-1">
             <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform hover:scale-105" onerror="this.src='./src/assets/icons/devo.jpeg'">
+            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform hover:scale-105" onerror="this.src='./src/assets/icons/devo.png'">
             <div class="absolute top-3 right-3 z-10">${badgeHTML}</div>
             ${!m.is_active ? `<div class="absolute top-3 left-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-10">معطل</div>` : ''}
         </div>
@@ -510,10 +510,10 @@ window.viewDetails = async (id) => {
     let imagesHtml = '';
     if (model.model_images && model.model_images.length > 0) {
         imagesHtml = `<div class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.jpeg'">`).join('')}
+            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.png'">`).join('')}
         </div>`;
     } else {
-        imagesHtml = `<div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.jpeg" class="w-full h-full object-cover"></div>`;
+        imagesHtml = `<div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.png" class="w-full h-full object-cover"></div>`;
     }
 
     const renderSizesTags = classSizes.length > 0 

@@ -1259,7 +1259,7 @@ window.triggerCartEdit = async () => {
     showToast('جاري تجهيز السلة والتحويل للمعرض...', 'info');
 
     const newCart = o.order_items.map(item => {
-        const imgUrl = item.models?.image_url_1 || './src/assets/icons/devo.jpeg';
+        const imgUrl = item.models?.image_url_1 || './src/assets/icons/devo.png';
         const classSizes = item.models?.classes?.class_sizes || [];
         const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
 
