@@ -1,7 +1,7 @@
 {
   "id": "devo-admin-pwa",
-  "short_name": "DEVO الإدارة",
-  "name": "إدارة مصنع DEVO",
+  "short_name": "ديفو أدمن",
+  "name": "ديفو أدمن",
   "description": "لوحة تحكم وإدارة مصنع DEVO",
   "icons": [
     {
