@@ -1,6 +1,18 @@
 // src/js/components/searchable_select.js
 // Custom Searchable Dropdown component that wraps/replaces standard select elements.
 
+function getClippingParent(node) {
+    if (!node || node === document.body || node === document.documentElement) {
+        return window;
+    }
+    const style = window.getComputedStyle(node);
+    const overflowY = style.overflowY || style.overflow || "";
+    if (overflowY.includes('auto') || overflowY.includes('scroll') || overflowY.includes('hidden')) {
+        return node;
+    }
+    return getClippingParent(node.parentNode || node.host);
+}
+
 function getButtonClasses(select) {
     const originalClasses = select.className.split(' ');
     const buttonClasses = ['w-full', 'h-full', 'flex', 'items-center', 'justify-between', 'text-right'];
@@ -251,8 +263,19 @@ function wrapSelect(select) {
             
             // Check position and decide whether to open up or down
             const rect = container.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const spaceAbove = rect.top;
+            const clippingParent = getClippingParent(container);
+            
+            let spaceBelow = 0;
+            let spaceAbove = 0;
+            
+            if (clippingParent === window) {
+                spaceBelow = window.innerHeight - rect.bottom;
+                spaceAbove = rect.top;
+            } else {
+                const parentRect = clippingParent.getBoundingClientRect();
+                spaceBelow = parentRect.bottom - rect.bottom;
+                spaceAbove = rect.top - parentRect.top;
+            }
             
             // If there's less than 280px below and more space above, open up
             if (spaceBelow < 280 && spaceAbove > spaceBelow) {
@@ -387,13 +410,37 @@ function wrapMultiSelectDropdown(dropdown) {
 
     searchInput.addEventListener('input', filterOptions);
 
-    // Reset search on dropdown close
+    // Reset search on dropdown close, and position dynamically on open
     const menuObserver = new MutationObserver((mutations) => {
         mutations.forEach(m => {
             if (m.type === 'attributes' && m.attributeName === 'class') {
                 if (menu.classList.contains('hidden')) {
                     searchInput.value = '';
                     filterOptions();
+                } else {
+                    // Position dynamically on open
+                    const rect = dropdown.getBoundingClientRect();
+                    const clippingParent = getClippingParent(dropdown);
+                    
+                    let spaceBelow = 0;
+                    let spaceAbove = 0;
+                    
+                    if (clippingParent === window) {
+                        spaceBelow = window.innerHeight - rect.bottom;
+                        spaceAbove = rect.top;
+                    } else {
+                        const parentRect = clippingParent.getBoundingClientRect();
+                        spaceBelow = parentRect.bottom - rect.bottom;
+                        spaceAbove = rect.top - parentRect.top;
+                    }
+                    
+                    if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+                        menu.classList.remove('mt-1', 'top-full');
+                        menu.classList.add('bottom-full', 'mb-1');
+                    } else {
+                        menu.classList.remove('bottom-full', 'mb-1');
+                        menu.classList.add('top-full', 'mt-1');
+                    }
                 }
             }
         });

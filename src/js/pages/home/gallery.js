@@ -32,7 +32,31 @@ export async function initGallery() {
     const urlParams = new URLSearchParams(window.location.search);
     const modelFromUrl = urlParams.get('model');
     if (modelFromUrl) {
-        setTimeout(() => { window.openModelViewer(modelFromUrl); }, 500);
+        setTimeout(() => { window.openModelViewer(modelFromUrl, true); }, 500);
+    }
+
+    // الاستماع لحركة الرجوع/التقدم بالمتصفح لإغلاق/تحديث التفاصيل تلقائياً على الموبايل
+    window.addEventListener('popstate', () => {
+        const params = new URLSearchParams(window.location.search);
+        const mId = params.get('model');
+        const modal = document.getElementById('model-viewer-modal');
+        if (modal) {
+            if (mId) {
+                window.openModelViewer(mId, true);
+            } else if (!modal.classList.contains('hidden')) {
+                window.closeModelViewer(true);
+            }
+        }
+    });
+
+    // إغلاق نافذة التفاصيل عند الضغط خارجها (خلفية المودال)
+    const modelViewerModal = document.getElementById('model-viewer-modal');
+    if (modelViewerModal) {
+        modelViewerModal.addEventListener('click', (e) => {
+            if (e.target === modelViewerModal) {
+                window.closeModelViewer();
+            }
+        });
     }
 }
 
@@ -364,11 +388,13 @@ window.changeGalleryPage = (newPage) => {
 // ==========================================
 // 🌟 4. تفاصيل الموديل والروابط العميقة 🌟
 // ==========================================
-window.openModelViewer = (id) => {
+window.openModelViewer = (id, skipHistory = false) => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
 
-    history.pushState(null, '', `?model=${id}`);
+    if (!skipHistory) {
+        history.pushState({ modelId: id }, '', `?model=${id}`);
+    }
 
     const classSizes = model.classes?.class_sizes || [];
     const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
@@ -543,13 +569,23 @@ function generateColorsHTML(model, sizesCount) {
     }).join('');
 }
 
-window.closeModelViewer = () => {
+window.closeModelViewer = (skipHistory = false) => {
     const modal = document.getElementById('model-viewer-modal');
+    if (!modal || modal.classList.contains('hidden') || modal.classList.contains('opacity-0')) return;
+
     modal.classList.add('opacity-0');
+
+    if (!skipHistory) {
+        if (history.state && history.state.modelId) {
+            history.back();
+        } else {
+            history.replaceState(null, '', window.location.pathname);
+        }
+    }
+
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.removeAttribute('data-current-model-id');
-        history.pushState(null, '', window.location.pathname);
         if (typeof window.onModelViewerClosed === 'function') {
             window.onModelViewerClosed();
         }

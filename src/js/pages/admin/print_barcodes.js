@@ -6,6 +6,7 @@ let barcodeAllModels = [];
 let filteredBarcodeModels = [];
 let selectedBarcodeModelIds = new Set();
 let sizesMap = {};
+let colorsMap = {};
 
 let barcodeCurrentPage = 1;
 const barcodeItemsPerPage = 50;
@@ -148,6 +149,12 @@ export async function fetchBarcodeFilterOptions() {
             });
         }
 
+        if (colors && colors.data) {
+            colors.data.forEach(c => {
+                colorsMap[c.id] = c.name;
+            });
+        }
+
         // Setup labels
         window.updateBarcodeMultiSelectLabel('cat');
         window.updateBarcodeMultiSelectLabel('class');
@@ -177,7 +184,7 @@ export async function fetchBarcodeModels() {
                     categories(name), 
                     classes(name, class_sizes(size_id)),
                     model_sizes(size_id),
-                    model_inventory(color_id, available_series),
+                    model_inventory(color_id, available_series, colors(name)),
                     model_images(image_url)
                 `)
                 .order('created_at', { ascending: false })
@@ -495,14 +502,48 @@ async function loadPrintingLibraries() {
 }
 
 function loadScript(url) {
+    const existing = document.querySelector(`script[src="${url}"]`);
+    if (existing) {
+        return new Promise((resolve) => {
+            if (existing.dataset.loaded === "true") {
+                resolve();
+            } else {
+                existing.addEventListener('load', resolve);
+                existing.addEventListener('error', resolve);
+            }
+        });
+    }
+
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = url;
-        script.onload = resolve;
-        script.onerror = reject;
+        script.onload = () => {
+            script.dataset.loaded = "true";
+            resolve();
+        };
+        script.onerror = (err) => {
+            script.remove();
+            reject(err);
+        };
         document.head.appendChild(script);
     });
 }
+
+// دالة إخفاء/تفعيل مدخلات عدد النسخ الثابت
+window.toggleBarcodeQtyInput = () => {
+    const qtyMode = document.getElementById('bulk-barcode-qty-mode').value;
+    const container = document.getElementById('bulk-barcode-fixed-qty-container');
+    if (container) {
+        const input = container.querySelector('input');
+        if (qtyMode === 'fixed') {
+            container.classList.remove('opacity-50', 'pointer-events-none');
+            if (input) input.disabled = false;
+        } else {
+            container.classList.add('opacity-50', 'pointer-events-none');
+            if (input) input.disabled = true;
+        }
+    }
+};
 
 // دالة تحديث المعاينة الحية للملصق بداخل المودال
 window.updateBarcodePreview = () => {
@@ -520,6 +561,8 @@ window.updateBarcodePreview = () => {
     const showCode = document.getElementById('bulk-barcode-show-code').checked;
     const showSizes = document.getElementById('bulk-barcode-show-sizes').checked;
     const showPrice = document.getElementById('bulk-barcode-show-price').checked;
+    const showColors = document.getElementById('bulk-barcode-show-colors').checked;
+    const colorDist = document.getElementById('bulk-barcode-color-dist').value;
 
     // ضبط أبعاد كرت المعاينة
     const previewCard = document.getElementById('barcode-preview-card');
@@ -533,6 +576,7 @@ window.updateBarcodePreview = () => {
     const prevName = document.getElementById('prev-name');
     const prevCode = document.getElementById('prev-code');
     const prevSizes = document.getElementById('prev-sizes');
+    const prevColors = document.getElementById('prev-colors');
     const prevPrice = document.getElementById('prev-price');
 
     if (prevName) {
@@ -546,6 +590,15 @@ window.updateBarcodePreview = () => {
     if (prevSizes) {
         prevSizes.style.display = showSizes ? 'block' : 'none';
         prevSizes.style.fontSize = `${fontDetails}px`;
+    }
+    if (prevColors) {
+        prevColors.style.display = showColors ? 'block' : 'none';
+        prevColors.style.fontSize = `${fontDetails}px`;
+        if (colorDist === 'separate') {
+            prevColors.textContent = 'أحمر (مثال لون منفرد)';
+        } else {
+            prevColors.textContent = 'أحمر، أسود، أزرق';
+        }
     }
     if (prevPrice) {
         prevPrice.style.display = showPrice ? 'block' : 'none';
@@ -577,7 +630,16 @@ window.updateBarcodePreview = () => {
     } else {
         barcodeSvg.classList.add('hidden');
         qrcodeImg.classList.remove('hidden');
-        qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(sampleValue)}`;
+        if (typeof QRCode !== 'undefined') {
+            QRCode.toDataURL(sampleValue, { width: 250, margin: 1 })
+                .then(url => { qrcodeImg.src = url; })
+                .catch(err => {
+                    console.error("Local QRCode error:", err);
+                    qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(sampleValue)}`;
+                });
+        } else {
+            qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(sampleValue)}`;
+        }
     }
 };
 
@@ -604,6 +666,7 @@ window.openBulkBarcodeModal = async () => {
     setTimeout(() => {
         modal.classList.remove('opacity-0');
         modal.classList.add('flex');
+        window.toggleBarcodeQtyInput();
         window.updateBarcodePreview();
     }, 10);
 };
@@ -634,6 +697,11 @@ window.generateAndPrintBulkBarcodes = () => {
     const showCode = document.getElementById('bulk-barcode-show-code').checked;
     const showSizes = document.getElementById('bulk-barcode-show-sizes').checked;
     const showPrice = document.getElementById('bulk-barcode-show-price').checked;
+    const showColors = document.getElementById('bulk-barcode-show-colors').checked;
+
+    const qtyMode = document.getElementById('bulk-barcode-qty-mode').value;
+    const fixedQty = parseInt(document.getElementById('bulk-barcode-fixed-qty').value, 10) || 1;
+    const colorDist = document.getElementById('bulk-barcode-color-dist').value;
 
     // Get selected models data
     const selectedModels = barcodeAllModels.filter(m => selectedBarcodeModelIds.has(m.id));
@@ -642,14 +710,71 @@ window.generateAndPrintBulkBarcodes = () => {
 
     showToast('جاري تحضير الباركود للطباعة...', 'info');
 
-    // Generate HTML with resolved sizes
-    const modelsDataJson = JSON.stringify(selectedModels.map(m => ({
-        name: m.name,
-        factory_code: m.factory_code,
-        system_code: m.system_code,
-        price: m.price,
-        sizesStr: getModelSizesString(m)
-    })));
+    // Generate label items based on copies count and color choices
+    const labelsToPrint = [];
+    selectedModels.forEach(m => {
+        let modelColors = [];
+        if (m.model_inventory && m.model_inventory.length > 0) {
+            modelColors = m.model_inventory.map(inv => {
+                return (inv.colors && inv.colors.name) || colorsMap[inv.color_id] || '';
+            }).filter(Boolean);
+            modelColors = [...new Set(modelColors)];
+        }
+        
+        const hasColors = modelColors.length > 0;
+        const colorsList = hasColors ? modelColors : [''];
+
+        const baseLabel = {
+            name: m.name,
+            factory_code: m.factory_code,
+            system_code: m.system_code,
+            price: m.price,
+            sizesStr: getModelSizesString(m),
+            value: (valueSource === 'system' ? m.system_code : m.factory_code) || m.system_code || '0000000'
+        };
+
+        if (qtyMode === 'by_color') {
+            const copiesCount = colorsList.length;
+            if (colorDist === 'separate') {
+                colorsList.forEach(color => {
+                    labelsToPrint.push({
+                        ...baseLabel,
+                        colorStr: showColors ? color : ''
+                    });
+                });
+            } else {
+                const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
+                for (let i = 0; i < copiesCount; i++) {
+                    labelsToPrint.push({
+                        ...baseLabel,
+                        colorStr: allColorsJoined
+                    });
+                }
+            }
+        } else {
+            const copiesCount = Math.max(1, fixedQty);
+            if (colorDist === 'separate') {
+                colorsList.forEach(color => {
+                    for (let i = 0; i < copiesCount; i++) {
+                        labelsToPrint.push({
+                            ...baseLabel,
+                            colorStr: showColors ? color : ''
+                        });
+                    }
+                });
+            } else {
+                const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
+                for (let i = 0; i < copiesCount; i++) {
+                    labelsToPrint.push({
+                        ...baseLabel,
+                        colorStr: allColorsJoined
+                    });
+                }
+            }
+        }
+    });
+
+    const labelsDataJson = JSON.stringify(labelsToPrint);
 
     const printHtml = `
 <!DOCTYPE html>
@@ -718,6 +843,17 @@ window.generateAndPrintBulkBarcodes = () => {
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .model-colors {
+            font-size: ${fontDetails}px;
+            font-weight: 700;
+            color: #000;
+            margin-top: 1px;
+            display: ${showColors ? 'block' : 'none'};
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .code-container {
             flex: 1;
             display: flex;
@@ -743,41 +879,41 @@ window.generateAndPrintBulkBarcodes = () => {
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
     <div id="labels-container"></div>
 
     <script>
-        const models = ${modelsDataJson};
+        const labels = ${labelsDataJson};
         const codeType = "${codeType}";
-        const valueSource = "${valueSource}";
 
         const container = document.getElementById('labels-container');
+        const qrPromises = [];
         
-        models.forEach((m, idx) => {
-            const labelValue = (valueSource === 'system' ? m.system_code : m.factory_code) || m.system_code || '0000000';
-            
+        labels.forEach((lbl, idx) => {
             const labelDiv = document.createElement('div');
             labelDiv.className = 'barcode-label';
             
             labelDiv.innerHTML = '<div>' +
-                '<div class="model-name">' + m.name + '</div>' +
-                '<div class="model-code">' + (m.factory_code || m.system_code || '') + '</div>' +
-                '<div class="model-sizes">' + (m.sizesStr || '') + '</div>' +
+                '<div class="model-name">' + lbl.name + '</div>' +
+                '<div class="model-code">' + (lbl.factory_code || lbl.system_code || '') + '</div>' +
+                (lbl.sizesStr ? '<div class="model-sizes">' + lbl.sizesStr + '</div>' : '') +
+                (lbl.colorStr ? '<div class="model-colors">' + lbl.colorStr + '</div>' : '') +
             '</div>' +
             '<div class="code-container">' +
                 (codeType === 'barcode' 
                     ? '<svg id="barcode-' + idx + '"></svg>' 
-                    : '<img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(labelValue) + '">'
+                    : '<img id="qrcode-' + idx + '" src="">'
                 ) +
             '</div>' +
-            '<div class="model-price">' + m.price + ' ج.م</div>';
+            '<div class="model-price">' + lbl.price + ' ج.م</div>';
             
             container.appendChild(labelDiv);
 
             if (codeType === 'barcode') {
                 try {
-                    JsBarcode("#barcode-" + idx, labelValue, {
+                    JsBarcode("#barcode-" + idx, lbl.value, {
                         format: "CODE128",
                         width: 2.0,
                         height: 65,
@@ -785,16 +921,35 @@ window.generateAndPrintBulkBarcodes = () => {
                         margin: 0
                     });
                 } catch(e) {
-                    console.error("JsBarcode failed for", labelValue, e);
+                    console.error("JsBarcode failed for", lbl.value, e);
+                }
+            } else if (codeType === 'qrcode') {
+                if (typeof QRCode !== 'undefined') {
+                    const promise = QRCode.toDataURL(lbl.value, { width: 250, margin: 1 })
+                        .then(url => {
+                            const img = document.getElementById('qrcode-' + idx);
+                            if (img) img.src = url;
+                        })
+                        .catch(err => {
+                            console.error("Local QRCode generate failed, falling back:", err);
+                            const img = document.getElementById('qrcode-' + idx);
+                            if (img) img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(lbl.value);
+                        });
+                    qrPromises.push(promise);
+                } else {
+                    const img = document.getElementById('qrcode-' + idx);
+                    if (img) img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(lbl.value);
                 }
             }
         });
 
         window.onload = function() {
-            setTimeout(() => {
-                window.focus();
-                window.print();
-            }, 800);
+            Promise.all(qrPromises).then(() => {
+                setTimeout(() => {
+                    window.focus();
+                    window.print();
+                }, 800);
+            });
         };
     </script>
 </body>
@@ -803,17 +958,19 @@ window.generateAndPrintBulkBarcodes = () => {
 
     // Print inside an iframe
     let iframe = document.getElementById('print-barcode-iframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'print-barcode-iframe';
-        iframe.style.position = 'fixed';
-        iframe.style.right = '-9999px';
-        iframe.style.bottom = '-9999px';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
+    if (iframe) {
+        iframe.remove();
     }
+    iframe = document.createElement('iframe');
+    iframe.id = 'print-barcode-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '-9999px';
+    iframe.style.bottom = '-9999px';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
     const doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open();
     doc.write(printHtml);
@@ -840,7 +997,11 @@ const DEFAULT_BARCODE_TEMPLATES = {
         showSizes: true,
         showPrice: true,
         codeType: "barcode",
-        valueSource: "factory"
+        valueSource: "factory",
+        qtyMode: "fixed",
+        fixedQty: 1,
+        colorDist: "all_together",
+        showColors: true
     },
     "small_3_4": {
         name: "قالب صغير 3×4 سم 🏷️",
@@ -854,7 +1015,11 @@ const DEFAULT_BARCODE_TEMPLATES = {
         showSizes: false,
         showPrice: true,
         codeType: "barcode",
-        valueSource: "factory"
+        valueSource: "factory",
+        qtyMode: "fixed",
+        fixedQty: 1,
+        colorDist: "all_together",
+        showColors: true
     },
     "qr_standard_5_5": {
         name: "قالب QR مربع 5×5 سم 🔳",
@@ -868,7 +1033,11 @@ const DEFAULT_BARCODE_TEMPLATES = {
         showSizes: true,
         showPrice: true,
         codeType: "qrcode",
-        valueSource: "system"
+        valueSource: "system",
+        qtyMode: "fixed",
+        fixedQty: 1,
+        colorDist: "all_together",
+        showColors: true
     }
 };
 
@@ -943,6 +1112,13 @@ window.loadBarcodeTemplate = () => {
     document.getElementById('bulk-barcode-show-code').checked = template.showCode !== false;
     document.getElementById('bulk-barcode-show-sizes').checked = template.showSizes !== false;
     document.getElementById('bulk-barcode-show-price').checked = template.showPrice !== false;
+    document.getElementById('bulk-barcode-qty-mode').value = template.qtyMode || 'fixed';
+    document.getElementById('bulk-barcode-fixed-qty').value = template.fixedQty || 1;
+    document.getElementById('bulk-barcode-color-dist').value = template.colorDist || 'all_together';
+    document.getElementById('bulk-barcode-show-colors').checked = template.showColors !== false;
+
+    // Toggle qty input state
+    window.toggleBarcodeQtyInput();
 
     // Refresh live preview
     window.updateBarcodePreview();
@@ -978,7 +1154,11 @@ window.saveBarcodeTemplate = () => {
         showName: document.getElementById('bulk-barcode-show-name').checked,
         showCode: document.getElementById('bulk-barcode-show-code').checked,
         showSizes: document.getElementById('bulk-barcode-show-sizes').checked,
-        showPrice: document.getElementById('bulk-barcode-show-price').checked
+        showPrice: document.getElementById('bulk-barcode-show-price').checked,
+        qtyMode: document.getElementById('bulk-barcode-qty-mode').value,
+        fixedQty: parseInt(document.getElementById('bulk-barcode-fixed-qty').value, 10) || 1,
+        colorDist: document.getElementById('bulk-barcode-color-dist').value,
+        showColors: document.getElementById('bulk-barcode-show-colors').checked
     };
 
     localStorage.setItem('devo_barcode_templates', JSON.stringify(saved));

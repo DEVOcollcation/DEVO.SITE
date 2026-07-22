@@ -23,18 +23,27 @@ async function fetchBarcodeSettings() {
         }
         
         // Dynamically update placeholder
-        const manualInput = document.getElementById('barcode-manual-input');
-        if (manualInput) {
-            if (matchType === 'system') {
-                manualInput.placeholder = "اكتب كود السيستم...";
-            } else if (matchType === 'factory') {
-                manualInput.placeholder = "اكتب كود المصنع...";
-            } else {
-                manualInput.placeholder = "اكتب كود المصنع أو السيستم...";
-            }
-        }
+        updateManualInputPlaceholder();
     } catch (e) {
         console.error("Failed to fetch barcode settings:", e);
+    }
+}
+
+function updateManualInputPlaceholder() {
+    const manualInput = document.getElementById('barcode-manual-input');
+    const toggleManualInput = document.getElementById('toggle-manual-input');
+    if (manualInput) {
+        if (toggleManualInput && !toggleManualInput.checked) {
+            manualInput.placeholder = "تفعيل الإدخال اليدوي أولاً...";
+            return;
+        }
+        if (matchType === 'system') {
+            manualInput.placeholder = "اكتب كود السيستم...";
+        } else if (matchType === 'factory') {
+            manualInput.placeholder = "اكتب كود المصنع...";
+        } else {
+            manualInput.placeholder = "اكتب كود المصنع أو السيستم...";
+        }
     }
 }
 
@@ -65,6 +74,7 @@ export function initBarcode() {
     const btnSubmitManualCode = document.getElementById('btn-submit-manual-code');
     const manualInput = document.getElementById('barcode-manual-input');
     const selectCamera = document.getElementById('select-camera');
+    const toggleManualInput = document.getElementById('toggle-manual-input');
 
     if (!btnToggleScan || !btnSubmitManualCode || !manualInput) return;
 
@@ -78,6 +88,24 @@ export function initBarcode() {
             console.error("Failed to initialize Html5Qrcode:", e);
         }
     });
+
+    // Toggle manual input state change
+    if (toggleManualInput) {
+        toggleManualInput.addEventListener('change', () => {
+            if (toggleManualInput.checked) {
+                manualInput.disabled = false;
+                btnSubmitManualCode.disabled = false;
+                updateManualInputPlaceholder();
+                manualInput.focus();
+            } else {
+                manualInput.disabled = true;
+                btnSubmitManualCode.disabled = true;
+                manualInput.value = '';
+                updateManualInputPlaceholder();
+                manualInput.blur();
+            }
+        });
+    }
 
     // Toggle scanning button click
     btnToggleScan.addEventListener('click', () => {
@@ -142,7 +170,9 @@ export function initBarcode() {
             // Clear manual input for next scan
             if (manualInput) {
                 manualInput.value = '';
-                manualInput.focus();
+                if (!manualInput.disabled) {
+                    manualInput.focus();
+                }
             }
         }
     };

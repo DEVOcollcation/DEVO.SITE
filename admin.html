@@ -2910,6 +2910,40 @@
                         <span>إظهار السعر أسفل الباركود</span>
                     </label>
                 </div>
+
+                <!-- قسم خيارات النسخ والألوان -->
+                <div class="bg-devo-black/40 p-4 rounded-xl border border-devo-gray space-y-3 mt-3">
+                    <h5 class="text-xs font-bold text-white border-b border-devo-gray/50 pb-1 mb-2">خيارات النسخ والألوان</h5>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-devo-muted mb-1">طريقة تحديد عدد النسخ</label>
+                            <select id="bulk-barcode-qty-mode" onchange="window.toggleBarcodeQtyInput(); window.updateBarcodePreview();" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-[11px] text-white focus:border-devo-orange outline-none cursor-pointer">
+                                <option value="fixed">عدد نسخ ثابت</option>
+                                <option value="by_color">تلقائي (حسب عدد ألوان الموديل)</option>
+                            </select>
+                        </div>
+                        <div id="bulk-barcode-fixed-qty-container">
+                            <label class="block text-[11px] font-bold text-devo-muted mb-1">عدد النسخ لكل ملصق</label>
+                            <input type="number" id="bulk-barcode-fixed-qty" value="1" min="1" max="100" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-devo-muted mb-1">طريقة توزيع الألوان على الملصقات</label>
+                        <select id="bulk-barcode-color-dist" onchange="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-[11px] text-white focus:border-devo-orange outline-none cursor-pointer">
+                            <option value="all_together">عرض جميع الألوان معاً على كل النسخ</option>
+                            <option value="separate">نسخة منفصلة لكل لون (طباعة لون واحد على كل ملصق)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+                        <label class="flex items-center gap-3 cursor-pointer text-xs text-white">
+                            <input type="checkbox" id="bulk-barcode-show-colors" checked onchange="window.updateBarcodePreview()" class="accent-devo-orange w-4 h-4 cursor-pointer">
+                            <span>إظهار الألوان على الباركود</span>
+                        </label>
+                    </div>
+                </div>
             </div>
 
             <!-- panel 2: Live Preview (المعاينة اللحظية) -->
@@ -2923,6 +2957,7 @@
                             <div id="prev-name" class="font-bold text-center" style="font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; word-break: break-word;">اسم الموديل التجريبي</div>
                             <div id="prev-code" class="text-black font-mono font-bold" style="font-size: 9px; margin-top: 1px;">CODE12345</div>
                             <div id="prev-sizes" class="text-black font-mono font-bold" style="font-size: 8px; margin-top: 1px;">S, M, L, XL</div>
+                            <div id="prev-colors" class="text-black font-mono font-bold" style="font-size: 8px; margin-top: 1px;">أحمر، أسود، أزرق</div>
                         </div>
                         <div id="prev-code-container" class="flex-1 flex items-center justify-center w-full overflow-hidden my-1">
                             <!-- JS will render SVG or Image here -->
