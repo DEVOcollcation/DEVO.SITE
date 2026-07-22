@@ -32,7 +32,22 @@ export async function initNavbar() {
     };
 
     // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
-    window.switchSiteView = (targetId) => {
+    // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
+    window.switchSiteView = (targetId, skipHistory = false) => {
+        // تأكيد الخروج من صفحة الباركود إلا إذا كان الهدف هو السلة
+        if (!skipHistory && window.currentView === 'view-barcode' && targetId !== 'view-cart') {
+            if (!confirm("هل تريد الخروج من صفحة الباركود؟")) {
+                return;
+            }
+        }
+
+        // دفع الصفحة الجديدة في سجل المتصفح
+        if (!skipHistory) {
+            history.pushState({ view: targetId }, '', window.location.pathname + window.location.search);
+        }
+
+        window.currentView = targetId;
+
         document.querySelectorAll('.site-view-section').forEach(el => {
             el.classList.remove('block');
             el.classList.add('hidden');
@@ -74,7 +89,59 @@ export async function initNavbar() {
         }
     };
 
-    // التنشيط الأولي للشاشة الافتراضية
+    // الاستماع لحركة الرجوع والتقدم بالمتصفح بشكل مركزي وتوحيد المنطق
+    window.addEventListener('popstate', (event) => {
+        // 1. أولاً: التحقق من روابط وتفاصيل الموديل (Deep linking / details modal)
+        const urlParams = new URLSearchParams(window.location.search);
+        const modelId = urlParams.get('model');
+        const modal = document.getElementById('model-viewer-modal');
+        
+        if (modal) {
+            if (modelId) {
+                if (typeof window.openModelViewer === 'function') {
+                    window.openModelViewer(modelId, true);
+                }
+                return;
+            } else if (!modal.classList.contains('hidden')) {
+                if (typeof window.closeModelViewer === 'function') {
+                    window.closeModelViewer(true);
+                }
+                return;
+            }
+        }
+
+        // 2. ثانياً: معالجة التنقل وحماية الخروج من الموقع وتأكيد الخروج من الباركود
+        if (event.state) {
+            const targetView = event.state.view;
+            if (targetView === 'exit-trap') {
+                // منع مغادرة الموقع نهائياً وإعادته للرئيسية
+                history.pushState({ view: 'view-home' }, '', window.location.pathname + window.location.search);
+                window.switchSiteView('view-home', true);
+            } else if (targetView) {
+                if (window.currentView === 'view-barcode' && targetView !== 'view-cart') {
+                    if (confirm("هل تريد الخروج من صفحة الباركود؟")) {
+                        window.switchSiteView(targetView, true);
+                    } else {
+                        // إلغاء الخروج وإعادة دفع حالة الباركود لتثبيت الصفحة
+                        history.pushState({ view: 'view-barcode' }, '', window.location.pathname + window.location.search);
+                    }
+                } else {
+                    window.switchSiteView(targetView, true);
+                }
+            }
+        } else {
+            // حالة احتياطية لحماية الموقع
+            history.pushState({ view: 'view-home' }, '', window.location.pathname + window.location.search);
+            window.switchSiteView('view-home', true);
+        }
+    });
+
+    // التنشيط الأولي للشاشة الافتراضية مع إعداد حماية الرجوع للخلف (exit-trap)
     const initialView = localStorage.getItem('devo_edit_order_data') ? 'view-cart' : 'view-home';
-    window.switchSiteView(initialView);
+    
+    window.currentView = initialView;
+    history.replaceState({ view: 'exit-trap' }, '', window.location.pathname + window.location.search);
+    history.pushState({ view: initialView }, '', window.location.pathname + window.location.search);
+    
+    window.switchSiteView(initialView, true);
 }

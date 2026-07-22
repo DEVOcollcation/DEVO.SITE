@@ -35,19 +35,7 @@ export async function initGallery() {
         setTimeout(() => { window.openModelViewer(modelFromUrl, true); }, 500);
     }
 
-    // الاستماع لحركة الرجوع/التقدم بالمتصفح لإغلاق/تحديث التفاصيل تلقائياً على الموبايل
-    window.addEventListener('popstate', () => {
-        const params = new URLSearchParams(window.location.search);
-        const mId = params.get('model');
-        const modal = document.getElementById('model-viewer-modal');
-        if (modal) {
-            if (mId) {
-                window.openModelViewer(mId, true);
-            } else if (!modal.classList.contains('hidden')) {
-                window.closeModelViewer(true);
-            }
-        }
-    });
+
 
     // إغلاق نافذة التفاصيل عند الضغط خارجها (خلفية المودال)
     const modelViewerModal = document.getElementById('model-viewer-modal');

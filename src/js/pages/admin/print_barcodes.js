@@ -494,10 +494,10 @@ function getModelSizesString(m) {
 // دالة تحميل مكتبات التشفير ديناميكياً
 async function loadPrintingLibraries() {
     if (typeof JsBarcode === 'undefined') {
-        await loadScript('https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js');
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js');
     }
     if (typeof QRCode === 'undefined') {
-        await loadScript('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js');
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js');
     }
 }
 
@@ -698,6 +698,7 @@ window.generateAndPrintBulkBarcodes = () => {
     const showSizes = document.getElementById('bulk-barcode-show-sizes').checked;
     const showPrice = document.getElementById('bulk-barcode-show-price').checked;
     const showColors = document.getElementById('bulk-barcode-show-colors').checked;
+    const skipZeroStock = document.getElementById('bulk-barcode-skip-zero-stock-colors').checked;
 
     const qtyMode = document.getElementById('bulk-barcode-qty-mode').value;
     const fixedQty = parseInt(document.getElementById('bulk-barcode-fixed-qty').value, 10) || 1;
@@ -713,16 +714,29 @@ window.generateAndPrintBulkBarcodes = () => {
     // Generate label items based on copies count and color choices
     const labelsToPrint = [];
     selectedModels.forEach(m => {
-        let modelColors = [];
-        if (m.model_inventory && m.model_inventory.length > 0) {
-            modelColors = m.model_inventory.map(inv => {
+        const hasInventoryEntries = m.model_inventory && m.model_inventory.length > 0;
+        
+        let colorsList = [];
+        if (hasInventoryEntries) {
+            let inventoryItems = m.model_inventory;
+            if (skipZeroStock) {
+                inventoryItems = inventoryItems.filter(inv => (inv.available_series || 0) > 0);
+            }
+            const modelColors = inventoryItems.map(inv => {
                 return (inv.colors && inv.colors.name) || colorsMap[inv.color_id] || '';
             }).filter(Boolean);
-            modelColors = [...new Set(modelColors)];
+            colorsList = [...new Set(modelColors)];
+            
+            // If all colors of the model are out of stock and we are skipping out-of-stock, skip this model completely
+            if (colorsList.length === 0 && skipZeroStock) {
+                return;
+            }
         }
         
-        const hasColors = modelColors.length > 0;
-        const colorsList = hasColors ? modelColors : [''];
+        const hasColors = colorsList.length > 0;
+        if (colorsList.length === 0) {
+            colorsList = [''];
+        }
 
         const baseLabel = {
             name: m.name,
@@ -878,8 +892,8 @@ window.generateAndPrintBulkBarcodes = () => {
             display: ${showPrice ? 'block' : 'none'};
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
     <div id="labels-container"></div>
@@ -1001,7 +1015,8 @@ const DEFAULT_BARCODE_TEMPLATES = {
         qtyMode: "fixed",
         fixedQty: 1,
         colorDist: "all_together",
-        showColors: true
+        showColors: true,
+        skipZeroStockColors: true
     },
     "small_3_4": {
         name: "قالب صغير 3×4 سم 🏷️",
@@ -1019,7 +1034,8 @@ const DEFAULT_BARCODE_TEMPLATES = {
         qtyMode: "fixed",
         fixedQty: 1,
         colorDist: "all_together",
-        showColors: true
+        showColors: true,
+        skipZeroStockColors: true
     },
     "qr_standard_5_5": {
         name: "قالب QR مربع 5×5 سم 🔳",
@@ -1037,7 +1053,8 @@ const DEFAULT_BARCODE_TEMPLATES = {
         qtyMode: "fixed",
         fixedQty: 1,
         colorDist: "all_together",
-        showColors: true
+        showColors: true,
+        skipZeroStockColors: true
     }
 };
 
@@ -1116,6 +1133,7 @@ window.loadBarcodeTemplate = () => {
     document.getElementById('bulk-barcode-fixed-qty').value = template.fixedQty || 1;
     document.getElementById('bulk-barcode-color-dist').value = template.colorDist || 'all_together';
     document.getElementById('bulk-barcode-show-colors').checked = template.showColors !== false;
+    document.getElementById('bulk-barcode-skip-zero-stock-colors').checked = template.skipZeroStockColors !== false;
 
     // Toggle qty input state
     window.toggleBarcodeQtyInput();
@@ -1158,7 +1176,8 @@ window.saveBarcodeTemplate = () => {
         qtyMode: document.getElementById('bulk-barcode-qty-mode').value,
         fixedQty: parseInt(document.getElementById('bulk-barcode-fixed-qty').value, 10) || 1,
         colorDist: document.getElementById('bulk-barcode-color-dist').value,
-        showColors: document.getElementById('bulk-barcode-show-colors').checked
+        showColors: document.getElementById('bulk-barcode-show-colors').checked,
+        skipZeroStockColors: document.getElementById('bulk-barcode-skip-zero-stock-colors').checked
     };
 
     localStorage.setItem('devo_barcode_templates', JSON.stringify(saved));
