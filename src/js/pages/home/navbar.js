@@ -31,12 +31,26 @@ export async function initNavbar() {
         showToast('يجب أن تكون من ضمن فريق العمل للوصول لهذه الميزة', 'warning');
     };
 
+    // دالة مساعدة لعرض التنبيهات المخصصة بدلاً من confirm الافتراضي للمتصفح
+    const showCustomConfirm = (message, title = 'تأكيد الإجراء', isDestructive = false) => {
+        if (typeof window.confirmDialog === 'function') {
+            return window.confirmDialog({
+                title: title,
+                message: message,
+                confirmText: 'نعم',
+                cancelText: 'إلغاء',
+                isDestructive: isDestructive
+            });
+        }
+        return Promise.resolve(confirm(message));
+    };
+
     // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
-    // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
-    window.switchSiteView = (targetId, skipHistory = false) => {
+    window.switchSiteView = async (targetId, skipHistory = false) => {
         // تأكيد الخروج من صفحة الباركود إلا إذا كان الهدف هو السلة
         if (!skipHistory && window.currentView === 'view-barcode' && targetId !== 'view-cart') {
-            if (!confirm("هل تريد الخروج من صفحة الباركود؟")) {
+            const confirmed = await showCustomConfirm("هل تريد الخروج من صفحة الباركود؟", "تأكيد الانتقال");
+            if (!confirmed) {
                 return;
             }
         }
@@ -89,8 +103,10 @@ export async function initNavbar() {
         }
     };
 
+    let isConfirmingExit = false;
+
     // الاستماع لحركة الرجوع والتقدم بالمتصفح بشكل مركزي وتوحيد المنطق
-    window.addEventListener('popstate', (event) => {
+    window.addEventListener('popstate', async (event) => {
         // 1. أولاً: التحقق من روابط وتفاصيل الموديل (Deep linking / details modal)
         const urlParams = new URLSearchParams(window.location.search);
         const modelId = urlParams.get('model');
@@ -114,12 +130,24 @@ export async function initNavbar() {
         if (event.state) {
             const targetView = event.state.view;
             if (targetView === 'exit-trap') {
-                // منع مغادرة الموقع نهائياً وإعادته للرئيسية
-                history.pushState({ view: 'view-home' }, '', window.location.pathname + window.location.search);
-                window.switchSiteView('view-home', true);
+                if (isConfirmingExit) return;
+                isConfirmingExit = true;
+
+                // منع مغادرة الموقع نهائياً وسؤال المستخدم أولاً بنافذة مخصصة
+                const confirmed = await showCustomConfirm("هل تريد بالفعل مغادرة الموقع وإغلاق الجلسة؟", "تأكيد الخروج من الموقع", true);
+                isConfirmingExit = false;
+
+                if (confirmed) {
+                    history.back();
+                } else {
+                    // إلغاء الخروج وإعادة دفع حالة الصفحة الحالية لتثبيت الصفحة
+                    history.pushState({ view: window.currentView || 'view-home' }, '', window.location.pathname + window.location.search);
+                    window.switchSiteView(window.currentView || 'view-home', true);
+                }
             } else if (targetView) {
                 if (window.currentView === 'view-barcode' && targetView !== 'view-cart') {
-                    if (confirm("هل تريد الخروج من صفحة الباركود؟")) {
+                    const confirmed = await showCustomConfirm("هل تريد الخروج من صفحة الباركود؟", "تأكيد الانتقال");
+                    if (confirmed) {
                         window.switchSiteView(targetView, true);
                     } else {
                         // إلغاء الخروج وإعادة دفع حالة الباركود لتثبيت الصفحة
