@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS public.system_notifications (
 -- تمكين الاستماع اللحظي (Realtime) للجدول في Supabase
 alter publication supabase_realtime add table public.system_notifications;
 
+-- ⚠️ هام جداً: تعطيل سياسة حماية الصفوف (RLS) لأن تطبيقك يستخدم تسجيل دخول مخصص بجدول system_users
+-- مما يجعل المتصفح يعمل بصلاحية (anon/public) ويؤدي لظهور خطأ 401 عند إدخال أو جلب إشعارات.
+ALTER TABLE public.system_notifications DISABLE ROW LEVEL SECURITY;
+
+-- في حال رغبت بالإبقاء على RLS مفعلاً، يمكنك تشغيل السياسة التالية للسماح بالوصول العام:
+-- CREATE POLICY "Allow all public actions" ON public.system_notifications FOR ALL TO public USING (true) WITH CHECK (true);
+
+
 -- ============================================================
 -- 2. أتمتة إشعارات الطلبات (إضافة / تعديل / إسناد لعامل)
 -- ============================================================
