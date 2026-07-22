@@ -135,6 +135,13 @@ async function loadViewLogic(targetId) {
         return; 
     }
 
+    if (targetId === 'view-add-batch' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return; 
+    }
+
     switch (targetId) {
             case 'view-dashboard':
             const { initDashboard } = await import('./dashboard.js');
@@ -169,6 +176,10 @@ async function loadViewLogic(targetId) {
         case 'view-import-stock':
             const { initImportStockView } = await import('./import_stock.js');
             await initImportStockView();
+            break;
+        case 'view-add-batch':
+            const { initInboundInvoicesView } = await import('./inbound_invoices.js');
+            await initInboundInvoicesView();
             break;
         case 'view-preparation':
             const { initPreparationView } = await import('./preparation.js');
@@ -260,6 +271,11 @@ export async function refreshAllSystemData(options = {}) {
             await importMod.loadInitialData();
         }
 
+        const inboundMod = await import('./inbound_invoices.js').catch(() => null);
+        if (inboundMod && typeof inboundMod.loadInboundData === 'function') {
+            await inboundMod.loadInboundData();
+        }
+
         // 2. Identify active view and refresh its data
         const activeView = document.querySelector('.view-section:not(.hidden)');
         const activeViewId = activeView ? activeView.id : null;
@@ -290,6 +306,12 @@ export async function refreshAllSystemData(options = {}) {
                     const ordersMod = await import('./admin_orders.js').catch(() => null);
                     if (ordersMod && typeof ordersMod.fetchAdminOrders === 'function') {
                         await ordersMod.fetchAdminOrders();
+                    }
+                    break;
+                }
+                case 'view-add-batch': {
+                    if (inboundMod && typeof inboundMod.loadInboundData === 'function') {
+                        await inboundMod.loadInboundData();
                     }
                     break;
                 }

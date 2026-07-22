@@ -32,6 +32,7 @@ function setupWindowBindings() {
     window.deleteNotification = deleteNotification;
     window.viewNotificationTarget = viewNotificationTarget;
     window.saveTelegramSettings = saveTelegramSettings;
+    window.toggleTelegramSettingsCard = toggleTelegramSettingsCard;
 }
 
 // 1. جلب الإشعارات بالكامل من قاعدة البيانات
@@ -142,7 +143,7 @@ function renderNotifications() {
                         ${unreadIndicator}
                         <span class="text-[10px] text-devo-muted mr-auto font-mono">${dateStr}</span>
                     </div>
-                    <p class="text-xs text-devo-muted leading-relaxed">${n.body}</p>
+                    <p class="text-xs text-devo-muted leading-relaxed whitespace-pre-wrap">${n.body}</p>
                     
                     <div class="flex items-center justify-between pt-2 border-t border-devo-gray/20 mt-2">
                         <!-- رابط الانتقال السريع -->
@@ -360,6 +361,9 @@ export async function broadcastCustomNotification() {
         btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري البث...`;
     }
 
+    const sendTgInput = document.getElementById('broadcast-send-tg');
+    const sendToTelegram = sendTgInput ? sendTgInput.checked : false;
+
     try {
         const { error } = await supabase
             .from('system_notifications')
@@ -367,7 +371,10 @@ export async function broadcastCustomNotification() {
                 type: 'custom_broadcast',
                 title: title,
                 body: body,
-                metadata: { broadcasted_by: 'Admin Panel' }
+                metadata: { 
+                    broadcasted_by: 'Admin Panel',
+                    send_to_telegram: sendToTelegram
+                }
             }]);
 
         if (error) throw error;
@@ -410,7 +417,7 @@ async function loadTelegramSettings() {
         const { data, error } = await supabase
             .from('home_settings')
             .select('*')
-            .in('setting_key', ['telegram_enabled', 'telegram_bot_token', 'telegram_chat_id']);
+            .in('setting_key', ['telegram_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_stock_chat_id']);
             
         if (error) throw error;
         
@@ -422,10 +429,12 @@ async function loadTelegramSettings() {
         const enabledInput = document.getElementById('telegram-enabled');
         const tokenInput = document.getElementById('telegram-bot-token');
         const chatInput = document.getElementById('telegram-chat-id');
+        const stockChatInput = document.getElementById('telegram-stock-chat-id');
         
         if (enabledInput) enabledInput.checked = settings['telegram_enabled'] === 'true';
         if (tokenInput) tokenInput.value = settings['telegram_bot_token'] || '';
         if (chatInput) chatInput.value = settings['telegram_chat_id'] || '';
+        if (stockChatInput) stockChatInput.value = settings['telegram_stock_chat_id'] || '';
     } catch (e) {
         console.error('Error loading Telegram settings:', e);
     }
@@ -436,13 +445,15 @@ export async function saveTelegramSettings() {
     const enabledInput = document.getElementById('telegram-enabled');
     const tokenInput = document.getElementById('telegram-bot-token');
     const chatInput = document.getElementById('telegram-chat-id');
+    const stockChatInput = document.getElementById('telegram-stock-chat-id');
     const btn = document.getElementById('save-tg-btn');
     
-    if (!enabledInput || !tokenInput || !chatInput) return;
+    if (!enabledInput || !tokenInput || !chatInput || !stockChatInput) return;
     
     const enabled = enabledInput.checked ? 'true' : 'false';
     const token = tokenInput.value.trim();
     const chat = chatInput.value.trim();
+    const stockChat = stockChatInput.value.trim();
     
     if (enabled === 'true' && (!token || !chat)) {
         showToast('يرجى إدخال التوكن ومعرّف المحادثة لتفعيل التنبيهات', 'warning');
@@ -458,7 +469,8 @@ export async function saveTelegramSettings() {
         const updates = [
             { setting_key: 'telegram_enabled', setting_value: enabled },
             { setting_key: 'telegram_bot_token', setting_value: token },
-            { setting_key: 'telegram_chat_id', setting_value: chat }
+            { setting_key: 'telegram_chat_id', setting_value: chat },
+            { setting_key: 'telegram_stock_chat_id', setting_value: stockChat }
         ];
         
         const { error } = await supabase
@@ -476,5 +488,21 @@ export async function saveTelegramSettings() {
             btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-floppy-disk text-base"></i> حفظ إعدادات تليجرام`;
         }
+    }
+}
+
+// 11. إظهار/إخفاء لوحة إعدادات التليجرام السرية
+export function toggleTelegramSettingsCard() {
+    const card = document.getElementById('telegram-settings-card');
+    const icon = document.getElementById('tg-lock-icon');
+    if (!card || !icon) return;
+    
+    if (card.classList.contains('hidden')) {
+        card.classList.remove('hidden');
+        icon.className = 'ph ph-lock-simple-open text-base';
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        card.classList.add('hidden');
+        icon.className = 'ph ph-lock text-base';
     }
 }

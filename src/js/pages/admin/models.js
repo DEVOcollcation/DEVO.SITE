@@ -21,7 +21,7 @@ let currentModelMovements = [];
 export async function initModelsView() {
     if (isInitialized) return;
     
-    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
+    ['model-search', 'filter-status', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', applyFilters);
@@ -292,6 +292,8 @@ window.clearModelFilters = () => {
         const el = document.getElementById(id);
         if(el) el.value = '';
     });
+    const statusEl = document.getElementById('filter-status');
+    if (statusEl) statusEl.value = 'all';
     const stockQty = document.getElementById('filter-stock-qty');
     if (stockQty) stockQty.classList.add('hidden');
     applyFilters(); 
@@ -299,6 +301,7 @@ window.clearModelFilters = () => {
 
 function applyFilters() {
     const term = document.getElementById('model-search')?.value.toLowerCase() || '';
+    const modelStatus = document.getElementById('filter-status')?.value || 'all';
     const catId = document.getElementById('filter-category')?.value || '';
     const classId = document.getElementById('filter-class')?.value || '';
     const stockStatus = document.getElementById('filter-stock')?.value || '';
@@ -310,6 +313,21 @@ function applyFilters() {
     currentFilteredModels = allModels.filter(m => {
         let isMatch = true;
         const totalQty = m.model_inventory?.reduce((sum, inv) => sum + inv.available_series, 0) || 0;
+
+        // Model Status filtering
+        if (modelStatus === 'active') {
+            if (!m.is_active) isMatch = false;
+        } else if (modelStatus === 'inactive') {
+            if (m.is_active) isMatch = false;
+        } else if (modelStatus === 'active_zero') {
+            if (!m.is_active || totalQty !== 0) isMatch = false;
+        } else if (modelStatus === 'active_not_zero') {
+            if (!m.is_active || totalQty === 0) isMatch = false;
+        } else if (modelStatus === 'active_under_five') {
+            if (!m.is_active || totalQty >= 5) isMatch = false;
+        } else if (modelStatus === 'inactive_under_five') {
+            if (m.is_active || totalQty >= 5) isMatch = false;
+        }
 
         if (term && !m.factory_code?.toLowerCase().includes(term) && !m.name?.toLowerCase().includes(term)) isMatch = false;
         if (catId && m.category_id !== catId) isMatch = false;

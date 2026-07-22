@@ -32,7 +32,7 @@ export function showToast(message, type = 'success') {
     
     toast.innerHTML = `
         <i class="ph ${style.icon} text-xl ${style.color}"></i>
-        <span class="text-devo-text text-sm font-medium leading-relaxed">${message}</span>
+        <span class="text-devo-text text-sm font-medium leading-relaxed whitespace-pre-line">${message}</span>
     `;
     
     container.appendChild(toast);

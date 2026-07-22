@@ -19,6 +19,41 @@ export async function initNotifications() {
     window.addEventListener('devo:notifications-updated', async () => {
         await fetchUnreadNotifications();
     });
+
+    // اقتراح تفعيل إشعارات المتصفح للعمال والمسؤولين المسجلين إذا لم يفعلوا ذلك بعد
+    if (currentUser && 'Notification' in window && Notification.permission === 'default') {
+        const alreadyPrompted = sessionStorage.getItem('devo_notification_prompted');
+        if (!alreadyPrompted) {
+            sessionStorage.setItem('devo_notification_prompted', 'true');
+            setTimeout(async () => {
+                const confirmed = await window.confirmDialog?.({
+                    title: '🔔 تفعيل تنبيهات سطح المكتب',
+                    message: 'هل ترغب في تفعيل إشعارات المتصفح الفورية لتلقي تنبيهات الطلبات وتحديثات المخازن اللحظية على جهازك؟',
+                    confirmText: 'تفعيل الآن',
+                    cancelText: 'ليس الآن'
+                });
+                
+                if (confirmed) {
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                        showToast('تم تفعيل إشعارات سطح المكتب بنجاح 🔔', 'success');
+                        // إرسال إشعار تجريبي
+                        try {
+                            new Notification('DEVO System', {
+                                body: 'ستتلقى إشعارات هنا عند حدوث تغييرات بالسيستم.',
+                                icon: './src/assets/icons/dv.png'
+                            });
+                        } catch (e) {}
+                        
+                        const desktopBtn = document.getElementById('request-desktop-notifications-btn');
+                        if (desktopBtn) updateDesktopBtnUI();
+                    } else {
+                        showToast('تم رفض صلاحية الإشعارات', 'error');
+                    }
+                }
+            }, 3000);
+        }
+    }
 }
 
 // تحميل بيانات الجلسة الحالية للمستخدم
