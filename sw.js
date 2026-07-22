@@ -1,4 +1,4 @@
-const CACHE_NAME = 'devo-v3';
+const CACHE_NAME = 'devo-v5';
 const assets = [
   './',
   './index.html',
@@ -6,6 +6,8 @@ const assets = [
   './warehouse.html',
   './auth.html',
   './src/assets/icons/dv.png',
+  './src/assets/icons/pwa-192.jpg',
+  './src/assets/icons/pwa-512.jpg',
   './manifest-index.json',
   './manifest-admin.json',
   './manifest-warehouse.json'
