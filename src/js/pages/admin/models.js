@@ -392,12 +392,12 @@ function generateModelCardHTML(m) {
 
     return `
     <div id="admin-model-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl transition-all duration-300 flex flex-col ${cardClass}">
-        <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl p-1">
+        <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl p-3">
             <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 w-full h-full object-contain transition-transform hover:scale-105" onerror="this.src='./src/assets/icons/devo.png'">
-            <div class="absolute top-3 right-3 z-10">${badgeHTML}</div>
-            ${!m.is_active ? `<div class="absolute top-3 left-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-10">معطل</div>` : ''}
+            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-300 hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'">
+            <div class="absolute top-3 right-3 z-20">${badgeHTML}</div>
+            ${!m.is_active ? `<div class="absolute top-3 left-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-20">معطل</div>` : ''}
         </div>
         <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
             <div>

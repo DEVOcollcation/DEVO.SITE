@@ -239,7 +239,7 @@ window.detectPromoImageAspect = (imgEl, cardId) => {
         cardEl.className = "w-[82vw] md:w-full bg-gradient-to-br from-devo-dark to-devo-dark/95 border border-devo-gray/50 rounded-2xl overflow-hidden card-hover transition-all duration-500 flex flex-row relative group cursor-pointer h-52 sm:h-60 shadow-md hover:shadow-xl hover:shadow-devo-orange/5 hover:-translate-y-1 hover:scale-[1.015] active:scale-[0.98] snap-center shrink-0";
         
         if (imgWrapper) {
-            imgWrapper.className = "promo-img-container w-1/3 sm:w-2/5 h-full bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-1.5 border-l border-devo-gray/30 overflow-hidden";
+            imgWrapper.className = "promo-img-container w-1/3 sm:w-2/5 h-full bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-2.5 border-l border-devo-gray/30 overflow-hidden";
         }
         if (textWrapper) {
             textWrapper.className = "promo-text-container p-3.5 sm:p-4 flex flex-col justify-between flex-1 h-full min-w-0 relative z-10";
@@ -250,7 +250,7 @@ window.detectPromoImageAspect = (imgEl, cardId) => {
         cardEl.className = "w-[82vw] md:w-full bg-gradient-to-br from-devo-dark to-devo-dark/95 border border-devo-gray/50 rounded-2xl overflow-hidden card-hover transition-all duration-500 flex flex-col relative group cursor-pointer h-72 sm:h-80 shadow-md hover:shadow-xl hover:shadow-devo-orange/5 hover:-translate-y-1 hover:scale-[1.015] active:scale-[0.98] snap-center shrink-0";
         
         if (imgWrapper) {
-            imgWrapper.className = "promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-2 border-b border-devo-gray/30 overflow-hidden";
+            imgWrapper.className = "promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-3 border-b border-devo-gray/30 overflow-hidden";
         }
         if (textWrapper) {
             textWrapper.className = "promo-text-container p-3.5 sm:p-4 flex flex-col justify-between flex-1 h-full min-w-0 relative z-10";
@@ -317,11 +317,11 @@ async function loadPromoCards() {
         const imgUrl = resolveImageUrl(card.image_url);
         
         const imgHtml = imgUrl 
-            ? `<div class="promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-2 border-b border-devo-gray/30 overflow-hidden">
+            ? `<div class="promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-3 border-b border-devo-gray/30 overflow-hidden">
                 <img src="${imgUrl}" class="promo-blur-bg animate-drift absolute inset-0 w-full h-full object-cover blur-md scale-125 opacity-60 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
                 <div class="absolute inset-0 bg-black/10 backdrop-blur-[2px] pointer-events-none"></div>
                 <div class="w-full h-full transition-transform duration-700 ease-out group-hover:scale-[1.06] flex items-center justify-center relative z-10">
-                    <img src="${imgUrl}" class="promo-main-img w-full h-full object-contain animate-kenburns" loading="lazy" onload="window.detectPromoImageAspect(this, '${card.id}')">
+                    <img src="${imgUrl}" class="promo-main-img max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md animate-kenburns" loading="lazy" onload="window.detectPromoImageAspect(this, '${card.id}')">
                 </div>
                </div>`
             : `<div class="promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center text-devo-gray/30 border-b border-devo-gray/30"><i class="ph ${card.icon || 'ph-image'} text-5xl"></i></div>`;

@@ -37,6 +37,20 @@ ALTER TABLE public.system_notifications DISABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
+-- 1.5. إنشاء جدول طابور تنبيهات المخزون المؤقت لإرسال رسائل مجمعة للتليجرام
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.inventory_notification_queue (
+    transaction_id text NOT NULL,
+    model_id uuid NOT NULL,
+    color_id uuid NOT NULL,
+    new_available_series int NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT pk_inventory_notification_queue PRIMARY KEY (transaction_id, model_id, color_id)
+);
+ALTER TABLE public.inventory_notification_queue DISABLE ROW LEVEL SECURITY;
+
+
+-- ============================================================
 -- 2. أتمتة إشعارات الطلبات (إضافة / تعديل / إسناد لعامل)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.handle_order_changes_notification()
@@ -51,7 +65,7 @@ BEGIN
     IF (TG_OP = 'INSERT') THEN
         notification_type := 'order_created';
         notification_title := '🚨 أوردر جديد قد وصل!';
-        notification_body := '🧾 رقم الأوردر: ' || COALESCE(NEW.invoice_number, 'غير محدد') || E'\n' ||
+        notification_body := '🧾 رقم الأوردر: ' || COALESCE(NEW.invoice_number, 'غير حدد') || E'\n' ||
                              '👤 اسم العميل: ' || COALESCE(NEW.customer_name, 'غير معروف') || E'\n' ||
                              '📞 رقم الهاتف: ' || COALESCE(NEW.phone_1, 'غير محدد') || 
                              CASE WHEN NEW.phone_2 IS NOT NULL AND NEW.phone_2 <> '' THEN ' / ' || NEW.phone_2 ELSE '' END || E'\n' ||
@@ -101,6 +115,7 @@ AFTER INSERT OR UPDATE ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_order_changes_notification();
 
+
 -- ============================================================
 -- 3. أتمتة إشعارات نفاد المخزون للألوان والموديلات (الوصول لـ 0)
 -- ============================================================
@@ -124,6 +139,12 @@ BEGIN
         INSERT INTO public.system_notifications (type, title, body, metadata)
         VALUES ('out_of_stock', notification_title, notification_body, jsonb_build_object('model_id', NEW.model_id, 'color_id', NEW.color_id, 'model_code', model_factory_code, 'color_name', color_name));
         
+        -- إدراج التغيير في جدول الطابور المؤقت لمعالجته بنهاية المعاملة للتليجرام
+        INSERT INTO public.inventory_notification_queue (transaction_id, model_id, color_id, new_available_series)
+        VALUES (pg_current_xact_id()::text, NEW.model_id, NEW.color_id, 0)
+        ON CONFLICT (transaction_id, model_id, color_id)
+        DO UPDATE SET new_available_series = 0;
+        
     -- التحقق من عودة الكمية للتوفر بعد أن كانت صفراً (تعديل أوردر، إلغاء صنف، أو إرجاع)
     ELSIF (NEW.available_series > 0 AND OLD.available_series = 0) THEN
         -- جلب كود الموديل المصنعي واسم اللون
@@ -135,6 +156,12 @@ BEGIN
         
         INSERT INTO public.system_notifications (type, title, body, metadata)
         VALUES ('restocked', notification_title, notification_body, jsonb_build_object('model_id', NEW.model_id, 'color_id', NEW.color_id, 'model_code', model_factory_code, 'color_name', color_name, 'available_series', NEW.available_series));
+        
+        -- إدراج التغيير في جدول الطابور المؤقت لمعالجته بنهاية المعاملة للتليجرام
+        INSERT INTO public.inventory_notification_queue (transaction_id, model_id, color_id, new_available_series)
+        VALUES (pg_current_xact_id()::text, NEW.model_id, NEW.color_id, NEW.available_series)
+        ON CONFLICT (transaction_id, model_id, color_id)
+        DO UPDATE SET new_available_series = EXCLUDED.new_available_series;
     END IF;
     
     RETURN NEW;
@@ -147,6 +174,149 @@ CREATE TRIGGER trg_inventory_out_of_stock
 AFTER INSERT OR UPDATE ON public.model_inventory
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_inventory_out_of_stock();
+
+
+-- ============================================================
+-- 3.5. معالجة طابور تنبيهات المخزون مجمعة بنهاية المعاملة (Constraint Trigger)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.process_inventory_notification_queue()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_tx_id text;
+    v_bot_token text;
+    v_is_tg_enabled text;
+    v_is_stock_enabled text;
+    v_chat_id text;
+    
+    v_model_record RECORD;
+    v_color_record RECORD;
+    
+    v_model_name text;
+    v_factory_code text;
+    v_category_name text;
+    v_class_name text;
+    
+    v_out_colors text;
+    v_color_name text;
+    v_message text;
+    v_has_rows boolean := false;
+BEGIN
+    v_tx_id := pg_current_xact_id()::text;
+    
+    -- تحقق أولاً إذا كان هناك أي عناصر مسجلة لهذه المعاملة
+    SELECT EXISTS (
+        SELECT 1 FROM public.inventory_notification_queue WHERE transaction_id = v_tx_id
+    ) INTO v_has_rows;
+    
+    IF NOT v_has_rows THEN
+        RETURN NULL;
+    END IF;
+
+    -- جلب إعدادات التليجرام
+    SELECT setting_value INTO v_bot_token FROM public.home_settings WHERE setting_key = 'telegram_bot_token';
+    SELECT setting_value INTO v_is_tg_enabled FROM public.home_settings WHERE setting_key = 'telegram_enabled';
+    SELECT setting_value INTO v_is_stock_enabled FROM public.home_settings WHERE setting_key = 'telegram_stock_enabled';
+    
+    -- الإرسال فقط إذا كان التليجرام وبوت المخزن مفعلين
+    IF (v_is_tg_enabled = 'true' AND COALESCE(v_is_stock_enabled, 'true') = 'true' AND v_bot_token IS NOT NULL AND v_bot_token <> '') THEN
+        -- تحديد جروب المخازن
+        SELECT setting_value INTO v_chat_id FROM public.home_settings WHERE setting_key = 'telegram_stock_chat_id';
+        IF (v_chat_id IS NULL OR v_chat_id = '') THEN
+            SELECT setting_value INTO v_chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
+        END IF;
+        
+        IF (v_chat_id IS NOT NULL AND v_chat_id <> '') THEN
+            -- التكرار على الموديلات المتأثرة في هذه المعاملة
+            FOR v_model_record IN 
+                SELECT DISTINCT model_id 
+                FROM public.inventory_notification_queue 
+                WHERE transaction_id = v_tx_id
+            LOOP
+                -- جلب تفاصيل الموديل والتصنيفات
+                SELECT 
+                    m.name, 
+                    m.factory_code, 
+                    cat.name as category_name, 
+                    cls.name as class_name
+                INTO 
+                    v_model_name, 
+                    v_factory_code, 
+                    v_category_name, 
+                    v_class_name
+                FROM public.models m
+                LEFT JOIN public.categories cat ON cat.id = m.category_id
+                LEFT JOIN public.classes cls ON cls.id = m.class_id
+                WHERE m.id = v_model_record.model_id;
+                
+                v_out_colors := '';
+                
+                -- تجميع الألوان المرتبطة بهذا الموديل
+                FOR v_color_record IN 
+                    SELECT q.color_id, q.new_available_series
+                    FROM public.inventory_notification_queue q
+                    WHERE q.transaction_id = v_tx_id 
+                      AND q.model_id = v_model_record.model_id
+                LOOP
+                    SELECT name INTO v_color_name FROM public.colors WHERE id = v_color_record.color_id;
+                    
+                    IF v_color_record.new_available_series = 0 THEN
+                        v_out_colors := v_out_colors || E'• ' || COALESCE(v_color_name, 'غير معروف') || E' (نفد ❌)\n';
+                    ELSE
+                        v_out_colors := v_out_colors || E'• ' || COALESCE(v_color_name, 'غير معروف') || ' (' || v_color_record.new_available_series || E' سري متاح ✅)\n';
+                    END IF;
+                END LOOP;
+                
+                -- تجهيز وإرسال الرسالة
+                IF (v_out_colors <> '') THEN
+                    -- ترميز الحروف الخاصة بالـ HTML لمنع فشل التليجرام
+                    v_model_name := replace(replace(replace(COALESCE(v_model_name, 'غير معروف'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+                    v_factory_code := replace(replace(replace(COALESCE(v_factory_code, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+                    v_category_name := replace(replace(replace(COALESCE(v_category_name, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+                    v_class_name := replace(replace(replace(COALESCE(v_class_name, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+                    
+                    v_message := '<b>📦 تحديث حالة الموديل:</b> ' || v_model_name || E'\n';
+                    IF (v_factory_code <> '') THEN
+                        v_message := v_message || '<b>🏷️ كود المصنع:</b> <code>' || v_factory_code || E'</code>\n';
+                    END IF;
+                    IF (v_category_name <> '') THEN
+                        v_message := v_message || '<b>📝 التصنيف/الوصف:</b> ' || v_category_name || E'\n';
+                    END IF;
+                    IF (v_class_name <> '') THEN
+                        v_message := v_message || '<b>👥 الفئة العمرية:</b> ' || v_class_name || E'\n';
+                    END IF;
+                    v_message := v_message || E'\n';
+                    v_message := v_message || E'<b>الألوان وحالتها بالمخزن:</b>\n' || v_out_colors;
+                    
+                    -- إرسال الطلب غير الحظري عبر pg_net
+                    PERFORM net.http_post(
+                        url := 'https://api.telegram.org/bot' || v_bot_token || '/sendMessage',
+                        body := jsonb_build_object(
+                            'chat_id', v_chat_id,
+                            'text', v_message,
+                            'parse_mode', 'HTML'
+                        ),
+                        headers := '{"Content-Type": "application/json"}'::jsonb
+                    );
+                END IF;
+            END LOOP;
+        END IF;
+    END IF;
+    
+    -- تفريغ الطابور لهذه المعاملة
+    DELETE FROM public.inventory_notification_queue WHERE transaction_id = v_tx_id;
+    
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ربط التريجر كـ Constraint Trigger مؤجل للنهاية (INITIALLY DEFERRED)
+DROP TRIGGER IF EXISTS trg_deferred_inventory_notification ON public.model_inventory;
+CREATE CONSTRAINT TRIGGER trg_deferred_inventory_notification
+AFTER INSERT OR UPDATE ON public.model_inventory
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION public.process_inventory_notification_queue();
+
 
 -- ============================================================
 -- 4. إعداد وتفعيل إرسال الإشعارات إلى بوت التليجرام (Telegram Bot)
@@ -163,45 +333,87 @@ DECLARE
     chat_id text;
     is_tg_enabled text;
     formatted_message text;
-    should_send_tg boolean := true;
 BEGIN
-    -- إذا كان البث مخصصاً من الأدمن، نتحقق من اختيار إرساله للتليجرام بالميتاداتا
-    IF (NEW.type = 'custom_broadcast') THEN
-        IF (COALESCE(NEW.metadata->>'send_to_telegram', 'false') <> 'true') THEN
-            should_send_tg := false;
-        END IF;
+    -- تخطي إشعارات المخزون الفردية لأنها تُرسل مجمّعة ومصنفة بالتريجر المؤجل
+    IF (NEW.type = 'out_of_stock' OR NEW.type = 'restocked') THEN
+        RETURN NEW;
     END IF;
 
     -- جلب إعدادات تليجرام الحالية من جدول الإعدادات
     SELECT setting_value INTO bot_token FROM public.home_settings WHERE setting_key = 'telegram_bot_token';
     SELECT setting_value INTO is_tg_enabled FROM public.home_settings WHERE setting_key = 'telegram_enabled';
 
-    -- تحديد معرف المجموعة المستهدفة بناءً على نوع التنبيه (مخزن أم طلبات)
-    IF (NEW.type = 'out_of_stock' OR NEW.type = 'restocked') THEN
-        SELECT setting_value INTO chat_id FROM public.home_settings WHERE setting_key = 'telegram_stock_chat_id';
-        -- في حال عدم إعداد جروب المخزن بعد، نقع كاحتياط على جروب الطلبات الرئيسي
-        IF (chat_id IS NULL OR chat_id = '') THEN
-            SELECT setting_value INTO chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
-        END IF;
-    ELSE
-        SELECT setting_value INTO chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
+    -- إذا كان البث مخصصاً من الأدمن، نتحقق من اختيار إرساله للتليجرام والجهة المحددة بالميتاداتا
+    IF (NEW.type = 'custom_broadcast') THEN
+        DECLARE
+            v_tg_target text;
+            v_orders_chat text;
+            v_stock_chat text;
+            v_title text;
+            v_body text;
+        BEGIN
+            v_tg_target := COALESCE(NEW.metadata->>'telegram_target', 'none');
+            
+            -- التحقق من التفعيل والتوكن والهدف
+            IF (v_tg_target = 'none' OR is_tg_enabled <> 'true' OR bot_token IS NULL OR bot_token = '') THEN
+                RETURN NEW;
+            END IF;
+            
+            SELECT setting_value INTO v_orders_chat FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
+            SELECT setting_value INTO v_stock_chat FROM public.home_settings WHERE setting_key = 'telegram_stock_chat_id';
+            
+            -- ترميز الحروف الخاصة لحماية الـ HTML من أخطاء التحليل
+            v_title := replace(replace(replace(COALESCE(NEW.title, 'تنبيه مخصص'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+            v_body := replace(replace(replace(COALESCE(NEW.body, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+            formatted_message := '<b>' || v_title || '</b>' || E'\n\n' || v_body;
+            
+            -- الإرسال لمجموعة الطلبات
+            IF ((v_tg_target = 'orders' OR v_tg_target = 'both') AND v_orders_chat IS NOT NULL AND v_orders_chat <> '') THEN
+                PERFORM net.http_post(
+                    url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
+                    body := jsonb_build_object('chat_id', v_orders_chat, 'text', formatted_message, 'parse_mode', 'HTML'),
+                    headers := '{"Content-Type": "application/json"}'::jsonb
+                );
+            END IF;
+            
+            -- الإرسال لمجموعة المخازن
+            IF ((v_tg_target = 'stock' OR v_tg_target = 'both') AND v_stock_chat IS NOT NULL AND v_stock_chat <> '') THEN
+                PERFORM net.http_post(
+                    url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
+                    body := jsonb_build_object('chat_id', v_stock_chat, 'text', formatted_message, 'parse_mode', 'HTML'),
+                    headers := '{"Content-Type": "application/json"}'::jsonb
+                );
+            END IF;
+            
+            RETURN NEW;
+        END;
     END IF;
 
-    -- التحقق من تفعيل الخدمة ووجود التوكن ومعرف الشات وخيار الإرسال
-    IF (should_send_tg AND is_tg_enabled = 'true' AND bot_token IS NOT NULL AND chat_id IS NOT NULL AND bot_token <> '' AND chat_id <> '') THEN
-        -- تنسيق الرسالة بشكل أنيق للتيليجرام باستخدام HTML
-        formatted_message := '<b>' || COALESCE(NEW.title, 'تنبيه جديد') || '</b>' || E'\n\n' || COALESCE(NEW.body, '');
+    -- للأنواع الأخرى (إشعارات الطلبات)
+    SELECT setting_value INTO chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
 
-        -- إرسال الطلب غير الحظري للخلفية لضمان سرعة المعاملات بالداتا بيز وعدم حظرها
-        PERFORM net.http_post(
-            url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
-            body := jsonb_build_object(
-                'chat_id', chat_id,
-                'text', formatted_message,
-                'parse_mode', 'HTML'
-            ),
-            headers := '{"Content-Type": "application/json"}'::jsonb
-        );
+    -- التحقق من تفعيل الخدمة ووجود التوكن ومعرف الشات
+    IF (is_tg_enabled = 'true' AND bot_token IS NOT NULL AND chat_id IS NOT NULL AND bot_token <> '' AND chat_id <> '') THEN
+        DECLARE
+            v_title text;
+            v_body text;
+        BEGIN
+            -- ترميز الحروف الخاصة لحماية الـ HTML من أخطاء التحليل
+            v_title := replace(replace(replace(COALESCE(NEW.title, 'تنبيه جديد'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+            v_body := replace(replace(replace(COALESCE(NEW.body, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+            formatted_message := '<b>' || v_title || '</b>' || E'\n\n' || v_body;
+
+            -- إرسال الطلب غير الحظري للخلفية لضمان سرعة المعاملات بالداتا بيز وعدم حظرها
+            PERFORM net.http_post(
+                url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
+                body := jsonb_build_object(
+                    'chat_id', chat_id,
+                    'text', formatted_message,
+                    'parse_mode', 'HTML'
+                ),
+                headers := '{"Content-Type": "application/json"}'::jsonb
+            );
+        END;
     END IF;
 
     RETURN NEW;
@@ -364,4 +576,12 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'invoice_number', v_invoice_number, 'order_id', v_order_id);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- تهيئة الإعدادات الافتراضية لمركز الإشعارات والربط
+INSERT INTO public.home_settings (setting_key, setting_value) VALUES 
+('telegram_stock_enabled', 'true'),
+('web_notifications_enabled', 'true')
+ON CONFLICT (setting_key) DO NOTHING;
+
 

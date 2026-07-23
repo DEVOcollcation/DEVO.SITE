@@ -361,8 +361,8 @@ export async function broadcastCustomNotification() {
         btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري البث...`;
     }
 
-    const sendTgInput = document.getElementById('broadcast-send-tg');
-    const sendToTelegram = sendTgInput ? sendTgInput.checked : false;
+    const tgTargetInput = document.getElementById('broadcast-tg-target');
+    const tgTarget = tgTargetInput ? tgTargetInput.value : 'none';
 
     try {
         const { error } = await supabase
@@ -373,7 +373,7 @@ export async function broadcastCustomNotification() {
                 body: body,
                 metadata: { 
                     broadcasted_by: 'Admin Panel',
-                    send_to_telegram: sendToTelegram
+                    telegram_target: tgTarget
                 }
             }]);
 
@@ -417,7 +417,7 @@ async function loadTelegramSettings() {
         const { data, error } = await supabase
             .from('home_settings')
             .select('*')
-            .in('setting_key', ['telegram_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_stock_chat_id']);
+            .in('setting_key', ['telegram_enabled', 'telegram_stock_enabled', 'web_notifications_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_stock_chat_id']);
             
         if (error) throw error;
         
@@ -427,11 +427,15 @@ async function loadTelegramSettings() {
         }
         
         const enabledInput = document.getElementById('telegram-enabled');
+        const stockEnabledInput = document.getElementById('telegram-stock-enabled');
+        const webNotificationsInput = document.getElementById('web-notifications-enabled');
         const tokenInput = document.getElementById('telegram-bot-token');
         const chatInput = document.getElementById('telegram-chat-id');
         const stockChatInput = document.getElementById('telegram-stock-chat-id');
         
         if (enabledInput) enabledInput.checked = settings['telegram_enabled'] === 'true';
+        if (stockEnabledInput) stockEnabledInput.checked = settings['telegram_stock_enabled'] !== 'false';
+        if (webNotificationsInput) webNotificationsInput.checked = settings['web_notifications_enabled'] !== 'false';
         if (tokenInput) tokenInput.value = settings['telegram_bot_token'] || '';
         if (chatInput) chatInput.value = settings['telegram_chat_id'] || '';
         if (stockChatInput) stockChatInput.value = settings['telegram_stock_chat_id'] || '';
@@ -443,6 +447,8 @@ async function loadTelegramSettings() {
 // 10. حفظ إعدادات تليجرام في جدول home_settings
 export async function saveTelegramSettings() {
     const enabledInput = document.getElementById('telegram-enabled');
+    const stockEnabledInput = document.getElementById('telegram-stock-enabled');
+    const webNotificationsInput = document.getElementById('web-notifications-enabled');
     const tokenInput = document.getElementById('telegram-bot-token');
     const chatInput = document.getElementById('telegram-chat-id');
     const stockChatInput = document.getElementById('telegram-stock-chat-id');
@@ -451,6 +457,8 @@ export async function saveTelegramSettings() {
     if (!enabledInput || !tokenInput || !chatInput || !stockChatInput) return;
     
     const enabled = enabledInput.checked ? 'true' : 'false';
+    const stockEnabled = stockEnabledInput ? (stockEnabledInput.checked ? 'true' : 'false') : 'true';
+    const webNotifications = webNotificationsInput ? (webNotificationsInput.checked ? 'true' : 'false') : 'true';
     const token = tokenInput.value.trim();
     const chat = chatInput.value.trim();
     const stockChat = stockChatInput.value.trim();
@@ -468,6 +476,8 @@ export async function saveTelegramSettings() {
     try {
         const updates = [
             { setting_key: 'telegram_enabled', setting_value: enabled },
+            { setting_key: 'telegram_stock_enabled', setting_value: stockEnabled },
+            { setting_key: 'web_notifications_enabled', setting_value: webNotifications },
             { setting_key: 'telegram_bot_token', setting_value: token },
             { setting_key: 'telegram_chat_id', setting_value: chat },
             { setting_key: 'telegram_stock_chat_id', setting_value: stockChat }

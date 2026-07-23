@@ -770,6 +770,20 @@ export function applyTheme(theme) {
     }
   `;
 
+  // 3.5. Inactive Navigation Links Readability Overrides
+  cssText += `
+    header [data-nav-view].text-devo-muted,
+    .top-navigation [data-nav-view].text-devo-muted,
+    #mobile-nav-links [data-nav-view].text-devo-muted {
+      color: ${isLightPageBg ? 'rgba(0, 0, 0, 0.65)' : 'rgba(255, 255, 255, 0.75)'} !important;
+    }
+    header [data-nav-view].text-devo-muted:hover,
+    .top-navigation [data-nav-view].text-devo-muted:hover,
+    #mobile-nav-links [data-nav-view].text-devo-muted:hover {
+      color: ${isLightPageBg ? 'var(--devo-text)' : '#ffffff'} !important;
+    }
+  `;
+
   // 4. Top Navigation Overrides
   if (colors.top_nav) {
     cssText += `

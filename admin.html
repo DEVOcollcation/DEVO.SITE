@@ -79,23 +79,32 @@
         })();
     </script>
     <script>
+        const withOpacity = (variableName, fallback) => {
+            return ({ opacityValue }) => {
+                if (opacityValue !== undefined) {
+                    return `color-mix(in srgb, var(${variableName}, ${fallback}) calc(100% * ${opacityValue}), transparent)`;
+                }
+                return `var(${variableName}, ${fallback})`;
+            };
+        };
+
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
                         devo: {
-                            black: 'var(--devo-black, #0a0a0a)',
-                            dark: 'var(--devo-dark, #171717)',
-                            gray: 'var(--devo-gray, #262626)',
-                            grayHover: 'var(--devo-gray-hover, #404040)',
-                            orange: 'var(--devo-orange, #f97316)',
-                            orangeHover: 'var(--devo-orange-hover, #ea580c)',
-                            text: 'var(--devo-text, #f5f5f5)',
-                            muted: 'var(--devo-muted, #a3a3a3)',
-                            success: 'var(--devo-success, #10b981)',
-                            error: 'var(--devo-error, #ef4444)',
-                            warning: 'var(--devo-warning, #f59e0b)',
-                            info: 'var(--devo-info, #3b82f6)'
+                            black: withOpacity('--devo-black', '#0a0a0a'),
+                            dark: withOpacity('--devo-dark', '#171717'),
+                            gray: withOpacity('--devo-gray', '#262626'),
+                            grayHover: withOpacity('--devo-gray-hover', '#404040'),
+                            orange: withOpacity('--devo-orange', '#f97316'),
+                            orangeHover: withOpacity('--devo-orange-hover', '#ea580c'),
+                            text: withOpacity('--devo-text', '#f5f5f5'),
+                            muted: withOpacity('--devo-muted', '#a3a3a3'),
+                            success: withOpacity('--devo-success', '#10b981'),
+                            error: withOpacity('--devo-error', '#ef4444'),
+                            warning: withOpacity('--devo-warning', '#f59e0b'),
+                            info: withOpacity('--devo-info', '#3b82f6')
                         }
                     },
                     fontFamily: { sans: ['Tajawal', 'sans-serif'] },
@@ -190,8 +199,8 @@
             </a>
             <a href="#" data-target="view-add-batch" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="فواتير الدخل (شحن دفعات رصيد)">
                 <i class="ph ph-truck text-xl shrink-0"></i>
-                <span class="sidebar-label whitespace-nowrap transition-all duration-300">فواتير الدخل (الدفعات)</span>
-                <span class="sidebar-tooltip">فواتير الدخل (الدفعات)</span>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">اضافة رصيد</span>
+                <span class="sidebar-tooltip"> اضافة رصيد للموديلات</span>
             </a>
 
             <a href="#" data-target="view-preparation" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تحضير الأوردرات">
@@ -265,7 +274,7 @@
 
     <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
         
-        <header class="h-20 bg-devo-black/80 backdrop-blur-md border-b border-devo-gray flex items-center justify-between px-8 z-10">
+        <header class="h-20 bg-devo-black/80 backdrop-blur-md border-b border-devo-gray flex items-center justify-between px-8 z-[80]">
             <h2 class="text-xl font-bold text-white" id="page-title">جاري التحميل...</h2>
             
             <div class="flex items-center gap-4">
@@ -1586,13 +1595,13 @@
             <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
                 <div>
                     <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-truck text-devo-orange"></i> فواتير الدخل ودفعات الرصيد
+                        <i class="ph ph-truck text-devo-orange"></i>   اضافة الرصيد
                     </h2>
-                    <p class="text-devo-muted text-xs mt-1">تعبئة وإدخال رصيد المخزن للموديلات والألوان المختلفة مجمعة.</p>
+                    <p class="text-devo-muted text-xs mt-1">تعبئة وإدخال رصيد المخزن للموديلات.</p>
                 </div>
                 <button onclick="openNewInboundInvoiceForm()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
                     <i class="ph ph-plus-circle text-lg"></i>
-                    <span>إضافة دفعة جديدة (فاتورة دخل)</span>
+                    <span>إضافة رصيد</span>
                 </button>
             </div>
 
@@ -2760,9 +2769,14 @@
                             class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white placeholder-devo-muted/50 focus:border-devo-orange focus:ring-1 focus:ring-devo-orange outline-none resize-none"></textarea>
                     </div>
                     
-                    <div class="flex items-center gap-2 py-1 select-none">
-                        <input type="checkbox" id="broadcast-send-tg" class="rounded border-devo-gray text-devo-orange focus:ring-devo-orange bg-devo-black w-4 h-4 cursor-pointer" checked>
-                        <label for="broadcast-send-tg" class="text-[11px] font-bold text-devo-muted cursor-pointer hover:text-white transition-colors">إرسال إلى مجموعة التليجرام أيضاً</label>
+                    <div class="flex flex-col gap-1 py-1">
+                        <label class="text-[11px] font-bold text-devo-muted">بث التنبيه للتليجرام</label>
+                        <select id="broadcast-tg-target" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white outline-none cursor-pointer focus:border-devo-orange transition-all">
+                            <option value="none">عدم الإرسال للتليجرام ❌</option>
+                            <option value="orders">جروب الطلبات فقط (Orders Group) 🧾</option>
+                            <option value="stock">جروب المخزن فقط (Stock Group) 📦</option>
+                            <option value="both" selected>المجموعتين معاً (الطلبات والمخزن) 📢</option>
+                        </select>
                     </div>
                     
                     <button onclick="broadcastCustomNotification()" id="broadcast-btn" class="w-full py-2.5 rounded-lg bg-devo-orange hover:bg-devo-orangeHover text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-md">
@@ -2775,15 +2789,25 @@
             <div id="telegram-settings-card" class="bg-devo-dark border border-devo-gray p-5 rounded-xl shadow-sm space-y-4 hidden animate-fade-in">
                 <div>
                     <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-telegram-logo text-blue-400 text-lg"></i> إعدادات بوت التليجرام
+                        <i class="ph ph-telegram-logo text-blue-400 text-lg"></i> إعدادات مركز الإشعارات والربط
                     </h3>
-                    <p class="text-[11px] text-devo-muted mt-1">تفعيل إرسال الإشعارات لهاتفك عبر التليجرام لتصلك حتى والموقع مغلق تماماً.</p>
+                    <p class="text-[11px] text-devo-muted mt-1">تحديد قنوات بث وتلقي الإشعارات اللحظية وحالة ربط بوت التليجرام.</p>
                 </div>
                 
                 <div class="space-y-3">
                     <div class="flex items-center justify-between">
-                        <label class="text-[11px] font-bold text-devo-muted">تفعيل التنبيهات عبر التليجرام</label>
+                        <label class="text-[11px] font-bold text-devo-muted">تفعيل بوت الطلبات (Orders Bot)</label>
                         <input type="checkbox" id="telegram-enabled" class="rounded border-devo-gray text-devo-orange focus:ring-devo-orange bg-devo-black w-4 h-4 cursor-pointer">
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <label class="text-[11px] font-bold text-devo-muted">تفعيل بوت المخزن (Stock Bot)</label>
+                        <input type="checkbox" id="telegram-stock-enabled" class="rounded border-devo-gray text-devo-orange focus:ring-devo-orange bg-devo-black w-4 h-4 cursor-pointer">
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <label class="text-[11px] font-bold text-devo-muted">بث الإشعارات داخل الموقع</label>
+                        <input type="checkbox" id="web-notifications-enabled" class="rounded border-devo-gray text-devo-orange focus:ring-devo-orange bg-devo-black w-4 h-4 cursor-pointer">
                     </div>
                     
                     <div class="flex flex-col gap-1">

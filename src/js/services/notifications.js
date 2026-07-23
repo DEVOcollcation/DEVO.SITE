@@ -7,21 +7,59 @@ let desktopEnabled = Notification.permission === 'granted';
 let originalTitle = document.title || 'DEVO | لوحة تحكم الإدارة';
 let realtimeChannel = null;
 let currentUser = null;
+let webNotificationsEnabled = true;
+
+// جلب إعدادات البث في الموقع
+async function loadNotificationSettings() {
+    try {
+        const { data, error } = await supabase
+            .from('home_settings')
+            .select('*')
+            .eq('setting_key', 'web_notifications_enabled')
+            .maybeSingle();
+            
+        if (!error && data) {
+            webNotificationsEnabled = data.setting_value !== 'false';
+        }
+    } catch (e) {
+        console.error('Error loading web notification settings:', e);
+    }
+}
 
 // تهيئة نظام الإشعارات اللحظية
 export async function initNotifications() {
     loadUserSession();
+    await loadNotificationSettings();
     setupUI();
-    await fetchUnreadNotifications();
-    setupRealtimeSubscription();
-
-    // الاستماع لحدث التحديث اليدوي من صفحة إدارة الإشعارات لإعادة الجلب
-    window.addEventListener('devo:notifications-updated', async () => {
+    
+    if (webNotificationsEnabled) {
         await fetchUnreadNotifications();
-    });
+        setupRealtimeSubscription();
+
+        // الاستماع لحدث التحديث اليدوي من صفحة إدارة الإشعارات لإعادة الجلب
+        window.addEventListener('devo:notifications-updated', async () => {
+            await fetchUnreadNotifications();
+        });
+    } else {
+        // إخفاء مؤشر الإشعارات وتفريغ القائمة
+        const badge = document.getElementById('notifications-badge');
+        if (badge) {
+            badge.classList.add('hidden');
+            badge.classList.remove('flex');
+        }
+        const listContainer = document.getElementById('notifications-list');
+        if (listContainer) {
+            listContainer.innerHTML = `
+                <div class="p-8 text-center text-xs text-devo-muted flex flex-col items-center gap-2">
+                    <i class="ph ph-bell-slash text-2xl opacity-40"></i>
+                    تم تعطيل بث الإشعارات داخل الموقع
+                </div>
+            `;
+        }
+    }
 
     // اقتراح تفعيل إشعارات المتصفح للعمال والمسؤولين المسجلين إذا لم يفعلوا ذلك بعد
-    if (currentUser && 'Notification' in window && Notification.permission === 'default') {
+    if (webNotificationsEnabled && currentUser && 'Notification' in window && Notification.permission === 'default') {
         const alreadyPrompted = sessionStorage.getItem('devo_notification_prompted');
         if (!alreadyPrompted) {
             sessionStorage.setItem('devo_notification_prompted', 'true');
