@@ -1,23 +1,41 @@
 import { supabase } from '../config/supabase.js';
 
 /**
- * تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور من جدول system_users
+ * تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور عبر Supabase Auth
+ * يتم تحويل اسم المستخدم داخلياً إلى بريد إلكتروني وهمي
  */
 export async function loginUser(username, password) {
     try {
-        // البحث عن المستخدم
-        const { data: user, error } = await supabase
+        const email = username.trim().toLowerCase() + '@staff.devo.internal';
+
+        // تسجيل الدخول باستخدام Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+
+        if (authError) {
+            throw new Error(authError.message === 'Invalid login credentials' 
+                ? 'اسم المستخدم أو كلمة المرور غير صحيحة' 
+                : authError.message);
+        }
+
+        const authUser = authData.user;
+
+        // جلب بيانات الموظف والصلاحيات من جدول system_users
+        const { data: user, error: profileError } = await supabase
             .from('system_users')
             .select('*')
-            .eq('username', username)
-            .eq('password', password)
+            .eq('id', authUser.id)
             .single();
 
-        if (error || !user) {
-            throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
+        if (profileError || !user) {
+            await supabase.auth.signOut();
+            throw new Error('فشل جلب بيانات صلاحيات المستخدم من النظام.');
         }
 
         if (!user.is_active) {
+            await supabase.auth.signOut();
             throw new Error('هذا الحساب معطل، يرجى مراجعة الإدارة.');
         }
 
@@ -27,7 +45,7 @@ export async function loginUser(username, password) {
             .update({ login_count: (user.login_count || 0) + 1 })
             .eq('id', user.id);
 
-        // حفظ بيانات الجلسة الأساسية في LocalStorage
+        // حفظ بيانات الجلسة الأساسية في LocalStorage للحفاظ على التوافق مع باقي الكود
         const sessionData = {
             id: user.id,
             username: user.username,
@@ -47,9 +65,15 @@ export async function loginUser(username, password) {
 /**
  * تسجيل الخروج ومسح الجلسة
  */
-export function logoutUser() {
-    localStorage.removeItem('devo_session');
-    window.location.href = 'auth.html';
+export async function logoutUser() {
+    try {
+        localStorage.removeItem('devo_session');
+        await supabase.auth.signOut();
+    } catch (e) {
+        console.error('Signout error:', e);
+    } finally {
+        window.location.href = 'auth.html';
+    }
 }
 
 /**

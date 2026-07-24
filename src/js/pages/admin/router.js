@@ -57,13 +57,22 @@ function updateUserProfileUI(profile) {
         }
     }
 
-    // إخفاء/إظهار زر إدارة المظاهر بناءً على صلاحية المدير أو المالك
+    // إخفاء/إظهار زر إدارة المظاهر وإعدادات الواجهة بناءً على صلاحية المالك فقط (إخفاء عن المدير)
     const themeManagerLink = document.querySelector('[data-target="view-theme-manager"]');
     if (themeManagerLink) {
-        if (['owner', 'admin'].includes(profile.role)) {
+        if (profile.role === 'owner') {
             themeManagerLink.classList.remove('hidden');
         } else {
             themeManagerLink.classList.add('hidden');
+        }
+    }
+
+    const homeSettingsLink = document.querySelector('[data-target="view-home-settings"]');
+    if (homeSettingsLink) {
+        if (profile.role === 'owner') {
+            homeSettingsLink.classList.remove('hidden');
+        } else {
+            homeSettingsLink.classList.add('hidden');
         }
     }
 }
@@ -121,8 +130,15 @@ async function loadViewLogic(targetId) {
         return; 
     }
 
-    if (targetId === 'view-theme-manager' && !['owner', 'admin'].includes(currentUserContext?.role)) {
-        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+    if (targetId === 'view-theme-manager' && currentUserContext?.role !== 'owner') {
+        showToast('عفواً، هذه الصفحة مخصصة لمالك النظام فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return; 
+    }
+
+    if (targetId === 'view-home-settings' && currentUserContext?.role !== 'owner') {
+        showToast('عفواً، هذه الصفحة مخصصة لمالك النظام فقط 🛑', 'error');
         const defaultLink = document.querySelector('[data-target="view-dashboard"]');
         if (defaultLink) switchView('view-dashboard', defaultLink);
         return; 

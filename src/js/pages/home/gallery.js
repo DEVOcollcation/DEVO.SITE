@@ -14,7 +14,13 @@ let currentFilteredModels = [];
 export async function initGallery() {
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
-    isWorker = currentUser && (currentUser.role === 'worker' || currentUser.role === 'admin' || currentUser.role === 'owner');
+    
+    // الموظف المخول برؤية الأرصدة والطلب هو الأونر/الأدمن أو العامل بوظيفة مبيعات (showroom / both)
+    isWorker = currentUser && (
+        currentUser.role === 'admin' 
+        || currentUser.role === 'owner' 
+        || (currentUser.role === 'worker' && (currentUser.worker_job === 'showroom' || currentUser.worker_job === 'both'))
+    );
 
     if (isWorker) {
         loadLocalCart();

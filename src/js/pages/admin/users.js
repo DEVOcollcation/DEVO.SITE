@@ -290,20 +290,32 @@ async function handleSaveUser(e) {
         is_active: document.getElementById('u-status').checked
     };
 
-    if (password) {
-        userData.password = password; 
-    }
-
     btn.disabled = true;
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري الحفظ...`;
 
     try {
         if (id) {
-            const { error } = await supabase.from('system_users').update(userData).eq('id', id);
+            // استدعاء دالة التحديث الآمنة من قاعدة البيانات
+            const { error } = await supabase.rpc('admin_update_worker', {
+                p_user_id: id,
+                p_full_name: userData.full_name,
+                p_username: userData.username,
+                p_password: password || '', // تمرير فارغ إذا لم يتم تغيير كلمة المرور
+                p_role: userData.role,
+                p_worker_job: userData.worker_job,
+                p_is_active: userData.is_active
+            });
             if (error) throw error;
             showToast('تم تحديث بيانات المستخدم بنجاح', 'success');
         } else {
-            const { error } = await supabase.from('system_users').insert([userData]);
+            // استدعاء دالة الإنشاء الآمنة من قاعدة البيانات
+            const { error } = await supabase.rpc('admin_create_worker', {
+                p_full_name: userData.full_name,
+                p_username: userData.username,
+                p_password: password,
+                p_role: userData.role,
+                p_worker_job: userData.worker_job
+            });
             if (error) throw error;
             showToast('تم إنشاء المستخدم بنجاح', 'success');
         }
@@ -311,10 +323,10 @@ async function handleSaveUser(e) {
         closeUserModal();
         loadUsers();
     } catch (err) {
-        if (err.code === '23505') {
+        if (err.code === '23505' || err.message?.includes('duplicate key')) {
             showToast('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار اسم آخر', 'error');
         } else {
-            showToast('حدث خطأ أثناء حفظ البيانات', 'error');
+            showToast(err.message || 'حدث خطأ أثناء حفظ البيانات', 'error');
         }
     } finally {
         btn.disabled = false;
@@ -335,16 +347,19 @@ window.handleDeleteUser = async (id) => {
         title: 'حذف مستخدم', 
         message: `هل أنت متأكد من حذف المستخدم (${user.full_name}) نهائياً؟`, 
         isDestructive: true 
-    });
+        });
 
     if (confirmed) {
         try {
-            const { error } = await supabase.from('system_users').delete().eq('id', id);
+            // استدعاء دالة الحذف الآمنة من قاعدة البيانات
+            const { error } = await supabase.rpc('admin_delete_worker', {
+                p_user_id: id
+            });
             if (error) throw error;
             showToast('تم حذف المستخدم بنجاح');
             loadUsers();
         } catch(err) {
-            showToast('حدث خطأ أثناء الحذف', 'error');
+            showToast(err.message || 'حدث خطأ أثناء الحذف', 'error');
         }
     }
 };
