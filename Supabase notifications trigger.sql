@@ -447,9 +447,21 @@ BEGIN
     -- 🌟 إذا كان وضع "تعديل" (Update)
     IF p_order_id IS NOT NULL THEN
         v_order_id := p_order_id;
+
+        -- 🛡️ منع تعديل الأوردر إذا كان مقفولاً من قبل مستخدم آخر (ويستثنى من قيد القفل المالك والمشرف) (حل خطأ 2)
+        IF EXISTS (
+            SELECT 1 FROM public.orders 
+            WHERE id = v_order_id 
+              AND is_locked = true 
+              AND (assigned_worker_id != auth.uid() OR assigned_worker_id IS NULL)
+              AND public.get_my_role() NOT IN ('owner', 'admin')
+        ) THEN
+            RAISE EXCEPTION 'عفواً، هذا الأوردر قيد التحضير/مقفول حالياً ولا يمكن تعديله.';
+        END IF;
+
         SELECT invoice_number INTO v_invoice_number FROM public.orders WHERE id = v_order_id;
 
-        -- أ) التحقق من توفر الكميات الإضافية المطلوبة (قبل تعديل المخزن)
+        -- أ) التحقق من توفر الكميات الإضافية المطلوبة (قبل تعديل المخزن) (حل خطأ 1)
         -- بالنسبة لكل صنف زاد طلبه (diff > 0)، نتحقق من وجود رصيد كافٍ
         FOR v_diff_record IN 
             SELECT 
@@ -472,9 +484,9 @@ BEGIN
                 SELECT available_series INTO v_current_stock FROM public.model_inventory
                 WHERE model_id = v_diff_record.model_id AND color_id = v_diff_record.color_id FOR UPDATE;
                 
-                IF v_current_stock < v_diff_record.diff THEN
-                    RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح بالمخزن: %, المطلوب زيادة: %', 
-                        v_diff_record.model_name, v_current_stock, v_diff_record.diff;
+                IF COALESCE(v_current_stock, 0) < v_diff_record.diff THEN
+                    RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة بالمخزن. المتاح بالمخزن: %, المطلوب زيادة: %', 
+                        v_diff_record.model_name, COALESCE(v_current_stock, 0), v_diff_record.diff;
                 END IF;
             END IF;
         END LOOP;
@@ -497,6 +509,11 @@ BEGIN
             ON new_items.model_id = old_items.model_id AND new_items.color_id = old_items.color_id
         LOOP
             IF v_diff_record.diff <> 0 THEN
+                -- التدميج مع جدول المخزن لضمان وجود الصف قبل تحديثه
+                INSERT INTO public.model_inventory (model_id, color_id, available_series)
+                VALUES (v_diff_record.model_id, v_diff_record.color_id, 0)
+                ON CONFLICT (model_id, color_id) DO NOTHING;
+
                 -- تحديث المخزن بالفرق الصافي دفعة واحدة
                 UPDATE public.model_inventory
                 SET available_series = available_series - v_diff_record.diff
@@ -532,14 +549,14 @@ BEGIN
 
     ELSE
         -- 🌟 وضع إنشاء جديد (Insert)
-        -- أ) التحقق من المخزون أولاً
+        -- أ) التحقق من المخزون أولاً (حل خطأ 1)
         FOR v_item IN SELECT * FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, model_name text)
         LOOP
             SELECT available_series INTO v_current_stock FROM public.model_inventory
             WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
 
-            IF v_current_stock < v_item.qty THEN
-               RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+            IF COALESCE(v_current_stock, 0) < v_item.qty THEN
+               RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة بالمخزن. المتاح: %', COALESCE(v_item.model_name, ''), COALESCE(v_current_stock, 0);
             END IF;
         END LOOP;
 
@@ -557,6 +574,10 @@ BEGIN
         -- خصم المخزون وتسجيل الحركات
         FOR v_item IN SELECT * FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int)
         LOOP
+            INSERT INTO public.model_inventory (model_id, color_id, available_series)
+            VALUES (v_item.model_id, v_item.color_id, 0)
+            ON CONFLICT (model_id, color_id) DO NOTHING;
+
             UPDATE public.model_inventory SET available_series = available_series - v_item.qty
             WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 

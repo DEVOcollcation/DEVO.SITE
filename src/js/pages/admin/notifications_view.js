@@ -33,6 +33,7 @@ function setupWindowBindings() {
     window.viewNotificationTarget = viewNotificationTarget;
     window.saveTelegramSettings = saveTelegramSettings;
     window.toggleTelegramSettingsCard = toggleTelegramSettingsCard;
+    window.testTelegramConnection = testTelegramConnection;
 }
 
 // 1. جلب الإشعارات بالكامل من قاعدة البيانات
@@ -514,5 +515,74 @@ export function toggleTelegramSettingsCard() {
     } else {
         card.classList.add('hidden');
         icon.className = 'ph ph-lock text-base';
+    }
+}
+
+// 12. تجربة وإرسال إشعار فحص فوري لبوت التليجرام (حل خطأ 7)
+export async function testTelegramConnection() {
+    const tokenInput = document.getElementById('telegram-bot-token');
+    const chatInput = document.getElementById('telegram-chat-id');
+    const stockChatInput = document.getElementById('telegram-stock-chat-id');
+    const btn = document.getElementById('test-tg-btn');
+
+    const token = tokenInput ? tokenInput.value.trim() : '';
+    const chat = chatInput ? chatInput.value.trim() : '';
+    const stockChat = stockChatInput ? stockChatInput.value.trim() : '';
+
+    if (!token) {
+        showToast('يرجى كتابة Bot Token الخاص بك أولاً للتجربة', 'warning');
+        return;
+    }
+    if (!chat && !stockChat) {
+        showToast('يرجى تحديد معرف محادثة (Orders Chat ID أو Stock Chat ID) للتجربة', 'warning');
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري الاختبار...`;
+    }
+
+    let successCount = 0;
+    let errorMsgs = [];
+
+    const targetChats = [];
+    if (chat) targetChats.push({ id: chat, name: 'مجموعة الطلبات' });
+    if (stockChat && stockChat !== chat) targetChats.push({ id: stockChat, name: 'مجموعة المخزون' });
+
+    for (const target of targetChats) {
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: target.id,
+                    text: `🧪 <b>رسالة فحص من سيستم مصنع DEVO</b>\nتم اختبار فحص الاتصال ببوت التليجرام الخاص بـ (<b>${target.name}</b>) بنجاح! ✅\n\n⏰ <i>التاريخ: ${new Date().toLocaleString('ar-EG')}</i>`,
+                    parse_mode: 'HTML'
+                })
+            });
+
+            const resData = await res.json();
+            if (res.ok && resData.ok) {
+                successCount++;
+            } else {
+                errorMsgs.push(`${target.name}: ${resData.description || 'فشل الإرسال'}`);
+            }
+        } catch (err) {
+            errorMsgs.push(`${target.name}: ${err.message || 'فشل الاتصال بخوادم التليجرام'}`);
+        }
+    }
+
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="ph ph-paper-plane-tilt text-base"></i> تجربة البوت`;
+    }
+
+    if (successCount > 0 && errorMsgs.length === 0) {
+        showToast('تم إرسال الرسالة التجريبية بنجاح إلى التليجرام 🚀', 'success');
+    } else if (successCount > 0 && errorMsgs.length > 0) {
+        showToast(`تم الإرسال بنجاح لـ ${successCount} محادثة مع وجود خطأ: ${errorMsgs.join(' | ')}`, 'warning');
+    } else {
+        showToast(`فشل اختبار الاتصال ببوت التليجرام: ${errorMsgs.join(' | ')}`, 'error');
     }
 }

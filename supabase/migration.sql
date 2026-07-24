@@ -265,13 +265,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 5.5. دالة تحرير قفل الأوردر (release_order_lock) لتمكين العمال من إلغاء تعديل السلة دون فتح صلاحيات تحديث كاملة لجدول الطلبات
+-- 5.5. دالة تحرير قفل الأوردر (release_order_lock) وتوحيد صلاحيات عمال المعرض والمخزن
 CREATE OR REPLACE FUNCTION public.release_order_lock(
     p_order_id uuid
 )
 RETURNS boolean AS $$
 BEGIN
-    -- مسموح بس للأدمن/الأونر، أو للعامل اللي الأوردر ده مُسنَد ليه هو بالظبط أو صانع الأوردر
+    -- مسموح بالأونر/الأدمن، أو صانع الأوردر/المُسند إليه، أو عمال المخزن (warehouse / both)
     IF NOT EXISTS (
         SELECT 1 FROM public.orders o
         WHERE o.id = p_order_id
@@ -279,6 +279,13 @@ BEGIN
             public.get_my_role() IN ('owner', 'admin')
             OR o.assigned_worker_id = auth.uid()
             OR o.worker_id = auth.uid()
+            OR EXISTS (
+                SELECT 1 FROM public.system_users u
+                WHERE u.id = auth.uid()
+                AND u.is_active = true
+                AND u.role = 'worker'
+                AND u.worker_job IN ('warehouse', 'both')
+            )
         )
     ) THEN
         RAISE EXCEPTION 'غير مصرح لك بتحرير قفل هذا الأوردر.';
@@ -293,6 +300,17 @@ BEGIN
     RETURN true;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- قيد حماية المخزون لمنع القيمة السالبة (حل خطأ 4)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_positive_available_series'
+    ) THEN
+        ALTER TABLE public.model_inventory 
+        ADD CONSTRAINT chk_positive_available_series CHECK (available_series >= 0);
+    END IF;
+END $$;
 
 -- 6. تفعيل صلاحيات SECURITY DEFINER لدوال التحضير والمبيعات وفواتير الوارد لتمكين الموظفين من إجراء الحركات المالية والمخزنية تحت مظلة RLS بشكل آمن
 -- أولاً نقوم بحذف أي نسخ زائدة أو قديمة من الدوال لتفادي تعارض التحميل الزائد (Function Overloading Conflict)

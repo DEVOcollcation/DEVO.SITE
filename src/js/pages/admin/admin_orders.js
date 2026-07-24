@@ -699,10 +699,9 @@ window.exportOrdersToExcel = () => {
     allAdminOrders.forEach(o => {
         const orderNotes = formatOrderExportNotes(o);
         (o.order_items || []).forEach((i, idx) => {
-            const classSizes = i.models?.classes?.class_sizes || [];
-            const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1); 
-            const piecesQty = i.quantity * sizesCount;
-            const unitPrice = sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0);
+            const sizesCount = i.sizes_count || getModelSizesCount(i.models);
+            const piecesQty = i.total_pieces || (i.quantity * sizesCount);
+            const unitPrice = i.piece_price || (sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0));
 
             excelData.push({
                 'الملاحظات': idx === 0 ? orderNotes : '',
@@ -746,10 +745,9 @@ window.exportSingleOrderToExcel = async (id) => {
     const orderNotes = formatOrderExportNotes(o);
 
     const excelData = (o.order_items || []).map((i, idx) => {
-        const classSizes = i.models?.classes?.class_sizes || [];
-        const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1); 
-        const piecesQty = i.quantity * sizesCount;
-        const unitPrice = sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0);
+        const sizesCount = i.sizes_count || getModelSizesCount(i.models);
+        const piecesQty = i.total_pieces || (i.quantity * sizesCount);
+        const unitPrice = i.piece_price || (sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0));
 
         return {
             'الملاحظات': idx === 0 ? orderNotes : '',
@@ -1218,14 +1216,19 @@ window.saveLocalOrderEdits = async (orderId) => {
             total_series: calculateLocalTotalSeries()
         };
 
-        const orderItemsData = activeItems.map(item => ({
-            model_id: item.model_id,
-            color_id: item.color_id,
-            qty: item.quantity,
-            model_name: item.models?.name || '',
-            price: item.price_per_series,
-            total: item.quantity * item.price_per_series
-        }));
+        const orderItemsData = activeItems.map(item => {
+            const sizesCount = getModelSizesCount(item.models);
+            return {
+                model_id: item.model_id,
+                color_id: item.color_id,
+                qty: item.quantity,
+                model_name: item.models?.name || '',
+                price: item.price_per_series,
+                total: item.quantity * item.price_per_series,
+                sizes_count: sizesCount,
+                piece_price: sizesCount > 0 ? item.price_per_series / sizesCount : item.price_per_series
+            };
+        });
 
         const { data, error: rpcError } = await supabase.rpc('process_order_transaction', {
             p_order_id: orderId,
@@ -1376,4 +1379,14 @@ async function logOrderAction(orderId, actionType, notes) {
     } catch (err) {
         console.error('Error logging order action:', err);
     }
+}
+
+// دالة مساعدة لحساب عدد مقاسات الموديل لتحديد أسعار القطع
+function getModelSizesCount(model) {
+    if (!model) return 1;
+    const classSizes = model.classes?.class_sizes || [];
+    if (classSizes.length > 0) return classSizes.length;
+    const modelSizes = model.model_sizes || [];
+    if (modelSizes.length > 0) return modelSizes.length;
+    return 1;
 }

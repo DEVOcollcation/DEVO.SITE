@@ -2850,9 +2850,14 @@
                             class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none">
                     </div>
                     
-                    <button onclick="saveTelegramSettings()" id="save-tg-btn" class="w-full py-2.5 rounded-lg bg-devo-gray hover:bg-white/10 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray shadow-md">
-                        <i class="ph ph-floppy-disk text-base"></i> حفظ إعدادات تليجرام
-                    </button>
+                    <div class="flex gap-2 pt-2">
+                        <button onclick="saveTelegramSettings()" id="save-tg-btn" class="flex-1 py-2.5 rounded-lg bg-devo-gray hover:bg-white/10 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray shadow-md">
+                            <i class="ph ph-floppy-disk text-base"></i> حفظ الإعدادات
+                        </button>
+                        <button onclick="testTelegramConnection()" id="test-tg-btn" class="flex-1 py-2.5 rounded-lg bg-devo-orange hover:bg-devo-orangeHover text-white text-xs font-bold transition-all flex items-center justify-center gap-2 border border-devo-orange shadow-md">
+                            <i class="ph ph-paper-plane-tilt text-base"></i> تجربة البوت
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -582,7 +582,9 @@ async function handleCheckout(e) {
             qty: item.qty,
             model_name: item.modelName,
             price: item.price * (item.sizesCount || 1),
-            total: item.qty * (item.sizesCount || 1) * item.price
+            total: item.qty * (item.sizesCount || 1) * item.price,
+            sizes_count: item.sizesCount || 1,
+            piece_price: item.price
         }));
 
         const { data: rpcData, error: rpcError } = await supabase.rpc('process_order_transaction', {
