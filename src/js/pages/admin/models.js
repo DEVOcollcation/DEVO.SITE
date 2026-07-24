@@ -784,7 +784,7 @@ window.openModelModal = async (id = null) => {
         invContainer.innerHTML = '';
         model.model_inventory.forEach(inv => {
             const sold = soldMap[inv.color_id] || 0;
-            addInventoryRow(inv.color_id, inv.available_series + sold, sold);
+            addInventoryRow(inv.color_id, inv.available_series, sold);
         });
 
         const imgs = model.model_images || [];
@@ -834,7 +834,7 @@ window.addInventoryRow = (colorId = '', totalQty = '', soldQty = 0) => {
             ${window.allAvailableColors.map(c => `<option value="${c.id}" ${c.id === colorId ? 'selected' : ''}>${c.name}</option>`).join('')}
         </select>
         ${isExisting ? `<input type="hidden" name="inv-color-val" value="${colorId}">` : ''}
-        <input type="number" name="inv-qty" placeholder="إجمالي السريات" min="${soldQty}" value="${totalQty}" data-sold="${soldQty}" data-pieces="${initialPieces}" class="flex-1 bg-devo-black border border-devo-gray rounded px-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+        <input type="number" name="inv-qty" placeholder="السريات المتاحة" min="0" value="${totalQty}" data-sold="${soldQty}" data-pieces="${initialPieces}" class="flex-1 bg-devo-black border border-devo-gray rounded px-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
         ${isExisting && soldQty > 0 
             ? `<button type="button" onclick="showToast('لا يمكن حذف لون تم السحب منه.', 'warning')" class="p-2 text-devo-grayHover cursor-not-allowed rounded"><i class="ph ph-trash"></i></button>` 
             : `<button type="button" onclick="this.parentElement.remove()" class="p-2 text-devo-error hover:bg-devo-error/20 rounded transition-colors"><i class="ph ph-trash"></i></button>`
@@ -888,10 +888,9 @@ async function handleSaveModel(e) {
         if (!colorId) continue;
 
         const totalQty = parseInt(row.querySelector('[name="inv-qty"]').value) || 0;
-        const soldQty = parseInt(row.querySelector('[name="inv-qty"]').dataset.sold || "0");
-        const available_series = totalQty - soldQty;
+        const available_series = totalQty;
         
-        if (available_series < 0) return showToast(`لا يمكن تقليل الكمية لأقل من المباع.`, 'error');
+        if (available_series < 0) return showToast(`لا يمكن تقليل الكمية لأقل من الصفر.`, 'error');
         inventoryData.push({ color_id: colorId, available_series });
     }
 

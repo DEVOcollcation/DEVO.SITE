@@ -44,6 +44,10 @@ export async function initInboundInvoicesView() {
     window.updateDraftItemQty = updateDraftItemQty;
     window.populateModelSelectDropdown = populateModelSelectDropdown;
     window.exportInboundInvoiceToExcel = exportInboundInvoiceToExcel;
+    window.viewInboundInvoiceDetails = viewInboundInvoiceDetails;
+    window.closeInboundInvoiceDetails = closeInboundInvoiceDetails;
+    window.filterInboundModalTable = filterInboundModalTable;
+    window.printInboundInvoice = printInboundInvoice;
 
     // Load initial data from Supabase
     await loadInboundData();
@@ -193,25 +197,36 @@ function renderInboundInvoicesList() {
             hour: '2-digit', minute: '2-digit'
         });
 
-        const actions = canModify ? `
+        const viewBtn = `
+            <button type="button" onclick="event.preventDefault(); viewInboundInvoiceDetails('${inv.id}')" 
+                title="عرض تفاصيل الفاتورة"
+                class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-all cursor-pointer">
+                <i class="ph ph-eye text-sm"></i>
+            </button>
+        `;
+
+        const actions = `
             <div class="flex items-center justify-center gap-2">
-                <button onclick="exportInboundInvoiceToExcel('${inv.id}')" 
+                ${viewBtn}
+                <button type="button" onclick="event.preventDefault(); exportInboundInvoiceToExcel('${inv.id}')" 
                     title="تصدير إلى إكسيل (Excel)"
                     class="p-1.5 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded transition-all cursor-pointer">
                     <i class="ph ph-file-xls text-sm"></i>
                 </button>
-                <button onclick="editInboundInvoice('${inv.id}')" 
+                ${canModify ? `
+                <button type="button" onclick="event.preventDefault(); editInboundInvoice('${inv.id}')" 
                     title="تعديل الفاتورة"
                     class="p-1.5 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-all cursor-pointer">
                     <i class="ph ph-pencil-simple text-sm"></i>
                 </button>
-                <button onclick="deleteInboundInvoice('${inv.id}')" 
+                <button type="button" onclick="event.preventDefault(); deleteInboundInvoice('${inv.id}')" 
                     title="حذف الفاتورة"
                     class="p-1.5 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded transition-all cursor-pointer">
                     <i class="ph ph-trash text-sm"></i>
                 </button>
+                ` : ''}
             </div>
-        ` : `<span class="text-devo-muted">-</span>`;
+        `;
 
         return `
             <tr class="hover:bg-devo-gray/25 transition-colors border-b border-devo-gray/30">
@@ -413,7 +428,7 @@ function renderDraftItems() {
                         <span class="bg-devo-orange/10 text-devo-orange border border-devo-orange/20 px-2 py-0.5 rounded text-[10px] font-bold">كود: ${m.model_code}</span>
                         <h4 class="text-sm font-bold text-white">${m.model_name}</h4>
                     </div>
-                    <button onclick="removeModelFromInvoiceDraft('${m.model_id}')" 
+                    <button type="button" onclick="event.preventDefault(); removeModelFromInvoiceDraft('${m.model_id}')" 
                         class="text-xs text-devo-error hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer">
                         <i class="ph ph-trash"></i>
                         <span>حذف الموديل</span>
@@ -723,5 +738,252 @@ async function exportInboundInvoiceToExcel(invoiceId) {
         console.error("Export Inbound Invoice Error:", err);
         showToast('خطأ أثناء تصدير الفاتورة إلى إكسيل', 'error');
     }
+}
+
+// 🌟 View Inbound Invoice Details Modal 🌟
+async function viewInboundInvoiceDetails(invoiceId) {
+    try {
+        console.log('viewInboundInvoiceDetails initiated with ID:', invoiceId);
+        const inv = inboundInvoices.find(i => i.id === invoiceId);
+        console.log('viewInboundInvoiceDetails cached invoice found:', inv);
+        if (!inv) {
+            showToast('خطأ: لم يتم العثور على بيانات الفاتورة بالذاكرة المؤقتة', 'error');
+            return;
+        }
+
+        showToast('جاري تحميل تفاصيل الفاتورة...', 'info');
+
+        // Fetch invoice items details
+        const { data: itemsData, error: itemsError } = await supabase
+            .from('inbound_invoice_items')
+            .select(`
+                id, model_id, color_id, quantity,
+                models(id, name, factory_code),
+                colors(id, name)
+            `)
+            .eq('inbound_invoice_id', invoiceId);
+
+        if (itemsError) {
+            console.error('viewInboundInvoiceDetails itemsData fetch error:', itemsError);
+            throw itemsError;
+        }
+
+        const itemsList = itemsData || [];
+        console.log('viewInboundInvoiceDetails items list fetched:', itemsList);
+
+        const groupedItems = {};
+        itemsList.forEach(item => {
+            const modelId = item.model_id;
+            const code = item.models?.factory_code || 'غير معروف';
+            const colorName = item.colors?.name || 'بدون اسم';
+            const qty = item.quantity;
+            
+            const colorWithQty = `${colorName} (${qty} سري)`;
+
+            if (!groupedItems[modelId]) {
+                groupedItems[modelId] = {
+                    modelName: item.models?.name || 'غير معروف',
+                    code: code,
+                    colorsList: [colorWithQty],
+                    totalQty: qty,
+                    rawItems: [{ color_name: colorName, qty: qty }]
+                };
+            } else {
+                groupedItems[modelId].colorsList.push(colorWithQty);
+                groupedItems[modelId].totalQty += qty;
+                groupedItems[modelId].rawItems.push({ color_name: colorName, qty: qty });
+            }
+        });
+
+        let itemsHtml = Object.values(groupedItems).map(item => `
+            <tr class="border-b border-devo-gray last:border-0 hover:bg-devo-black/50 transition-colors">
+                <td class="py-2.5 px-3 text-white text-sm font-bold search-target">${item.modelName} <span class="text-devo-muted text-[10px] font-mono mr-1">(${item.code})</span></td>
+                <td class="py-2.5 px-3 text-devo-info text-xs leading-relaxed">${item.colorsList.join('، ')}</td>
+                <td class="py-2.5 px-3 text-devo-orange font-black text-center text-base">${item.totalQty} سري</td>
+            </tr>
+        `).join('');
+
+        const dateStr = new Date(inv.created_at).toLocaleString('ar-EG', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+
+        document.getElementById('inbound-details-content').innerHTML = `
+            <div class="flex flex-col gap-4 h-full">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
+                    <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
+                        <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-user"></i> المورد</span>
+                        <h4 class="text-white font-bold text-sm truncate">${inv.supplier_name || 'مستودع ديفو / تصنيع'}</h4>
+                    </div>
+                    <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center">
+                        <span class="text-[10px] text-devo-muted mb-1"><i class="ph ph-receipt"></i> معلومات الفاتورة</span>
+                        <h4 class="text-devo-orange font-mono font-bold text-sm truncate">${inv.invoice_number}</h4>
+                        <span class="text-[11px] text-devo-muted mt-0.5">بواسطة: <span class="text-white">${inv.system_users?.full_name || 'غير معروف'}</span></span>
+                    </div>
+                    <div class="bg-devo-black p-3 rounded-xl border border-devo-gray flex flex-col justify-center space-y-1">
+                        <div class="flex justify-between text-xs"><span class="text-devo-muted">تاريخ الإضافة:</span> <span class="text-white font-bold">${dateStr}</span></div>
+                        <div class="flex justify-between text-xs"><span class="text-devo-muted">إجمالي السرايات:</span> <span class="text-devo-orange font-black text-sm">${inv.total_series}</span></div>
+                    </div>
+                </div>
+
+                <div class="relative shrink-0">
+                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                    <input type="text" oninput="window.filterInboundModalTable(this.value)" placeholder="بحث داخل الفاتورة باسم الموديل أو الكود..." 
+                        class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
+                </div>
+
+                <div class="flex-1 overflow-hidden border border-devo-gray rounded-xl bg-devo-black flex flex-col max-h-[40vh]">
+                    <div class="overflow-y-auto custom-scrollbar flex-1">
+                        <table class="w-full text-right text-sm">
+                            <thead class="text-xs text-devo-muted bg-devo-dark sticky top-0 shadow-sm z-10">
+                                <tr><th class="p-3">الموديل</th><th class="p-3">تفصيل الألوان المضافة</th><th class="p-3 text-center">الكمية</th></tr>
+                            </thead>
+                            <tbody id="inbound-modal-items-tbody" class="divide-y divide-devo-gray">
+                                ${itemsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                ${inv.notes ? `
+                <div class="bg-devo-black/40 border border-devo-gray p-3 rounded-xl shrink-0 text-xs text-devo-muted">
+                    <span class="font-bold text-devo-orange block mb-1">ملاحظات الفاتورة:</span>
+                    <span>${inv.notes}</span>
+                </div>
+                ` : ''}
+            </div>
+        `;
+
+        // Bind print button
+        const printBtn = document.getElementById('inbound-print-pdf-btn');
+        if (printBtn) {
+            printBtn.onclick = () => window.printInboundInvoice(inv, itemsData);
+        }
+
+        const modal = document.getElementById('inbound-details-modal');
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.remove('opacity-0'), 10);
+
+    } catch (err) {
+        console.error("View Inbound Invoice Details Error:", err);
+        showToast('خطأ أثناء تحميل تفاصيل الفاتورة', 'error');
+    }
+}
+
+function closeInboundInvoiceDetails() {
+    const modal = document.getElementById('inbound-details-modal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+}
+
+function filterInboundModalTable(term) {
+    term = term.toLowerCase().trim();
+    const rows = document.querySelectorAll('#inbound-modal-items-tbody tr');
+    rows.forEach(row => {
+        const text = row.querySelector('.search-target')?.innerText.toLowerCase() || '';
+        row.style.display = text.includes(term) ? '' : 'none';
+    });
+}
+
+function printInboundInvoice(inv, items) {
+    const dateStr = new Date(inv.created_at).toLocaleDateString('ar-EG');
+    const timeStr = new Date(inv.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const pdfFileName = `فاتورة_دخل_${inv.invoice_number}_${dateStr}`;
+    
+    const grouped = {};
+    items.forEach(item => {
+        const modelId = item.model_id;
+        const code = item.models?.factory_code || '';
+        const colorName = item.colors?.name || '-';
+        const qty = item.quantity;
+        if (!grouped[modelId]) {
+            grouped[modelId] = {
+                modelName: item.models?.name,
+                code: code,
+                colors: [`${colorName} (${qty})`],
+                totalQty: qty
+            };
+        } else {
+            grouped[modelId].colors.push(`${colorName} (${qty})`);
+            grouped[modelId].totalQty += qty;
+        }
+    });
+    
+    const itemsHtml = Object.values(grouped).map((item, idx) => `
+        <tr>
+            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+            <td style="font-weight: bold;">${item.modelName} ${item.code ? `<span style="font-size:9px; font-family:monospace; color:#555;">(${item.code})</span>` : ''}</td>
+            <td style="font-size: 11px;">${item.colors.join(' / ')}</td>
+            <td style="text-align: center; font-weight: bold; font-size: 13px;">${item.totalQty} سري</td>
+        </tr>
+    `).join('');
+    
+    const finalHtml = `
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>${pdfFileName}</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+                @page { size: A4 portrait; margin: 0.5cm; }
+                body { font-family: 'Tajawal', sans-serif; font-size: 12px; color: black; background: white; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .header { border-bottom: 2px solid black; padding-bottom: 4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-end; }
+                .header h1 { margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
+                .header p { margin: 2px 0 0 0; font-size: 10px; font-weight: bold; }
+                .header .title-box { text-align: left; }
+                .header .title-box h2 { margin: 0; font-size: 14px; font-weight: bold; background: #eee; padding: 2px 6px; border: 1px solid #000; border-radius: 3px; }
+                .info { display: flex; justify-content: space-between; border-bottom: 1px solid black; padding-bottom: 4px; margin-bottom: 6px; font-size: 11px; line-height: 1.4; }
+                .info div { width: 48%; }
+                .info .left-col { text-align: left; }
+                .table { width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 8px; }
+                .table thead { display: table-header-group; background-color: #e5e5e5; }
+                .table th { border: 1px solid #666; padding: 3px 4px; font-size: 11px; color: black; }
+                .table td { border: 1px solid #aaa; padding: 2px 4px; line-height: 1.1; vertical-align: middle; }
+                .table tbody tr { page-break-inside: avoid; height: 22px; }
+                .footer { text-align: center; margin-top: 10px; padding-top: 4px; border-top: 1px dashed #999; font-size: 9px; color: #555; position: fixed; bottom: 0; width: 100%; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div><h1>DEVO <span style="font-size:11px; font-weight:bold;">Collection</span></h1><p>Phone: +20 12 12751111</p></div>
+                <div class="title-box"><h2>فاتورة إضافة رصيد (شحن)</h2><p style="margin-top: 4px;">رقم الفاتورة: <span style="font-family: monospace; font-size: 12px; color: red;">${inv.invoice_number}</span></p></div>
+            </div>
+            <div class="info">
+                <div><div><b>المورد:</b> ${inv.supplier_name || 'مستودع ديفو / تصنيع'}</div><div><b>الملاحظات:</b> ${inv.notes || '-'}</div></div>
+                <div class="left-col"><div><b>التاريخ:</b> ${dateStr} &nbsp;|&nbsp; <b>الوقت:</b> ${timeStr}</div><div><b>المسؤول:</b> ${inv.system_users?.full_name || 'غير معروف'}</div><div><b>إجمالي الكمية:</b> ${inv.total_series} سري</div></div>
+            </div>
+            <table class="table">
+                <thead><tr><th style="width: 30px;">#</th><th>الموديل</th><th>تفصيل الألوان</th><th style="width: 100px;">الكمية</th></tr></thead>
+                <tbody>${itemsHtml}</tbody>
+            </table>
+            <div class="footer">Developed by UltraSoft - +201140409832</div>
+        </body>
+        </html>
+    `;
+    
+    let iframe = document.getElementById('print-iframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'print-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+    }
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(finalHtml);
+    doc.close();
+    
+    setTimeout(() => {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }, 500);
 }
 

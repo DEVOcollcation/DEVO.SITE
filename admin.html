@@ -518,7 +518,7 @@
             <div class="flex flex-wrap gap-2 items-center">
                 <div class="relative flex-[2] min-w-[200px]">
                     <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                    <input type="text" id="ao-search" placeholder="بحث برقم الأوردر، العميل، الهاتف، الموظف..." 
+                    <input type="text" id="ao-search" autocomplete="off" placeholder="بحث برقم الأوردر، العميل، الهاتف، الموظف..." 
                         class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
                 </div>
                 <select id="ao-status" class="flex-1 min-w-[140px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
@@ -567,11 +567,33 @@
             <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
                 <div class="p-4 border-b border-devo-gray flex justify-between items-center bg-devo-black/80">
                     <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-receipt text-devo-orange"></i> تفاصيل الأوردر</h3>
-                    <div class="flex gap-2">
-                        <button onclick="closeAdminOrderDetails()" class="text-devo-muted hover:text-white p-1 rounded-full border border-transparent hover:border-devo-gray ml-2"><i class="ph ph-x text-xl"></i></button>
+                    <div class="flex items-center gap-2">
+                        <button id="ao-print-customer-btn" class="px-3 py-1.5 bg-gray-200 text-gray-800 hover:bg-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer">
+                            <i class="ph ph-receipt"></i> فاتورة العميل
+                        </button>
+                        <button id="ao-print-detailed-btn" class="px-3 py-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer">
+                            <i class="ph ph-printer"></i> فاتورة الإدارة
+                        </button>
+                        <button onclick="closeAdminOrderDetails()" class="text-devo-muted hover:text-white p-1.5 rounded-full border border-transparent hover:border-devo-gray ml-2 cursor-pointer"><i class="ph ph-x text-xl"></i></button>
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-6" id="ao-details-content"></div>
+            </div>
+        </div>
+
+        <!-- Inbound Invoice Details Modal -->
+        <div id="inbound-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[250] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300 no-print">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="p-4 border-b border-devo-gray flex justify-between items-center bg-devo-black/80">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-truck text-devo-orange"></i> تفاصيل فاتورة الدخل</h3>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="inbound-print-pdf-btn" class="px-3 py-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer">
+                            <i class="ph ph-printer"></i> طباعة الفاتورة (PDF)
+                        </button>
+                        <button type="button" onclick="event.preventDefault(); closeInboundInvoiceDetails()" class="text-devo-muted hover:text-white p-1.5 rounded-full border border-transparent hover:border-devo-gray ml-2 cursor-pointer"><i class="ph ph-x text-xl"></i></button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6" id="inbound-details-content"></div>
             </div>
         </div>
 
@@ -603,7 +625,7 @@
                     <div class="flex flex-col md:flex-row gap-4 justify-between items-center bg-devo-dark border border-devo-gray p-4 rounded-2xl">
                         <div class="relative w-full md:w-96">
                             <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-devo-muted text-xl"></i>
-                            <input type="text" id="def-search-input" oninput="handleDefSearch()" 
+                            <input type="text" id="def-search-input" autocomplete="off" oninput="handleDefSearch()" 
                                 class="w-full bg-devo-black border border-devo-gray rounded-xl pr-12 pl-4 py-3 text-white focus:outline-none focus:border-devo-orange transition-all placeholder:text-devo-muted"
                                 placeholder="بحث سريع في العناصر...">
                         </div>
@@ -754,7 +776,7 @@
             <div class="flex flex-wrap gap-2 items-center">
                 <div class="relative flex-[2] min-w-[200px]">
                     <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                    <input type="text" id="user-search" placeholder="بحث بالاسم أو اسم المستخدم..." 
+                    <input type="text" id="user-search" autocomplete="off" placeholder="بحث بالاسم أو اسم المستخدم..." 
                         class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
                 </div>
                 <select id="user-filter-role" class="flex-1 min-w-[120px] bg-devo-dark border border-devo-gray rounded-lg px-2 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs">
@@ -894,7 +916,7 @@
                 
                 <div class="relative flex-[2] min-w-[200px]">
                     <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                    <input type="text" id="model-search" placeholder="بحث بكود المصنع أو اسم الموديل..." 
+                    <input type="text" id="model-search" autocomplete="off" placeholder="بحث بكود المصنع أو اسم الموديل..." 
                         class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
                 </div>
                 
@@ -1161,15 +1183,15 @@
                     <!-- Row 1: Split Searches -->
                     <div class="lg:col-span-2 relative">
                         <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="bulk-search-name" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="bulk-search-name" autocomplete="off" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
                     <div class="relative">
                         <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="bulk-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="bulk-search-factory" autocomplete="off" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
                     <div class="relative">
                         <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="bulk-search-system" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="bulk-search-system" autocomplete="off" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
 
                     <!-- Row 2: Factory Range & Multi-select Dropdowns -->
@@ -1395,15 +1417,15 @@
                     <!-- Row 1: Split Searches -->
                     <div class="lg:col-span-2 relative">
                         <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="barcode-search-name" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="barcode-search-name" autocomplete="off" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
                     <div class="relative">
                         <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="barcode-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="barcode-search-factory" autocomplete="off" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
                     <div class="relative">
                         <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                        <input type="text" id="barcode-search-system" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
+                        <input type="text" id="barcode-search-system" autocomplete="off" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
                     </div>
 
                     <!-- Row 2: Factory Range & Multi-select Dropdowns -->
@@ -1612,7 +1634,7 @@
                 <div class="flex flex-wrap gap-2 items-center">
                     <div class="relative flex-[2] min-w-[200px]">
                         <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                        <input type="text" id="inbound-search" placeholder="بحث برقم الفاتورة، اسم المورد، الملاحظات..." 
+                        <input type="text" id="inbound-search" autocomplete="off" placeholder="بحث برقم الفاتورة، اسم المورد، الملاحظات..." 
                             class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
                     </div>
                     <div class="flex items-center gap-1 bg-devo-dark border border-devo-gray rounded-lg px-2 min-w-[110px]">
@@ -1830,21 +1852,21 @@
                         <label class="text-[10px] text-devo-muted font-bold block">البحث بكود السيستم</label>
                         <div class="relative">
                             <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
-                            <input type="text" id="model-search-system" placeholder="كود السيستم..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono">
+                            <input type="text" id="model-search-system" autocomplete="off" placeholder="كود السيستم..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono">
                         </div>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[10px] text-devo-muted font-bold block">البحث بكود المصنع</label>
                         <div class="relative">
                             <i class="ph ph-barcode absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
-                            <input type="text" id="model-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono">
+                            <input type="text" id="model-search-factory" autocomplete="off" placeholder="كود المصنع..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono">
                         </div>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[10px] text-devo-muted font-bold block">البحث باسم الموديل</label>
                         <div class="relative">
                             <i class="ph ph-tag absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
-                            <input type="text" id="model-search-name" placeholder="اسم الموديل..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                            <input type="text" id="model-search-name" autocomplete="off" placeholder="اسم الموديل..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
                         </div>
                     </div>
                 </div>
@@ -1972,7 +1994,7 @@
             <!-- فلتر البحث في المعاينة -->
             <div class="relative w-full max-w-md">
                 <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                <input type="text" id="preview-search" placeholder="بحث سريع في جدول المعاينة بالاسم أو الكود..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                <input type="text" id="preview-search" autocomplete="off" placeholder="بحث سريع في جدول المعاينة بالاسم أو الكود..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
             </div>
 
             <!-- جدول المعاينة التفصيلي -->
@@ -2640,7 +2662,7 @@
         <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-wrap gap-4 items-center">
             <div class="flex-1 min-w-[200px] relative">
                 <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                <input type="text" id="audits-search" placeholder="البحث برقم الجلسة أو اسم العامل..." class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2 text-white focus:border-devo-orange outline-none text-xs transition-all shadow-sm">
+                <input type="text" id="audits-search" autocomplete="off" placeholder="البحث برقم الجلسة أو اسم العامل..." class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2 text-white focus:border-devo-orange outline-none text-xs transition-all shadow-sm">
             </div>
             <div class="flex gap-2">
                 <select id="audits-status-filter" class="bg-devo-black border border-devo-gray rounded-xl px-3 py-2 text-xs text-white focus:border-devo-orange outline-none cursor-pointer">
@@ -3394,15 +3416,15 @@
                         <!-- Row 1: Split Searches -->
                         <div class="lg:col-span-2 relative">
                             <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                            <input type="text" id="audit-create-search-name" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                            <input type="text" id="audit-create-search-name" autocomplete="off" placeholder="البحث باسم الصنف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
                         </div>
                         <div class="relative">
                             <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                            <input type="text" id="audit-create-search-factory" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                            <input type="text" id="audit-create-search-factory" autocomplete="off" placeholder="كود المصنع..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
                         </div>
                         <div class="relative">
                             <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                            <input type="text" id="audit-create-search-system" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                            <input type="text" id="audit-create-search-system" autocomplete="off" placeholder="كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-xs transition-all">
                         </div>
 
                         <!-- Row 2: Factory Range & Dropdowns -->

@@ -155,7 +155,7 @@ async function loadViewLogic(targetId) {
             initDefinitionsView();
             break;
         case 'view-models':
-            const { initModelsView } = await import('./models.js'); 
+            const { initModelsView } = await import('./models.js?v=1.0.1'); 
             await initModelsView(); 
             break;
         case 'view-home-settings':

@@ -11,6 +11,12 @@ let editingOrderId = null;
 let cartRealtimeChannel = null;
 let lastOrderForPrinting = null;
 
+// ذاكرة تخزين مؤقت لتسريع الرسم الفوري ومنع تكرار الاتصال بالسيرفر
+let cachedDbInventory = [];
+let cachedDbModels = [];
+let cachedOriginalOrderData = null;
+let currentCartFilter = 'all'; // 'all', 'ok', 'error'
+
 export function initCart() {
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
@@ -19,6 +25,8 @@ export function initCart() {
         document.getElementById('checkout-form')?.addEventListener('submit', handleCheckout);
         window.refreshCartView = loadAndRenderCart;
         window.showInvoiceModal = showInvoiceModal;
+        window.setCartFilter = setCartFilter;
+        window.filterCartItems = filterCartItems;
         
         document.getElementById('c-deposit')?.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value) || 0;
@@ -47,8 +55,17 @@ function setupCartRealtime() {
                 } else if (itemInCart.qty > available_series) {
                     showToast(`⚠️ انخفض مخزون الموديل (${itemInCart.modelName}) الموجود بسلتك، يرجى مراجعة السلة!`, 'warning');
                 }
+                
+                // تحديث الكاش
+                const cachedInv = cachedDbInventory.find(i => i.model_id === model_id && i.color_id === color_id);
+                if (cachedInv) {
+                    cachedInv.available_series = available_series;
+                } else {
+                    cachedDbInventory.push({ model_id, color_id, available_series });
+                }
+
                 if (!document.getElementById('view-cart')?.classList.contains('hidden')) {
-                    loadAndRenderCart();
+                    renderCartFromCacheOrFetch();
                 }
             }
         })
@@ -62,8 +79,15 @@ function setupCartRealtime() {
                 
                 if (itemInCart) {
                     showToast(`⚠️ الموديل (${itemInCart.modelName}) لم يعد متاحاً للطلب! يرجى إزالته من السلة.`, 'error');
+                    
+                    // تحديث الكاش للموديلات
+                    const cachedModel = cachedDbModels.find(m => m.id === targetId);
+                    if (cachedModel) {
+                        cachedModel.is_active = false;
+                    }
+                    
                     if (!document.getElementById('view-cart')?.classList.contains('hidden')) {
-                        loadAndRenderCart();
+                        renderCartFromCacheOrFetch();
                     }
                 }
             }
@@ -75,6 +99,9 @@ function setupCartRealtime() {
 // 🌟 2. تحميل ورسم السلة (بمعادلة المتاح الحقيقي) 🌟
 // ==========================================
 async function loadAndRenderCart() {
+    currentCartFilter = 'all';
+    updateFilterButtonsUI();
+
     const saved = localStorage.getItem('devo_cart');
     if (saved) { try { cartItems = JSON.parse(saved); } catch(e) { cartItems = []; } }
 
@@ -125,7 +152,12 @@ async function loadAndRenderCart() {
         supabase.from('models').select('id, is_active').in('id', modelIds)
     ]);
 
-    renderCartItems(dbInventory || [], dbModels || [], originalOrderData);
+    // تخزين البيانات في الكاش
+    cachedDbInventory = dbInventory || [];
+    cachedDbModels = dbModels || [];
+    cachedOriginalOrderData = originalOrderData;
+
+    renderCartItems(cachedDbInventory, cachedDbModels, cachedOriginalOrderData);
     updateFloatingCart();
     
     if(window.filterCartItems) window.filterCartItems();
@@ -139,6 +171,7 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
     let totalOrderPrice = 0;
     let totalSeriesCount = 0;
     let hasErrors = false;
+    let errorModelsCount = 0;
 
     // 🌟 تجميع ألوان نفس الصنف داخل نفس الكارت 🌟
     const groupedMap = new Map();
@@ -247,11 +280,15 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
             `;
         });
 
+        if (modelHasErrors) {
+            errorModelsCount++;
+        }
+
         const cardClass = modelHasErrors ? 'bg-devo-error/10 border-devo-error shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-devo-dark border-devo-gray';
         const imgClass = modelHasErrors ? 'grayscale opacity-60' : '';
 
         html += `
-            <div class="cart-item-card flex flex-col sm:flex-row gap-3 md:gap-4 p-3.5 ${cardClass} border rounded-xl relative transition-all duration-300 mb-4 shadow-sm" data-search="${modelGroup.modelName} ${modelGroup.factoryCode || ''}">
+            <div class="cart-item-card flex flex-col sm:flex-row gap-3 md:gap-4 p-3.5 ${cardClass} border rounded-xl relative transition-all duration-300 mb-4 shadow-sm" data-search="${modelGroup.modelName} ${modelGroup.factoryCode || ''}" data-has-errors="${modelHasErrors}">
                 <div class="flex gap-3 md:gap-4 items-start">
                     <img src="${modelGroup.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover bg-devo-black shrink-0 ${imgClass}" onerror="this.src='./src/assets/icons/devo.png'">
                 </div>
@@ -300,6 +337,16 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
     if (sumSeriesEl) sumSeriesEl.textContent = totalSeriesCount;
     if (itemsCountEl) itemsCountEl.textContent = `${groupedMap.size} موديلات في الأوردر (${totalSeriesCount} سيريه)`;
 
+    const errorBadge = document.getElementById('cart-error-badge');
+    if (errorBadge) {
+        if (errorModelsCount > 0) {
+            errorBadge.textContent = errorModelsCount;
+            errorBadge.classList.remove('hidden');
+        } else {
+            errorBadge.classList.add('hidden');
+        }
+    }
+
     if (checkoutBtn) {
         if (hasErrors) {
             checkoutBtn.disabled = true;
@@ -330,7 +377,7 @@ window.confirmRemoveModelFromCart = async (modelId) => {
     if (confirmed) {
         cartItems = cartItems.filter(i => i.modelId !== modelId);
         saveCart();
-        loadAndRenderCart();
+        renderCartFromCacheOrFetch();
         showToast(`تم حذف الموديل (${modelName}) من السلة`, 'success');
     }
 };
@@ -373,19 +420,73 @@ window.clearEntireCart = async () => {
     }
 };
 
-window.filterCartItems = () => {
+function updateFilterButtonsUI() {
+    const filters = {
+        all: {
+            activeClass: "px-4 py-2 rounded-lg font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm",
+            inactiveClass: "px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5"
+        },
+        ok: {
+            activeClass: "px-4 py-2 rounded-lg font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm",
+            inactiveClass: "px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5"
+        },
+        error: {
+            activeClass: "px-4 py-2 rounded-lg font-bold transition-all bg-devo-error text-white flex items-center gap-1.5 shadow-sm",
+            inactiveClass: "px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5"
+        }
+    };
+
+    Object.keys(filters).forEach(type => {
+        const btn = document.getElementById(`btn-cart-filter-${type}`);
+        if (btn) {
+            if (currentCartFilter === type) {
+                btn.className = filters[type].activeClass;
+            } else {
+                btn.className = filters[type].inactiveClass;
+            }
+        }
+    });
+}
+
+export function setCartFilter(filterType) {
+    currentCartFilter = filterType;
+    updateFilterButtonsUI();
+    filterCartItems();
+}
+
+export function filterCartItems() {
     const term = document.getElementById('cart-search-input')?.value.toLowerCase().trim() || '';
     const cards = document.querySelectorAll('.cart-item-card');
     
     cards.forEach(card => {
-        const searchText = card.getAttribute('data-search').toLowerCase();
-        if (term === '' || searchText.includes(term)) {
+        const searchText = (card.getAttribute('data-search') || '').toLowerCase();
+        const hasErrors = card.getAttribute('data-has-errors') === 'true';
+        
+        const matchesSearch = term === '' || searchText.includes(term);
+        let matchesFilter = true;
+        if (currentCartFilter === 'ok') {
+            matchesFilter = !hasErrors;
+        } else if (currentCartFilter === 'error') {
+            matchesFilter = hasErrors;
+        }
+        
+        if (matchesSearch && matchesFilter) {
             card.style.display = '';
         } else {
             card.style.display = 'none';
         }
     });
-};
+}
+
+function renderCartFromCacheOrFetch() {
+    if (cachedDbInventory && cachedDbInventory.length > 0 && cachedDbModels && cachedDbModels.length > 0) {
+        renderCartItems(cachedDbInventory, cachedDbModels, cachedOriginalOrderData);
+        updateFloatingCart();
+        if (window.filterCartItems) window.filterCartItems();
+    } else {
+        loadAndRenderCart();
+    }
+}
 
 window.updateCartItemQty = (index, newQty, maxAvailable = null) => {
     if (newQty < 1) return;
@@ -394,7 +495,7 @@ window.updateCartItemQty = (index, newQty, maxAvailable = null) => {
     }
     cartItems[index].qty = newQty;
     saveCart();
-    loadAndRenderCart(); 
+    renderCartFromCacheOrFetch(); 
 };
 
 // ==========================================
@@ -614,12 +715,21 @@ async function handleCheckout(e) {
     }
 }
 
-window.confirmRemoveFromCart = (index) => {
-    itemToDeleteIndex = index;
-    const modal = document.getElementById('confirm-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        setTimeout(() => modal.classList.remove('opacity-0'), 10);
+window.confirmRemoveFromCart = async (index) => {
+    const item = cartItems[index];
+    if (!item) return;
+
+    const confirmed = await confirmDialog({ 
+        title: 'حذف اللون من السلة', 
+        message: `هل أنت متأكد من رغبتك في حذف اللون (${item.colorName}) للموديل (${item.modelName}) من السلة؟`, 
+        isDestructive: true 
+    });
+
+    if (confirmed) {
+        cartItems.splice(index, 1);
+        saveCart();
+        renderCartFromCacheOrFetch();
+        showToast(`تم إزالة اللون (${item.colorName}) بنجاح`, 'success');
     }
 };
 
@@ -632,15 +742,7 @@ window.closeConfirmModal = () => {
     itemToDeleteIndex = null;
 };
 
-document.getElementById('btn-confirm-delete')?.addEventListener('click', () => {
-    if (itemToDeleteIndex !== null) {
-        cartItems.splice(itemToDeleteIndex, 1);
-        saveCart();
-        loadAndRenderCart();
-        showToast('تم الإزالة من السلة', 'success');
-    }
-    window.closeConfirmModal();
-});
+
 
 function saveCart() {
     localStorage.setItem('devo_cart', JSON.stringify(cartItems));

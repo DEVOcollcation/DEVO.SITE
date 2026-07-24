@@ -259,10 +259,22 @@ window.applyAdminOrdersFilter = () => {
     const dateTo = document.getElementById('ao-date-to')?.value;
 
     const filtered = allAdminOrders.filter(o => {
-        if (term && !o.invoice_number.toLowerCase().includes(term) 
-                 && !o.customer_name.toLowerCase().includes(term) 
-                 && !(o.phone_1||'').includes(term)
-                 && !(o.system_users?.full_name||'').toLowerCase().includes(term)) return false;
+        if (term) {
+            const matchesMain = o.invoice_number.toLowerCase().includes(term) 
+                             || o.customer_name.toLowerCase().includes(term) 
+                             || (o.phone_1||'').includes(term)
+                             || (o.system_users?.full_name||'').toLowerCase().includes(term);
+                             
+            const matchesItems = o.order_items && o.order_items.some(item => {
+                const modelName = (item.models?.name || '').toLowerCase();
+                const factoryCode = (item.models?.factory_code || '').toLowerCase();
+                const systemCode = (item.models?.system_code || '').toLowerCase();
+                const colorName = (item.colors?.name || '').toLowerCase();
+                return modelName.includes(term) || factoryCode.includes(term) || systemCode.includes(term) || colorName.includes(term);
+            });
+            
+            if (!matchesMain && !matchesItems) return false;
+        }
                  
         if (statusFilter && o.status !== statusFilter) return false;
 
@@ -493,6 +505,16 @@ window.viewAdminOrderDetails = async (id) => {
     const modal = document.getElementById('ao-details-modal');
     modal.classList.remove('hidden');
     setTimeout(() => modal.classList.remove('opacity-0'), 10);
+
+    // ربط أزرار الطباعة بقيم الأوردر الحالي المعروض
+    const printCustBtn = document.getElementById('ao-print-customer-btn');
+    const printDetBtn = document.getElementById('ao-print-detailed-btn');
+    if (printCustBtn) {
+        printCustBtn.onclick = () => window.printAdminOrder(o.id, 'customer');
+    }
+    if (printDetBtn) {
+        printDetBtn.onclick = () => window.printAdminOrder(o.id, 'detailed');
+    }
 };
 
 window.filterModalTable = (term) => {
