@@ -2140,6 +2140,39 @@
                             <input type="text" id="import-stock-factory-to" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="إلى كود">
                         </div>
 
+                        <select id="import-stock-filter-category" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                            <option value="">جميع التصنيفات</option>
+                        </select>
+
+                        <select id="import-stock-filter-class" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                            <option value="">جميع الفئات العمرية</option>
+                        </select>
+
+                        <select id="import-stock-filter-status" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                            <option value="">حالة الموديل (الكل)</option>
+                            <option value="active">نشط / مفعل بالسيستم</option>
+                            <option value="inactive">معطل / غير نشط</option>
+                            <option value="new">جديد (غير مسجل بالسيستم)</option>
+                        </select>
+
+                        <div class="col-span-1 sm:col-span-2 lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-devo-dark/90 border border-devo-gray rounded-lg p-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-devo-muted whitespace-nowrap">مخزون الموديل (مجموع الألوان):</span>
+                                <select id="import-stock-filter-stock-op" class="w-full bg-devo-black border border-devo-gray rounded-md px-2 py-1 text-white outline-none text-xs cursor-pointer focus:border-devo-orange">
+                                    <option value="">جميع كميات المخزون</option>
+                                    <option value="equal">يساوي (=)</option>
+                                    <option value="greater">أكبر من (&gt;)</option>
+                                    <option value="greater_equal">أكبر من أو يساوي (&gt;=)</option>
+                                    <option value="less">أقل من (&lt;)</option>
+                                    <option value="less_equal">أقل من أو يساوي (&lt;=)</option>
+                                </select>
+                            </div>
+                            <div id="import-stock-filter-stock-qty-container" class="hidden flex items-center gap-2">
+                                <span class="text-xs text-devo-muted whitespace-nowrap">الكمية:</span>
+                                <input type="number" id="import-stock-filter-stock-qty" placeholder="أدخل عدد السريات..." class="w-full bg-devo-black border border-devo-gray rounded-md px-3 py-1 text-white outline-none text-xs focus:border-devo-orange">
+                            </div>
+                        </div>
+
                         <select id="import-stock-filter-change" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
                             <option value="">نوع التغيير بالمعاينة (الكل)</option>
                             <option value="changed">يحتوي على تغيير مخزون/سعر</option>
@@ -2187,9 +2220,9 @@
                 <button type="button" id="import-btn-back-to-options" class="flex-1 py-3.5 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">
                     رجوع للخلف
                 </button>
-                <button type="button" id="import-btn-confirm-save" class="flex-[2] py-3.5 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
-                    <i class="ph ph-check-circle text-xl"></i>
-                    <span>تأكيد وحفظ الأصناف المصطادة (<span id="import-stock-btn-selected-count">0</span> موديل)</span>
+                <button type="button" id="import-btn-proceed-checks" class="flex-[2] py-3.5 rounded-lg bg-devo-orange hover:bg-devo-orangeHover text-white font-bold shadow-lg shadow-devo-orange/20 transition-all text-sm flex items-center justify-center gap-2">
+                    <i class="ph ph-arrow-left text-xl"></i>
+                    <span>المتابعة لفحص الأصناف والقرارات (<span id="import-stock-btn-selected-count">0</span> موديل)</span>
                 </button>
             </div>
         </div>

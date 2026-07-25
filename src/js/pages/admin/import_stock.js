@@ -110,26 +110,30 @@ export async function initImportStockView() {
     }
 
     const stockOp = document.getElementById('import-stock-filter-stock-op');
+    const stockQtyContainer = document.getElementById('import-stock-filter-stock-qty-container');
     const stockQty = document.getElementById('import-stock-filter-stock-qty');
-    if (stockOp && stockQty) {
+    if (stockOp) {
         stockOp.addEventListener('change', () => {
             if (stockOp.value) {
-                stockQty.classList.remove('hidden');
+                if (stockQtyContainer) stockQtyContainer.classList.remove('hidden');
             } else {
-                stockQty.classList.add('hidden');
-                stockQty.value = '';
+                if (stockQtyContainer) stockQtyContainer.classList.add('hidden');
+                if (stockQty) stockQty.value = '';
             }
             window.applyImportStockFilters();
         });
+        if (stockQty) stockQty.addEventListener('input', handlePreviewSearch);
     }
 
-    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to', 'import-stock-filter-status', 'import-stock-filter-stock-qty', 'import-stock-price-min', 'import-stock-price-max', 'import-stock-date-from', 'import-stock-date-to'].forEach(id => {
+    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to', 'import-stock-filter-stock-qty', 'import-stock-price-min', 'import-stock-price-max', 'import-stock-date-from', 'import-stock-date-to'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', handlePreviewSearch);
     });
 
-    const filterChange = document.getElementById('import-stock-filter-change');
-    if (filterChange) filterChange.addEventListener('change', handlePreviewSearch);
+    ['import-stock-filter-category', 'import-stock-filter-class', 'import-stock-filter-status', 'import-stock-filter-stock-op', 'import-stock-filter-change'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', handlePreviewSearch);
+    });
 
     await loadInitialData();
     isInitialized = true;
@@ -213,6 +217,18 @@ export async function loadInitialData() {
         populateCheckbox('import-stock-dropdown-class-options', existingClasses, 'class');
         populateCheckbox('import-stock-dropdown-color-options', existingColors, 'color');
         populateCheckbox('import-stock-dropdown-size-options', existingSizes, 'size');
+
+        const catSelect = document.getElementById('import-stock-filter-category');
+        if (catSelect) {
+            const cur = catSelect.value;
+            catSelect.innerHTML = `<option value="">جميع التصنيفات</option>` + existingCategories.map(c => `<option value="${c.id}" ${cur === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
+        }
+
+        const classSelect = document.getElementById('import-stock-filter-class');
+        if (classSelect) {
+            const cur = classSelect.value;
+            classSelect.innerHTML = `<option value="">جميع الفئات العمرية</option>` + existingClasses.map(c => `<option value="${c.id}" ${cur === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
+        }
 
         window.updateImportStockMultiSelectLabel('cat');
         window.updateImportStockMultiSelectLabel('class');
@@ -554,13 +570,16 @@ async function checkSelectedColorsAndProceed() {
 
     unknownColorsList = [];
 
-    const selectedCodes = selectedImportStockModelCodes;
-    const activeRows = excelRawData.filter(row => {
-        if (!selectedCodes.has(row.systemCode)) return false;
-        const exists = allModels.some(m => String(m.system_code) === String(row.systemCode));
-        if (exists) return true;
-        return modelActions[row.systemCode] === 'create';
-    });
+    // Build effective selected codes: registered models + new models user chose 'create' for
+    const effectiveSelectedCodes = new Set(
+        [...selectedImportStockModelCodes].filter(code => {
+            const isRegistered = allModels.some(m => String(m.system_code) === String(code));
+            if (isRegistered) return true;
+            return modelActions[code] === 'create';
+        })
+    );
+
+    const activeRows = excelRawData.filter(row => effectiveSelectedCodes.has(row.systemCode));
 
     const seenCombos = new Set();
     activeRows.forEach(row => {
@@ -819,6 +838,10 @@ async function processAndRenderPreview() {
             });
         }
 
+        let categoryId = dbModel?.category_id || null;
+        let isActive = dbModel ? dbModel.is_active : false;
+        let currentStock = dbModel ? (dbModel.model_inventory?.reduce((sum, inv) => sum + (inv.available_series || 0), 0) || 0) : 0;
+
         if (modelHasChanges) {
             updatedModelsCount++;
             previewData.push({
@@ -827,6 +850,10 @@ async function processAndRenderPreview() {
                 systemCode: code,
                 modelName,
                 factoryCode,
+                categoryId,
+                classId,
+                isActive,
+                currentStock,
                 oldPrice,
                 newPrice,
                 priceChanged: modelPriceChanged,
@@ -836,13 +863,6 @@ async function processAndRenderPreview() {
     }
 
     selectedImportStockModelCodes = new Set(previewData.map(m => m.systemCode));
-
-    document.getElementById('preview-stat-excel-rows').textContent = excelRawData.length;
-    document.getElementById('preview-stat-updated-qty').textContent = qtyUpdatesCount;
-    document.getElementById('preview-stat-models').textContent = previewData.length;
-    document.getElementById('preview-stat-colors').textContent = newColorsCount;
-    document.getElementById('preview-stat-prices').textContent = priceChangesCount;
-    document.getElementById('preview-stat-movements').textContent = movementsCount + priceChangesCount;
 
     window.applyImportStockFilters();
 }
@@ -860,6 +880,53 @@ window.toggleImportStockFilters = () => {
     }
 };
 
+window.updatePreviewStatCards = () => {
+    const selectedSet = selectedImportStockModelCodes;
+    const selectedItems = previewData.filter(item => selectedSet.has(item.systemCode));
+
+    let excelRowsCount = 0;
+    let qtyUpdatesCount = 0;
+    let priceChangesCount = 0;
+    let movementsCount = 0;
+    const uniqueNewColors = new Set();
+
+    selectedItems.forEach(item => {
+        const modelExcelRows = excelRawData.filter(r => r.systemCode === item.systemCode).length;
+        excelRowsCount += modelExcelRows;
+
+        if (item.priceChanged) priceChangesCount++;
+
+        item.colors.forEach(c => {
+            if (c.diff !== 0) {
+                qtyUpdatesCount++;
+                movementsCount++;
+            }
+            if (c.action === 'add') {
+                uniqueNewColors.add(c.colorName.trim());
+            }
+        });
+        if (item.priceChanged) movementsCount++;
+    });
+
+    const rowsEl = document.getElementById('preview-stat-excel-rows');
+    const qtyEl = document.getElementById('preview-stat-updated-qty');
+    const modelsEl = document.getElementById('preview-stat-models');
+    const colorsEl = document.getElementById('preview-stat-colors');
+    const pricesEl = document.getElementById('preview-stat-prices');
+    const movementsEl = document.getElementById('preview-stat-movements');
+    const selectedEl = document.getElementById('import-stock-selected-count');
+    const btnSelectedEl = document.getElementById('import-stock-btn-selected-count');
+
+    if (rowsEl) rowsEl.textContent = excelRowsCount;
+    if (qtyEl) qtyEl.textContent = qtyUpdatesCount;
+    if (modelsEl) modelsEl.textContent = selectedItems.length;
+    if (colorsEl) colorsEl.textContent = uniqueNewColors.size;
+    if (pricesEl) pricesEl.textContent = priceChangesCount;
+    if (movementsEl) movementsEl.textContent = movementsCount;
+    if (selectedEl) selectedEl.textContent = selectedItems.length;
+    if (btnSelectedEl) btnSelectedEl.textContent = selectedItems.length;
+};
+
 window.applyImportStockFilters = () => {
     const nameTerm = document.getElementById('import-stock-search-name')?.value.toLowerCase().trim() || '';
     const factoryTerm = document.getElementById('import-stock-search-factory')?.value.toLowerCase().trim() || '';
@@ -867,6 +934,13 @@ window.applyImportStockFilters = () => {
 
     const factoryFromVal = document.getElementById('import-stock-factory-from')?.value.trim() || '';
     const factoryToVal = document.getElementById('import-stock-factory-to')?.value.trim() || '';
+
+    const categoryVal = document.getElementById('import-stock-filter-category')?.value || '';
+    const classVal = document.getElementById('import-stock-filter-class')?.value || '';
+    const statusVal = document.getElementById('import-stock-filter-status')?.value || '';
+
+    const stockOp = document.getElementById('import-stock-filter-stock-op')?.value || '';
+    const stockQtyVal = parseInt(document.getElementById('import-stock-filter-stock-qty')?.value, 10);
 
     const changeTerm = document.getElementById('import-stock-filter-change')?.value || '';
 
@@ -891,6 +965,22 @@ window.applyImportStockFilters = () => {
             }
         }
 
+        if (categoryVal && String(item.categoryId) !== String(categoryVal)) isMatch = false;
+        if (classVal && String(item.classId) !== String(classVal)) isMatch = false;
+
+        if (statusVal === 'active' && (!item.isActive || item.isNew)) isMatch = false;
+        if (statusVal === 'inactive' && (item.isActive || item.isNew)) isMatch = false;
+        if (statusVal === 'new' && !item.isNew) isMatch = false;
+
+        if (stockOp && !isNaN(stockQtyVal)) {
+            const qty = item.currentStock || 0;
+            if (stockOp === 'equal' && qty !== stockQtyVal) isMatch = false;
+            if (stockOp === 'greater' && qty <= stockQtyVal) isMatch = false;
+            if (stockOp === 'less' && qty >= stockQtyVal) isMatch = false;
+            if (stockOp === 'greater_equal' && qty < stockQtyVal) isMatch = false;
+            if (stockOp === 'less_equal' && qty > stockQtyVal) isMatch = false;
+        }
+
         const hasQtyChange = item.colors.some(c => c.diff !== 0);
         if (changeTerm === 'changed' && !hasQtyChange && !item.priceChanged && !item.isNew) isMatch = false;
         if (changeTerm === 'unchanged' && hasQtyChange) isMatch = false;
@@ -900,14 +990,21 @@ window.applyImportStockFilters = () => {
         return isMatch;
     });
 
+    if (changeTerm !== 'selected') {
+        selectedImportStockModelCodes = new Set(filteredPreviewData.map(item => item.systemCode));
+    }
+
     renderPreviewTable(filteredPreviewData);
+    window.updatePreviewStatCards();
 };
 
 window.clearImportStockFilters = () => {
-    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to', 'import-stock-filter-change'].forEach(id => {
+    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to', 'import-stock-filter-category', 'import-stock-filter-class', 'import-stock-filter-status', 'import-stock-filter-stock-op', 'import-stock-filter-stock-qty', 'import-stock-filter-change'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const container = document.getElementById('import-stock-filter-stock-qty-container');
+    if (container) container.classList.add('hidden');
     window.applyImportStockFilters();
 };
 
@@ -921,6 +1018,7 @@ window.toggleImportStockSelectAll = (masterCb) => {
         }
     });
     renderPreviewTable(filteredPreviewData);
+    window.updatePreviewStatCards();
 };
 
 window.toggleImportStockModelSelection = (code, checked) => {
@@ -940,6 +1038,7 @@ window.toggleImportStockModelSelection = (code, checked) => {
     if (masterCb) {
         masterCb.checked = filteredPreviewData.length > 0 && filteredPreviewData.every(item => selectedImportStockModelCodes.has(item.systemCode));
     }
+    window.updatePreviewStatCards();
 };
 
 // 🌟 Render preview table rows with clear model separators 🌟
@@ -1028,7 +1127,17 @@ function renderPreviewTable(data) {
 
 // 🌟 9. Execute Import & Save to Supabase (Save button) 🌟
 async function handleConfirmSave() {
-    const selectedPreviewData = previewData.filter(item => selectedImportStockModelCodes.has(item.systemCode));
+    // Build the effective set: only models that are either registered in the system OR user chose 'create'
+    const effectiveSelectedCodes = new Set(
+        [...selectedImportStockModelCodes].filter(code => {
+            const isRegistered = allModels.some(m => String(m.system_code) === String(code));
+            if (isRegistered) return true;
+            // For unregistered models, only include if user explicitly chose 'create'
+            return modelActions[code] === 'create';
+        })
+    );
+
+    const selectedPreviewData = previewData.filter(item => effectiveSelectedCodes.has(item.systemCode));
 
     if (selectedPreviewData.length === 0) {
         return showToast('الرجاء اختيار أو اصطياد موديل واحد على الأقل قبل الحفظ', 'warning');
@@ -1037,12 +1146,14 @@ async function handleConfirmSave() {
     showProgress('مزامنة وحفظ البيانات', 'جاري بدء الحفظ بقاعدة البيانات...');
 
     try {
-        // Step A: Create new models in bulk batches
+        // Step A: Create new models in bulk batches (only 'create' action, truly unregistered)
+        const seenNewCodes = new Set();
         const newModelsToInsert = [];
         for (const item of selectedPreviewData) {
-            if (item.isNew) {
+            if (item.isNew && modelActions[item.systemCode] === 'create' && !seenNewCodes.has(item.systemCode)) {
                 const unreg = unregisteredModels.find(m => String(m.systemCode) === String(item.systemCode));
                 if (unreg) {
+                    seenNewCodes.add(item.systemCode);
                     newModelsToInsert.push({
                         system_code: unreg.systemCode,
                         factory_code: unreg.factoryCode,
@@ -1084,8 +1195,16 @@ async function handleConfirmSave() {
             }
         }
 
-        // Step B: Create new colors globally in bulk
-        updateProgress('جاري فحص وإنشاء الألوان الجديدة بالسيستم...', 25);
+        // Step B: Create new colors globally in bulk with sequential color_code
+        updateProgress('جاري فحص وإنشاء الألوان الجديدة بالسيستم وتوليد الأكواد...', 25);
+        let maxCodeNum = 0;
+        existingColors.forEach(c => {
+            const codeNum = parseInt(c.color_code, 10);
+            if (!isNaN(codeNum) && codeNum > maxCodeNum) {
+                maxCodeNum = codeNum;
+            }
+        });
+
         const uniqueColorNamesToCreate = new Set();
         for (const modelMaps of Object.values(colorMappings)) {
             for (const [colorName, mapping] of Object.entries(modelMaps)) {
@@ -1097,22 +1216,33 @@ async function handleConfirmSave() {
 
         if (uniqueColorNamesToCreate.size > 0) {
             const existingNames = new Set(existingColors.map(c => c.name.trim()));
-            const colorsToInsert = [...uniqueColorNamesToCreate]
-                .filter(name => !existingNames.has(name))
-                .map(name => ({ name }));
+            const colorsToInsert = [];
+
+            [...uniqueColorNamesToCreate].forEach(name => {
+                if (!existingNames.has(name)) {
+                    maxCodeNum++;
+                    colorsToInsert.push({
+                        color_code: String(maxCodeNum),
+                        name: name
+                    });
+                }
+            });
 
             if (colorsToInsert.length > 0) {
-                const { data: createdColors, error: colorErr } = await supabase
-                    .from('colors')
-                    .insert(colorsToInsert)
-                    .select('id, name');
-                if (colorErr && colorErr.code !== '23505') throw colorErr;
-                if (createdColors) {
-                    existingColors.push(...createdColors);
+                for (let i = 0; i < colorsToInsert.length; i += 200) {
+                    const chunk = colorsToInsert.slice(i, i + 200);
+                    const { data: createdColors, error: colorErr } = await supabase
+                        .from('colors')
+                        .insert(chunk)
+                        .select('id, name, color_code');
+                    if (colorErr && colorErr.code !== '23505') throw colorErr;
+                    if (createdColors) {
+                        existingColors.push(...createdColors);
+                    }
                 }
             }
 
-            const { data: allLatestColors } = await supabase.from('colors').select('id, name');
+            const { data: allLatestColors } = await supabase.from('colors').select('id, name, color_code');
             if (allLatestColors) existingColors = allLatestColors;
 
             const colorMapByName = {};

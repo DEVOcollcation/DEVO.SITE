@@ -954,24 +954,72 @@ async function handleSaveModel(e) {
     }
 }
 
-window.handleDeleteModel = async (id) => {
-    const confirmed = await confirmDialog({ title: 'حذف الموديل', message: 'تأكيد الحذف النهائي؟', isDestructive: true });
-    if (confirmed) {
-        try {
-            const { error } = await supabase.from('models').delete().eq('id', id);
-            if (error) {
-                if (error.code === '23503') {
-                    showToast('لا يمكن حذف الموديل لارتباطه بفواتير أو عمليات في السيستم. يمكنك تعطيل حالته بدلاً من حذفه.', 'error');
-                } else {
-                    showToast(`حدث خطأ أثناء الحذف: ${error.message}`, 'error');
-                }
-                return;
+export async function checkModelsInInvoices(modelIds, onProgress = null) {
+    if (!modelIds || (Array.isArray(modelIds) && modelIds.length === 0)) return new Set();
+    const ids = Array.isArray(modelIds) ? modelIds : [modelIds];
+    const linkedIds = new Set();
+
+    const CHUNK_SIZE = 200;
+    const totalCount = ids.length;
+
+    try {
+        for (let i = 0; i < totalCount; i += CHUNK_SIZE) {
+            const chunk = ids.slice(i, i + CHUNK_SIZE);
+            const currentProcessed = Math.min(i + CHUNK_SIZE, totalCount);
+
+            if (typeof onProgress === 'function') {
+                const percent = Math.round((currentProcessed / totalCount) * 100);
+                onProgress(percent, `جاري فحص ارتباط الفواتير والطلبات (${currentProcessed} من ${totalCount} موديل)...`);
             }
-            showToast('تم حذف الموديل بنجاح', 'success');
-            if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
-        } catch (err) {
-            showToast('حدث خطأ غير متوقع أثناء محاولة الحذف', 'error');
+
+            const [orderRes, inboundRes, invoiceRes] = await Promise.all([
+                supabase.from('order_items').select('model_id').in('model_id', chunk),
+                supabase.from('inbound_invoice_items').select('model_id').in('model_id', chunk),
+                supabase.from('invoice_items').select('model_id').in('model_id', chunk)
+            ]);
+
+            if (orderRes.data) {
+                orderRes.data.forEach(item => { if (item.model_id) linkedIds.add(item.model_id); });
+            }
+            if (inboundRes.data) {
+                inboundRes.data.forEach(item => { if (item.model_id) linkedIds.add(item.model_id); });
+            }
+            if (invoiceRes.data) {
+                invoiceRes.data.forEach(item => { if (item.model_id) linkedIds.add(item.model_id); });
+            }
         }
+
+        return linkedIds;
+    } catch (err) {
+        console.error('Error checking models in invoices:', err);
+        return linkedIds;
+    }
+}
+
+window.handleDeleteModel = async (id) => {
+    try {
+        const linkedModelIds = await checkModelsInInvoices([id]);
+        if (linkedModelIds.has(id)) {
+            showToast('لا يمكن حذف هذا الموديل لاحتوائه على فواتير أو طلبات بالسيستم. يمكنك تعطيله بدلاً من حذفه.', 'error');
+            return;
+        }
+
+        const confirmed = await confirmDialog({ title: 'حذف الموديل', message: 'تأكيد الحذف النهائي؟', isDestructive: true });
+        if (!confirmed) return;
+
+        const { error } = await supabase.from('models').delete().eq('id', id);
+        if (error) {
+            if (error.code === '23503') {
+                showToast('لا يمكن حذف الموديل لارتباطه بفواتير أو عمليات في السيستم. يمكنك تعطيل حالته بدلاً من حذفه.', 'error');
+            } else {
+                showToast(`حدث خطأ أثناء الحذف: ${error.message}`, 'error');
+            }
+            return;
+        }
+        showToast('تم حذف الموديل بنجاح', 'success');
+        if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
+    } catch (err) {
+        showToast('حدث خطأ غير متوقع أثناء محاولة الحذف', 'error');
     }
 };
 

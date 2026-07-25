@@ -1,6 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
+import { checkModelsInInvoices } from './models.js';
 
 let isBulkInitialized = false;
 let bulkAllModels = []; 
@@ -539,23 +540,13 @@ window.executeBulkEdit = async () => {
     if (action === 'change_class' && !classSelectVal) return showToast('الرجاء اختيار الفئة العمرية الجديدة', 'error');
 
     const isDelete = action === 'delete_models';
-    const confirmMsg = isDelete 
-        ? `تحذير خطير: سيتم حذف ${selectedModelIds.size} موديل نهائياً وبلا رجعة! هل أنت متأكد تماماً؟`
-        : `سيتم تطبيق هذا التعديل على ${selectedModelIds.size} موديل. هل أنت متأكد؟`;
-
-    const confirmed = await confirmDialog({ 
-        title: isDelete ? 'حذف مجمع للموديلات 🗑️' : 'تأكيد التعديل المجمع', 
-        message: confirmMsg, 
-        isDestructive: isDelete 
-    });
-    
-    if (!confirmed) return;
 
     const btn = document.getElementById('btn-bulk-execute');
+    const originalBtnText = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري التنفيذ...`;
+    btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري المعالجة...`;
 
-    // إظهار شريط التقدم وتصفير البيانات
+    // 🌟 إظهار شريط التقدم وتصفير البيانات فوراً لمنع تعليق الواجهة 🌟
     const progressContainer = document.getElementById('bulk-progress-container');
     const progressBar = document.getElementById('bulk-progress-bar');
     const progressText = document.getElementById('bulk-progress-text');
@@ -571,7 +562,6 @@ window.executeBulkEdit = async () => {
         progressErrors.classList.add('hidden');
     }
 
-    // تعطيل الحقول أثناء العمل
     const inputsToDisable = [
         document.getElementById('bulk-action-type'),
         document.getElementById('bulk-action-input'),
@@ -582,6 +572,72 @@ window.executeBulkEdit = async () => {
     inputsToDisable.forEach(input => {
         if (input) input.disabled = true;
     });
+
+    const resetBulkState = () => {
+        btn.disabled = false;
+        btn.innerHTML = originalBtnText;
+        inputsToDisable.forEach(input => {
+            if (input) input.disabled = false;
+        });
+        if (progressContainer) progressContainer.classList.add('hidden');
+    };
+
+    if (isDelete) {
+        const initialIdsToDelete = Array.from(selectedModelIds);
+        const linkedModelIds = await checkModelsInInvoices(initialIdsToDelete, (percent, text) => {
+            if (progressBar) progressBar.style.width = `${percent}%`;
+            if (progressPercent) progressPercent.textContent = `${percent}%`;
+            if (progressText) progressText.textContent = text;
+        });
+
+        if (linkedModelIds.size > 0) {
+            if (linkedModelIds.size === initialIdsToDelete.length) {
+                showToast('لا يمكن حذف الموديلات المحددة لأنها مرتبطة بفواتير أو طلبات في السيستم. يمكنك تعطيلها بدلاً من حذفها.', 'error');
+                resetBulkState();
+                return;
+            }
+
+            const deletableIds = initialIdsToDelete.filter(id => !linkedModelIds.has(id));
+            const confirmMsg = `تنبيه: يوجد ${linkedModelIds.size} موديل من المحددة مرتبطة بفواتير ولا يمكن حذفها (يمكنك تعطيلها).\nهل تريد متابعة حذف الـ ${deletableIds.length} موديل المتبقية فقط؟`;
+            
+            const confirmed = await confirmDialog({
+                title: 'حذف مجمع للموديلات 🗑️',
+                message: confirmMsg,
+                isDestructive: true
+            });
+            if (!confirmed) {
+                resetBulkState();
+                return;
+            }
+
+            selectedModelIds = new Set(deletableIds);
+        } else {
+            const confirmMsg = `تحذير خطير: سيتم حذف ${initialIdsToDelete.length} موديل نهائياً وبلا رجعة! هل أنت متأكد تماماً؟`;
+            const confirmed = await confirmDialog({
+                title: 'حذف مجمع للموديلات 🗑️',
+                message: confirmMsg,
+                isDestructive: true
+            });
+            if (!confirmed) {
+                resetBulkState();
+                return;
+            }
+        }
+    } else {
+        const confirmMsg = `سيتم تطبيق هذا التعديل على ${selectedModelIds.size} موديل. هل أنت متأكد؟`;
+        const confirmed = await confirmDialog({
+            title: 'تأكيد التعديل المجمع',
+            message: confirmMsg,
+            isDestructive: false
+        });
+        if (!confirmed) {
+            resetBulkState();
+            return;
+        }
+    }
+
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressPercent) progressPercent.textContent = '0%';
 
     try {
         const modelsToEdit = bulkAllModels.filter(m => selectedModelIds.has(m.id));
