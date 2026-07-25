@@ -48,21 +48,38 @@ window.toggleBulkFilters = () => {
     }
 };
 
+// تتبع القائمة المفتوحة حالياً
+let _openMenuId = null;
+
 window.toggleMultiSelectDropdown = (event, menuId) => {
-    event.stopPropagation();
+    event.stopPropagation(); // يمنع document.click من التشغيل فوراً
     const menu = document.getElementById(menuId);
     if (!menu) return;
     
-    // Close other dropdowns
-    const allMenus = document.querySelectorAll('.multi-select-dropdown [id$="-menu"]');
-    allMenus.forEach(m => {
-        if (m.id !== menuId) {
-            m.classList.add('hidden');
-        }
-    });
+    // إذا في قائمة مفتوحة غيره، أغلقها
+    if (_openMenuId && _openMenuId !== menuId) {
+        const prevMenu = document.getElementById(_openMenuId);
+        if (prevMenu) prevMenu.classList.add('hidden');
+    }
     
-    menu.classList.toggle('hidden');
+    const isNowHidden = menu.classList.contains('hidden');
+    if (isNowHidden) {
+        menu.classList.remove('hidden');
+        _openMenuId = menuId;
+    } else {
+        menu.classList.add('hidden');
+        _openMenuId = null;
+    }
 };
+
+// غلق القائمة عند الضغط خارجها - O(1) بدون مسح DOM
+document.addEventListener('click', () => {
+    if (_openMenuId) {
+        const openMenu = document.getElementById(_openMenuId);
+        if (openMenu) openMenu.classList.add('hidden');
+        _openMenuId = null;
+    }
+});
 
 window.multiSelectAction = (event, key, action) => {
     event.stopPropagation();
@@ -112,11 +129,8 @@ window.updateMultiSelectLabel = (key) => {
     }
 };
 
-// Global click handler to close dropdowns when clicking outside
-document.addEventListener('click', () => {
-    const allMenus = document.querySelectorAll('.multi-select-dropdown [id$="-menu"]');
-    allMenus.forEach(m => m.classList.add('hidden'));
-});
+
+
 
 export async function fetchBulkFilterOptions() {
     try {

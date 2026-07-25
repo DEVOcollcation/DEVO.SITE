@@ -14,6 +14,15 @@ let realtimeModelsQueue = {
     updates: new Set()
 };
 let realtimeTimeout = null;
+let filterDebounceTimer = null;
+
+function debouncedApplyFilters(delay = 120) {
+    if (filterDebounceTimer) clearTimeout(filterDebounceTimer);
+    filterDebounceTimer = setTimeout(() => {
+        filterDebounceTimer = null;
+        applyFilters();
+    }, delay);
+}
 
 let currentOpenModelId = null;
 let currentModelMovements = [];
@@ -21,28 +30,37 @@ let currentModelMovements = [];
 export async function initModelsView() {
     if (isInitialized) return;
     
-    ['model-search', 'filter-status', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
+    // نص البحث: debounce على input فقط (لتجنب الثقل عند كل حرف)
+    const searchEl = document.getElementById('model-search');
+    if (searchEl) searchEl.addEventListener('input', () => debouncedApplyFilters(200));
+
+    // الـ selects: change فقط (مرة واحدة بدون تكرار) + debounce خفيف
+    ['filter-status', 'filter-category', 'filter-class', 'filter-stock'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('input', applyFilters);
-            el.addEventListener('change', applyFilters);
-        }
+        if (el) el.addEventListener('change', () => debouncedApplyFilters(80));
     });
 
+    // فلتر كمية المخزون: ربط خاص لإظهار/إخفاء حقل الكمية
     const stockOp = document.getElementById('filter-stock-op');
     const stockQty = document.getElementById('filter-stock-qty');
     if (stockOp && stockQty) {
         stockOp.addEventListener('change', () => {
             if (stockOp.value) {
                 stockQty.classList.remove('hidden');
-                // Force wrapper to sync if needed, though Tailwind controls it
             } else {
                 stockQty.classList.add('hidden');
                 stockQty.value = '';
             }
-            applyFilters();
+            debouncedApplyFilters(80);
         });
+        stockQty.addEventListener('input', () => debouncedApplyFilters(300));
     }
+
+    // فلتر التاريخ
+    ['filter-date-from', 'filter-date-to'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => debouncedApplyFilters(80));
+    });
     
     document.getElementById('model-form')?.addEventListener('submit', handleSaveModel);
     document.getElementById('add-stock-form')?.addEventListener('submit', handleAddStockSubmit);

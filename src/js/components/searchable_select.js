@@ -6,6 +6,7 @@ function getClippingParent(node) {
         return window;
     }
     const style = window.getComputedStyle(node);
+    if (!style) return window;
     const overflowY = style.overflowY || style.overflow || "";
     if (overflowY.includes('auto') || overflowY.includes('scroll') || overflowY.includes('hidden')) {
         return node;
@@ -251,8 +252,8 @@ function wrapSelect(select) {
         document.querySelectorAll('.searchable-select-container .rotate-180').forEach(icon => {
             if (icon !== caretIcon) icon.classList.remove('rotate-180');
         });
-        document.querySelectorAll('.searchable-select-container div:not(.hidden)').forEach(menu => {
-            if (menu !== dropdownMenu && menu.parentNode.classList.contains('searchable-select-container')) {
+        document.querySelectorAll('.searchable-select-container > div:not(.hidden)').forEach(menu => {
+            if (menu !== dropdownMenu && menu.parentNode && menu.parentNode.classList.contains('searchable-select-container')) {
                 menu.classList.add('hidden');
             }
         });
@@ -313,7 +314,9 @@ function wrapSelect(select) {
     });
     
     // Setup MutationObserver
+    let isSyncing = false;
     const observer = new MutationObserver((mutations) => {
+        if (isSyncing) return;
         let rebuild = false;
         let syncDisabled = false;
         let syncClasses = false;
@@ -326,23 +329,29 @@ function wrapSelect(select) {
             }
         });
         
-        if (rebuild) {
-            rebuildOptions();
-        }
-        if (syncDisabled) {
-            customButton.disabled = select.disabled;
-            if (select.disabled) {
-                customButton.classList.add('opacity-70', 'cursor-not-allowed');
-            } else {
-                customButton.classList.remove('opacity-70', 'cursor-not-allowed');
+        isSyncing = true;
+        try {
+            if (rebuild) {
+                rebuildOptions();
             }
-        }
-        if (syncClasses) {
-            if (select.classList.contains('hidden') || select.style.display === 'none') {
-                container.classList.add('hidden');
-            } else {
-                container.classList.remove('hidden');
+            if (syncDisabled) {
+                customButton.disabled = select.disabled;
+                if (select.disabled) {
+                    customButton.classList.add('opacity-70', 'cursor-not-allowed');
+                } else {
+                    customButton.classList.remove('opacity-70', 'cursor-not-allowed');
+                }
             }
+            if (syncClasses) {
+                const isHidden = select.classList.contains('hidden') || select.style.display === 'none';
+                if (isHidden && !container.classList.contains('hidden')) {
+                    container.classList.add('hidden');
+                } else if (!isHidden && container.classList.contains('hidden')) {
+                    container.classList.remove('hidden');
+                }
+            }
+        } finally {
+            isSyncing = false;
         }
     });
     observer.observe(select, { childList: true, attributes: true, attributeFilter: ['disabled', 'class', 'style'] });
@@ -411,35 +420,46 @@ function wrapMultiSelectDropdown(dropdown) {
     searchInput.addEventListener('input', filterOptions);
 
     // Reset search on dropdown close, and position dynamically on open
+    let isUpdatingPosition = false;
     const menuObserver = new MutationObserver((mutations) => {
+        if (isUpdatingPosition) return;
         mutations.forEach(m => {
             if (m.type === 'attributes' && m.attributeName === 'class') {
                 if (menu.classList.contains('hidden')) {
                     searchInput.value = '';
                     filterOptions();
                 } else {
-                    // Position dynamically on open
-                    const rect = dropdown.getBoundingClientRect();
-                    const clippingParent = getClippingParent(dropdown);
-                    
-                    let spaceBelow = 0;
-                    let spaceAbove = 0;
-                    
-                    if (clippingParent === window) {
-                        spaceBelow = window.innerHeight - rect.bottom;
-                        spaceAbove = rect.top;
-                    } else {
-                        const parentRect = clippingParent.getBoundingClientRect();
-                        spaceBelow = parentRect.bottom - rect.bottom;
-                        spaceAbove = rect.top - parentRect.top;
-                    }
-                    
-                    if (spaceBelow < 280 && spaceAbove > spaceBelow) {
-                        menu.classList.remove('mt-1', 'top-full');
-                        menu.classList.add('bottom-full', 'mb-1');
-                    } else {
-                        menu.classList.remove('bottom-full', 'mb-1');
-                        menu.classList.add('top-full', 'mt-1');
+                    isUpdatingPosition = true;
+                    try {
+                        // Position dynamically on open
+                        const rect = dropdown.getBoundingClientRect();
+                        const clippingParent = getClippingParent(dropdown);
+                        
+                        let spaceBelow = 0;
+                        let spaceAbove = 0;
+                        
+                        if (clippingParent === window) {
+                            spaceBelow = window.innerHeight - rect.bottom;
+                            spaceAbove = rect.top;
+                        } else {
+                            const parentRect = clippingParent.getBoundingClientRect();
+                            spaceBelow = parentRect.bottom - rect.bottom;
+                            spaceAbove = rect.top - parentRect.top;
+                        }
+                        
+                        if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+                            if (!menu.classList.contains('bottom-full')) {
+                                menu.classList.remove('mt-1', 'top-full');
+                                menu.classList.add('bottom-full', 'mb-1');
+                            }
+                        } else {
+                            if (!menu.classList.contains('top-full')) {
+                                menu.classList.remove('bottom-full', 'mb-1');
+                                menu.classList.add('top-full', 'mt-1');
+                            }
+                        }
+                    } finally {
+                        isUpdatingPosition = false;
                     }
                 }
             }
@@ -450,8 +470,8 @@ function wrapMultiSelectDropdown(dropdown) {
 
 // Global click handler to close dropdowns when clicking outside
 document.addEventListener('click', () => {
-    document.querySelectorAll('.searchable-select-container div:not(.hidden)').forEach(menu => {
-        if (menu.parentNode.classList.contains('searchable-select-container')) {
+    document.querySelectorAll('.searchable-select-container > div:not(.hidden)').forEach(menu => {
+        if (menu.parentNode && menu.parentNode.classList.contains('searchable-select-container')) {
             menu.classList.add('hidden');
             const caret = menu.parentNode.querySelector('.rotate-180');
             if (caret) caret.classList.remove('rotate-180');
@@ -466,7 +486,7 @@ const globalObserver = new MutationObserver((mutations) => {
             if (node.nodeType === Node.ELEMENT_NODE) {
                 if (node.tagName === 'SELECT') {
                     wrapSelect(node);
-                } else {
+                } else if (node.querySelectorAll) {
                     node.querySelectorAll('select').forEach(select => wrapSelect(select));
                 }
 
