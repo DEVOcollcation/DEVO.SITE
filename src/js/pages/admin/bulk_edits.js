@@ -185,7 +185,7 @@ export async function fetchBulkModels() {
                     categories(name), 
                     classes(name, class_sizes(size_id)),
                     model_sizes(size_id),
-                    model_inventory(color_id, available_series),
+                    model_inventory(id, color_id, available_series),
                     model_images(image_url)
                 `)
                 .order('created_at', { ascending: false })
@@ -601,6 +601,7 @@ window.executeBulkEdit = async () => {
                 ),
                 inventory: modelsToEdit.flatMap(m => 
                     (m.model_inventory || []).map(mi => ({
+                        id: mi.id,
                         model_id: m.id,
                         color_id: mi.color_id,
                         available_series: mi.available_series

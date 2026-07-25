@@ -4,6 +4,9 @@ import { showToast } from '../../components/toast.js';
 let isInitialized = false;
 let allModels = [];
 let existingColors = [];
+let existingCategories = [];
+let existingClasses = [];
+let existingSizes = [];
 let excelRawData = [];
 
 // Step state variables
@@ -12,6 +15,8 @@ let modelActions = {}; // systemCode -> 'create'|'ignore'
 let unknownColorsList = []; // Array of { systemCode, colorName, modelName, factoryCode, count }
 let colorMappings = {}; // systemCode -> { colorName -> { action: 'add'|'map'|'ignore', targetColorId } }
 let previewData = []; // Array of model updates
+let selectedImportStockModelCodes = new Set();
+let filteredPreviewData = [];
 let activeView = 'step-1';
 
 export async function initImportStockView() {
@@ -31,7 +36,7 @@ export async function initImportStockView() {
     // Attach Step Models (New Step) Listeners
     const btnBackToStep1FromModels = document.getElementById('import-btn-back-to-step1-from-models');
     if (btnBackToStep1FromModels) {
-        btnBackToStep1FromModels.addEventListener('click', () => switchStep('step-1'));
+        btnBackToStep1FromModels.addEventListener('click', () => switchStep('step-3'));
     }
 
     const btnApplyModels = document.getElementById('import-btn-apply-models');
@@ -76,7 +81,7 @@ export async function initImportStockView() {
             if (unregisteredModels.length > 0) {
                 switchStep('step-models');
             } else {
-                switchStep('step-1');
+                switchStep('step-3');
             }
         });
     }
@@ -90,14 +95,13 @@ export async function initImportStockView() {
     const btnBackToOptions = document.getElementById('import-btn-back-to-options');
     if (btnBackToOptions) {
         btnBackToOptions.addEventListener('click', () => {
-            if (unknownColorsList.length > 0) {
-                switchStep('step-2');
-            } else if (unregisteredModels.length > 0) {
-                switchStep('step-models');
-            } else {
-                switchStep('step-1');
-            }
+            switchStep('step-1');
         });
+    }
+
+    const btnProceedChecks = document.getElementById('import-btn-proceed-checks');
+    if (btnProceedChecks) {
+        btnProceedChecks.addEventListener('click', window.handleProceedToChecks);
     }
 
     const btnConfirmSave = document.getElementById('import-btn-confirm-save');
@@ -105,7 +109,21 @@ export async function initImportStockView() {
         btnConfirmSave.addEventListener('click', handleConfirmSave);
     }
 
-    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to'].forEach(id => {
+    const stockOp = document.getElementById('import-stock-filter-stock-op');
+    const stockQty = document.getElementById('import-stock-filter-stock-qty');
+    if (stockOp && stockQty) {
+        stockOp.addEventListener('change', () => {
+            if (stockOp.value) {
+                stockQty.classList.remove('hidden');
+            } else {
+                stockQty.classList.add('hidden');
+                stockQty.value = '';
+            }
+            window.applyImportStockFilters();
+        });
+    }
+
+    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to', 'import-stock-filter-status', 'import-stock-filter-stock-qty', 'import-stock-price-min', 'import-stock-price-max', 'import-stock-date-from', 'import-stock-date-to'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', handlePreviewSearch);
     });
@@ -113,33 +131,95 @@ export async function initImportStockView() {
     const filterChange = document.getElementById('import-stock-filter-change');
     if (filterChange) filterChange.addEventListener('change', handlePreviewSearch);
 
-    const previewSearch = document.getElementById('preview-search');
-    if (previewSearch) {
-        previewSearch.addEventListener('input', handlePreviewSearch);
-    }
-
     await loadInitialData();
     isInitialized = true;
 }
 
-function handlePreviewSearch(e) {
+function handlePreviewSearch() {
     if (typeof window.applyImportStockFilters === 'function') {
         window.applyImportStockFilters();
     }
 }
 
-// 🌟 1. Load active models and colors from Supabase 🌟
+// 🌟 Multi-Select Label & Action Helpers 🌟
+window.updateImportStockMultiSelectLabel = (key) => {
+    const checkboxes = document.querySelectorAll(`input[name="import-stock-filter-${key}"]:checked`);
+    const excludeCheckbox = document.getElementById(`import-stock-dropdown-${key}-exclude`);
+    const labelEl = document.getElementById(`import-stock-dropdown-${key}-label`);
+    if (!labelEl) return;
+
+    const count = checkboxes.length;
+    const isExclude = excludeCheckbox ? excludeCheckbox.checked : false;
+
+    let defaultLabel = '';
+    if (key === 'cat') defaultLabel = 'جميع التصنيفات';
+    else if (key === 'class') defaultLabel = 'جميع الفئات';
+    else if (key === 'color') defaultLabel = 'جميع الألوان';
+    else if (key === 'size') defaultLabel = 'جميع المقاسات';
+
+    if (count === 0) {
+        labelEl.textContent = isExclude ? `استثناء: لا شيء (الكل)` : defaultLabel;
+        labelEl.classList.remove('text-devo-orange');
+    } else {
+        const names = Array.from(checkboxes).map(cb => cb.nextElementSibling.textContent.trim());
+        if (isExclude) {
+            labelEl.textContent = count <= 2 ? `استثناء: ${names.join('، ')}` : `الكل عدا ${count}`;
+            labelEl.classList.add('text-devo-orange');
+        } else {
+            labelEl.textContent = count <= 2 ? names.join('، ') : `${count} محددة`;
+            labelEl.classList.add('text-devo-orange');
+        }
+    }
+};
+
+window.importStockMultiSelectAction = (event, key, action) => {
+    event.stopPropagation();
+    const checkboxes = document.querySelectorAll(`input[name="import-stock-filter-${key}"]`);
+    checkboxes.forEach(cb => {
+        cb.checked = (action === 'all');
+    });
+    window.updateImportStockMultiSelectLabel(key);
+    window.applyImportStockFilters();
+};
+
+// 🌟 1. Load active models, categories, classes, colors, sizes from Supabase 🌟
 export async function loadInitialData() {
     try {
-        // Fetch colors
-        const { data: colorsData, error: colorsError } = await supabase
-            .from('colors')
-            .select('id, name, color_code')
-            .order('name');
-        if (colorsError) throw colorsError;
-        existingColors = colorsData || [];
+        const [catsRes, clssRes, colorsRes, sizesRes] = await Promise.all([
+            supabase.from('categories').select('id, name').order('name'),
+            supabase.from('classes').select('id, name').order('name'),
+            supabase.from('colors').select('id, name, color_code').order('name'),
+            supabase.from('sizes').select('id, name').order('name')
+        ]);
 
-        // Fetch models
+        existingCategories = catsRes.data || [];
+        existingClasses = clssRes.data || [];
+        existingColors = colorsRes.data || [];
+        existingSizes = sizesRes.data || [];
+
+        const populateCheckbox = (containerId, data, key) => {
+            const container = document.getElementById(containerId);
+            if (container && data) {
+                container.innerHTML = data.map(item => `
+                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-devo-black/40 rounded cursor-pointer text-xs text-white select-none" onclick="event.stopPropagation()">
+                        <input type="checkbox" value="${item.id}" name="import-stock-filter-${key}" class="accent-devo-orange w-3.5 h-3.5 rounded cursor-pointer" onchange="updateImportStockMultiSelectLabel('${key}'); applyImportStockFilters();">
+                        <span class="truncate">${item.name}</span>
+                    </label>
+                `).join('');
+            }
+        };
+
+        populateCheckbox('import-stock-dropdown-cat-options', existingCategories, 'cat');
+        populateCheckbox('import-stock-dropdown-class-options', existingClasses, 'class');
+        populateCheckbox('import-stock-dropdown-color-options', existingColors, 'color');
+        populateCheckbox('import-stock-dropdown-size-options', existingSizes, 'size');
+
+        window.updateImportStockMultiSelectLabel('cat');
+        window.updateImportStockMultiSelectLabel('class');
+        window.updateImportStockMultiSelectLabel('color');
+        window.updateImportStockMultiSelectLabel('size');
+
+        // Fetch models chunked
         let allFetchedModels = [];
         let from = 0;
         const step = 999;
@@ -149,7 +229,8 @@ export async function loadInitialData() {
             const { data, error } = await supabase
                 .from('models')
                 .select(`
-                    id, system_code, factory_code, name, price, class_id, is_active,
+                    id, system_code, factory_code, name, price, class_id, category_id, is_active, created_at,
+                    categories(id, name),
                     classes(id, name, class_sizes(size_id, sizes(id, name))),
                     model_sizes(size_id, sizes(id, name)),
                     model_inventory(color_id, available_series, colors(id, name))
@@ -229,14 +310,13 @@ function switchStep(step) {
     document.getElementById('import-step-2').classList.toggle('hidden', step !== 'step-2');
     document.getElementById('import-step-3').classList.toggle('hidden', step !== 'step-3');
 
-    // Toggle global header card visibility in step-models
     const globalHeader = document.getElementById('import-global-header');
     if (globalHeader) {
         globalHeader.classList.toggle('hidden', step === 'step-models');
     }
 }
 
-// 🌟 2. Analyze Excel File (Step 1) 🌟
+// 🌟 2. Analyze Excel File & Go DIRECTLY to Preview Step 3 🌟
 async function handleAnalyze() {
     const fileInput = document.getElementById('import-file-input');
     const file = fileInput?.files[0];
@@ -248,7 +328,6 @@ async function handleAnalyze() {
 
     setTimeout(async () => {
         try {
-            // Read file using XLSX
             const rawRows = await readExcelFileRaw(file);
             if (rawRows.length < 2) {
                 throw new Error('الملف فارغ أو لا يحتوي على صفوف بيانات صالحة.');
@@ -256,13 +335,12 @@ async function handleAnalyze() {
 
             updateProgress('جاري استخلاص عناوين الأعمدة والبيانات...', 25);
 
-            // Determine column indices dynamically
-            let codeIdx = 18; // default to ERP Index 18
-            let nameIdx = 17; // default to ERP Index 17
-            let colorIdx = 14; // default to ERP Index 14
-            let sizeIdx = 15; // default to ERP Index 15
-            let priceIdx = 2; // default to ERP Index 2
-            let balanceIdx = 3; // default to ERP Index 3
+            let codeIdx = 18;
+            let nameIdx = 17;
+            let colorIdx = 14;
+            let sizeIdx = 15;
+            let priceIdx = 2;
+            let balanceIdx = 3;
 
             const headers = rawRows[1] || [];
             headers.forEach((h, idx) => {
@@ -280,11 +358,11 @@ async function handleAnalyze() {
 
             updateProgress('جاري فحص الموديلات ومطابقتها مع السيستم...', 50);
 
-            // Parse data rows
             excelRawData = [];
             const seenCodes = new Set();
             unregisteredModels = [];
             modelActions = {};
+            colorMappings = {};
 
             for (let i = 2; i < rawRows.length; i++) {
                 const row = rawRows[i];
@@ -306,6 +384,9 @@ async function handleAnalyze() {
                     balance
                 });
 
+                // Set default create model action
+                modelActions[systemCode] = 'create';
+
                 // Detect unregistered models
                 const exists = allModels.some(m => String(m.system_code) === String(systemCode));
                 if (!exists && !seenCodes.has(systemCode)) {
@@ -322,24 +403,28 @@ async function handleAnalyze() {
                         price
                     });
                 }
+
+                // Set default color mapping action
+                if (!colorMappings[systemCode]) colorMappings[systemCode] = {};
+                const matchedColor = existingColors.find(c => c.name.trim().toLowerCase() === colorName.toLowerCase());
+                if (matchedColor) {
+                    colorMappings[systemCode][colorName] = { action: 'map', targetColorId: matchedColor.id };
+                } else {
+                    colorMappings[systemCode][colorName] = { action: 'add', targetColorId: null };
+                }
             }
 
             if (excelRawData.length === 0) {
                 throw new Error('لم يتم العثور على أي صفوف بيانات صالحة للمطابقة في الملف.');
             }
 
-            updateProgress('جاري الانتهاء من إعداد جداول الرفع...', 80);
+            updateProgress('جاري معالجة العرض المباشر وصياد الموديلات...', 80);
 
-            setTimeout(() => {
-                hideProgress();
-                if (unregisteredModels.length > 0) {
-                    renderUnregisteredModelsTable();
-                    switchStep('step-models');
-                    showToast(`تم العثور على ${unregisteredModels.length} موديل غير مسجل بالسيستم. يرجى مراجعتها.`, 'warning');
-                } else {
-                    checkColorsAndTransition();
-                }
-            }, 400);
+            await processAndRenderPreview();
+            hideProgress();
+            switchStep('step-3');
+
+            showToast(`تم عرض تفاصيل الملف بنجاح. يمكنك اصطياد الموديلات المطلوب استيرادها ثم المتابعة للقرارات.`, 'info');
 
         } catch (err) {
             console.error("Analyze Excel Error:", err);
@@ -359,7 +444,6 @@ function renderUnregisteredModelsTable() {
             ? `${m.name} <span class="bg-devo-gray text-white px-2 py-0.5 rounded text-[10px] ml-2 font-mono">مصنع: ${m.factoryCode}</span>` 
             : m.name;
 
-        // Render color list badges with piece counts under name
         const modelColors = excelRawData.filter(r => r.systemCode === m.systemCode);
         const colorMap = {};
         modelColors.forEach(row => {
@@ -393,7 +477,6 @@ function renderUnregisteredModelsTable() {
         `;
     }).join('');
 
-    // Clear search values
     const searchSystem = document.getElementById('model-search-system');
     const searchFactory = document.getElementById('model-search-factory');
     const searchName = document.getElementById('model-search-name');
@@ -438,30 +521,48 @@ function handleBulkModelDecision(decision) {
 // 🌟 4. Handle Step Models Submission 🌟
 async function handleApplyModels() {
     const selects = document.querySelectorAll('.model-mapping-select');
-    modelActions = {};
     selects.forEach(select => {
         const code = select.dataset.code;
         modelActions[code] = select.value;
     });
 
-    await checkColorsAndTransition();
+    await checkSelectedColorsAndProceed();
 }
 
-// 🌟 5. Check Colors And Switch to Step 2 or 3 🌟
-async function checkColorsAndTransition() {
-    showProgress('مطابقة الألوان المفقودة', 'جاري فحص الألوان المفقودة في الموديلات...');
-    
-    unknownColorsList = [];
-    colorMappings = {};
+// 🌟 Proceed to Checks on Hunted Models Only 🌟
+window.handleProceedToChecks = async () => {
+    const selectedCodes = selectedImportStockModelCodes;
+    if (selectedCodes.size === 0) {
+        return showToast('الرجاء اصطياد/تحديد موديل واحد على الأقل للمتابعة للفحوصات', 'warning');
+    }
 
+    // 1. Check unregistered models within HUNTED models
+    const selectedUnregistered = unregisteredModels.filter(m => selectedCodes.has(m.systemCode));
+    if (selectedUnregistered.length > 0) {
+        unregisteredModels = selectedUnregistered;
+        renderUnregisteredModelsTable();
+        switchStep('step-models');
+        showToast(`تم اكتشاف ${selectedUnregistered.length} موديل غير مسجل للأصناف المصطادة. يرجى تحديد الإجراء لكل منها.`, 'warning');
+        return;
+    }
+
+    await checkSelectedColorsAndProceed();
+};
+
+async function checkSelectedColorsAndProceed() {
+    showProgress('فحص ألوان الموديلات المصطادة', 'جاري المطابقة...');
+
+    unknownColorsList = [];
+
+    const selectedCodes = selectedImportStockModelCodes;
     const activeRows = excelRawData.filter(row => {
+        if (!selectedCodes.has(row.systemCode)) return false;
         const exists = allModels.some(m => String(m.system_code) === String(row.systemCode));
         if (exists) return true;
         return modelActions[row.systemCode] === 'create';
     });
 
     const seenCombos = new Set();
-
     activeRows.forEach(row => {
         const colorName = row.colorName;
         const systemCode = row.systemCode;
@@ -500,35 +601,29 @@ async function checkColorsAndTransition() {
         }
     });
 
-    updateProgress('جاري مراجعة وتحميل جداول الألوان...', 80);
+    hideProgress();
 
-    setTimeout(async () => {
-        hideProgress();
-        if (unknownColorsList.length > 0) {
-            renderColorMappingTable();
-            switchStep('step-2');
-            showToast(`تم اكتشاف ألوان غير معرفة للموديلات المحددة. يرجى مطابقتها.`, 'warning');
-        } else {
-            // Auto map all known colors
-            activeRows.forEach(row => {
-                if (!colorMappings[row.systemCode]) {
-                    colorMappings[row.systemCode] = {};
-                }
-                const matched = existingColors.find(c => c.name.trim().toLowerCase() === row.colorName.toLowerCase());
-                if (matched) {
-                    colorMappings[row.systemCode][row.colorName] = { action: 'map', targetColorId: matched.id };
-                }
-            });
+    if (unknownColorsList.length > 0) {
+        renderColorMappingTable();
+        switchStep('step-2');
+        showToast(`تم اكتشاف ألوان غير معرفة للأصناف المصطادة. يرجى اختيار إجراء المطابقة لكل منها.`, 'warning');
+    } else {
+        // Auto map matched colors
+        activeRows.forEach(row => {
+            if (!colorMappings[row.systemCode]) {
+                colorMappings[row.systemCode] = {};
+            }
+            const matched = existingColors.find(c => c.name.trim().toLowerCase() === row.colorName.toLowerCase());
+            if (matched) {
+                colorMappings[row.systemCode][row.colorName] = { action: 'map', targetColorId: matched.id };
+            }
+        });
 
-            showProgress('معاينة البيانات', 'جاري حساب أعداد السرايات والتقريب...');
-            await processAndRenderPreview();
-            hideProgress();
-            switchStep('step-3');
-        }
-    }, 400);
+        await handleConfirmSave();
+    }
 }
 
-// 🌟 6. Render Color Mapping (Step 2) with Model Context 🌟
+// 🌟 6. Render Color Mapping (Step 2) 🌟
 function renderColorMappingTable() {
     const tbody = document.getElementById('import-color-mapping-tbody');
     if (!tbody) return;
@@ -560,15 +655,6 @@ function renderColorMappingTable() {
 // 🌟 7. Handle Color Mapping Confirmation 🌟
 async function handleApplyColors() {
     const selects = document.querySelectorAll('.color-mapping-select');
-    colorMappings = {};
-
-    excelRawData.forEach(row => {
-        const isModelActive = allModels.some(m => String(m.system_code) === String(row.systemCode)) || modelActions[row.systemCode] === 'create';
-        if (isModelActive && !colorMappings[row.systemCode]) {
-            colorMappings[row.systemCode] = {};
-        }
-    });
-
     selects.forEach(select => {
         const code = select.dataset.code;
         const colorName = select.dataset.color;
@@ -586,21 +672,7 @@ async function handleApplyColors() {
         }
     });
 
-    // Auto map all matched known colors
-    excelRawData.forEach(row => {
-        const mappingsForCode = colorMappings[row.systemCode];
-        if (mappingsForCode && !mappingsForCode[row.colorName]) {
-            const matched = existingColors.find(c => c.name.trim().toLowerCase() === row.colorName.toLowerCase());
-            if (matched) {
-                mappingsForCode[row.colorName] = { action: 'map', targetColorId: matched.id };
-            }
-        }
-    });
-
-    showProgress('معاينة البيانات', 'جاري معالجة الفروقات وحساب السرايات...');
-    await processAndRenderPreview();
-    hideProgress();
-    switchStep('step-3');
+    await handleConfirmSave();
 }
 
 // 🌟 8. Process Grouped Data and Render Preview (Step 3) 🌟
@@ -774,9 +846,6 @@ async function processAndRenderPreview() {
 
     window.applyImportStockFilters();
 }
-
-let selectedImportStockModelCodes = new Set();
-let filteredPreviewData = [];
 
 window.toggleImportStockFilters = () => {
     const container = document.getElementById('import-stock-filters-container');
