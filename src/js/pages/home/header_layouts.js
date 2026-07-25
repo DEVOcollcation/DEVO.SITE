@@ -94,7 +94,6 @@ function buildUserArea(user) {
         }
         return `
             ${hasAdminAccess ? `<a href="admin.html" class="p-2 rounded-lg bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white transition-all" title="لوحة الإدارة"><i class="ph ph-shield-check text-xl"></i></a>` : ''}
-            ${hasWarehouseAccess ? `<a href="warehouse.html" class="p-2 rounded-lg bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white transition-all" title="صفحة العمال"><i class="ph ph-hard-hat text-xl"></i></a>` : ''}
             <div class="flex items-center gap-2 border-r border-devo-gray pr-3">
                 <div class="text-right">
                     <p class="text-xs md:text-sm font-bold text-white leading-tight truncate max-w-[110px]" title="${user.full_name}">${user.full_name}</p>
@@ -127,7 +126,7 @@ function buildMobileMenu(user) {
             <button data-nav-view="view-barcode" onclick="switchSiteView('view-barcode')" class="py-3 px-4 text-right text-devo-muted hover:text-devo-text rounded-xl border border-transparent flex items-center gap-3"><i class="ph ph-qr-code text-xl"></i> الباركود</button>
             <button data-nav-view="view-cart" onclick="switchSiteView('view-cart'); window.refreshCartView?.();" class="py-3 px-4 text-right text-devo-muted hover:text-devo-text rounded-xl border border-transparent flex items-center gap-3"><i class="ph ph-shopping-cart text-xl"></i> السلة</button>
             <button data-nav-view="view-orders" onclick="switchSiteView('view-orders')" class="py-3 px-4 text-right text-devo-muted hover:text-devo-text rounded-xl border border-transparent flex items-center gap-3"><i class="ph ph-receipt text-xl"></i> الأوردرات</button>
-            ${hasWarehouseAccess ? `<a href="warehouse.html" class="py-3 px-4 text-devo-success hover:text-devo-text rounded-xl bg-devo-success/10 flex items-center gap-3 mt-2"><i class="ph ph-hard-hat text-xl"></i> صفحة العمال (المخزن)</a>` : ''}
+
             ${hasAdminAccess ? `<a href="admin.html" class="py-3 px-4 text-devo-info hover:text-devo-text rounded-xl bg-devo-info/10 flex items-center gap-3"><i class="ph ph-shield-check text-xl"></i> لوحة الإدارة</a>` : ''}
             <button onclick="handleLogout()" class="py-3 px-4 text-devo-error text-right mt-6 rounded-xl bg-devo-error/10 flex items-center gap-3 font-bold"><i class="ph ph-sign-out text-xl"></i> تسجيل خروج</button>
         `;

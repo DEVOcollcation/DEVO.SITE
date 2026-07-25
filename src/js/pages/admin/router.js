@@ -3,7 +3,6 @@ import { showToast } from '../../components/toast.js';
 import { initHomeSettingsView } from './home_settings.js';
 // استيراد صفحة المستخدمين (كما كانت في كودك)
 import { initUsersView } from './users.js';
-import { initAuditsView } from './audits.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNotifications } from '../../services/notifications.js';
 
@@ -47,15 +46,7 @@ function updateUserProfileUI(profile) {
     }
 
 
-    // إخفاء/إظهار زر مراجعة الجرد بناءً على صلاحية المدير أو المالك
-    const auditsLink = document.querySelector('[data-target="view-audits"]');
-    if (auditsLink) {
-        if (['owner', 'admin'].includes(profile.role)) {
-            auditsLink.classList.remove('hidden');
-        } else {
-            auditsLink.classList.add('hidden');
-        }
-    }
+
 
     // إخفاء/إظهار زر إدارة المظاهر وإعدادات الواجهة بناءً على صلاحية المالك فقط (إخفاء عن المدير)
     const themeManagerLink = document.querySelector('[data-target="view-theme-manager"]');
@@ -73,6 +64,16 @@ function updateUserProfileUI(profile) {
             homeSettingsLink.classList.remove('hidden');
         } else {
             homeSettingsLink.classList.add('hidden');
+        }
+    }
+
+    // إخفاء/إظهار رابط إعادة تهيئة النظام (الملك فقط)
+    const resetLink = document.querySelector('[data-target="view-system-reset"]');
+    if (resetLink) {
+        if (profile.role === 'owner') {
+            resetLink.classList.remove('hidden');
+        } else {
+            resetLink.classList.add('hidden');
         }
     }
 }
@@ -123,12 +124,7 @@ async function loadViewLogic(targetId) {
     }
 
 
-    if (targetId === 'view-audits' && !['owner', 'admin'].includes(currentUserContext?.role)) {
-        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
-        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
-        if (defaultLink) switchView('view-dashboard', defaultLink);
-        return; 
-    }
+
 
     if (targetId === 'view-theme-manager' && currentUserContext?.role !== 'owner') {
         showToast('عفواً، هذه الصفحة مخصصة لمالك النظام فقط 🛑', 'error');
@@ -156,6 +152,13 @@ async function loadViewLogic(targetId) {
         const defaultLink = document.querySelector('[data-target="view-dashboard"]');
         if (defaultLink) switchView('view-dashboard', defaultLink);
         return; 
+    }
+
+    if (targetId === 'view-system-reset' && currentUserContext?.role !== 'owner') {
+        showToast('⛔ هذه الصفحة مخصصة لمالك النظام فقط', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return;
     }
 
     switch (targetId) {
@@ -198,9 +201,7 @@ async function loadViewLogic(targetId) {
             await initInboundInvoicesView();
             break;
 
-        case 'view-audits':
-            await initAuditsView();
-            break;
+
         case 'view-theme-manager':
             const { initThemeManagerView } = await import('./theme_manager.js');
             await initThemeManagerView();
@@ -208,6 +209,10 @@ async function loadViewLogic(targetId) {
         case 'view-notifications':
             const { initNotificationsView } = await import('./notifications_view.js');
             await initNotificationsView();
+            break;
+        case 'view-system-reset':
+            const { initSystemResetView } = await import('./system_reset.js');
+            initSystemResetView();
             break;
     }
 }
@@ -329,13 +334,7 @@ export async function refreshAllSystemData(options = {}) {
                     break;
                 }
 
-                case 'view-audits': {
-                    const auditsMod = await import('./audits.js').catch(() => null);
-                    if (auditsMod && typeof auditsMod.fetchAudits === 'function') {
-                        await auditsMod.fetchAudits();
-                    }
-                    break;
-                }
+
                 case 'view-bulk-edits': {
                     if (bulkMod && typeof bulkMod.fetchBulkModels === 'function') {
                         await bulkMod.fetchBulkModels();

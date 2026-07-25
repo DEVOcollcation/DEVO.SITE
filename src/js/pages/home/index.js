@@ -27,11 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const role = currentUser.role;
         const workerJob = currentUser.worker_job;
         
-        // عمال المخزن فقط يتم توجيههم لصفحتهم المخصصة
-        if (role === 'worker' && workerJob === 'warehouse') {
-            window.location.href = 'warehouse.html';
-            return;
-        }
+
         
         // التحقق من الصلاحيات الأخرى، إن كانت غير معروفة يتم تسجيل الخروج والتعامل كزائر
         const isManager = (role === 'owner' || role === 'admin');

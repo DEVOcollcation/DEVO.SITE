@@ -208,38 +208,14 @@
                     color: 'bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white border border-blue-500/30'
                 });
                 destinations.push({
-                    name: 'صفحة العمال / المخزن',
-                    url: 'warehouse.html',
-                    icon: 'ph-hard-hat',
-                    color: 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30'
-                });
-                destinations.push({
                     name: 'الصفحة الرئيسية (المعرض)',
                     url: 'index.html',
                     icon: 'ph-storefront',
                     color: 'bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/30'
                 });
             } else if (role === 'worker') {
-                if (workerJob === 'both') {
-                    destinations.push({
-                        name: 'صفحة العمال / المخزن',
-                        url: 'warehouse.html',
-                        icon: 'ph-hard-hat',
-                        color: 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30'
-                    });
-                    destinations.push({
-                        name: 'الصفحة الرئيسية (المعرض)',
-                        url: 'index.html',
-                        icon: 'ph-storefront',
-                        color: 'bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/30'
-                    });
-                } else if (workerJob === 'warehouse') {
-                    window.location.href = 'warehouse.html';
-                    return;
-                } else {
-                    window.location.href = 'index.html';
-                    return;
-                }
+                window.location.href = 'index.html';
+                return;
             }
             
             if (destinations.length > 1) {
