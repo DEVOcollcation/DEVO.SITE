@@ -1,4 +1,4 @@
-supabase link --project-ref abxbhtysmqzrswzsdrzi
+﻿supabase link --project-ref abxbhtysmqzrswzsdrzi
 
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
@@ -218,22 +218,22 @@ DECLARE
 v_item record;
 v_invoice text;
 BEGIN
--- جلب رقم الفاتورة للتوثيق
+-- ط¬ظ„ط¨ ط±ظ‚ظ… ط§ظ„ظپط§طھظˆط±ط© ظ„ظ„طھظˆط«ظٹظ‚
 SELECT invoice_number INTO v_invoice FROM public.orders WHERE id = p_order_id;
 
-    -- 1. إرجاع الكميات للمخزن وتسجيل الحركة
+    -- 1. ط¥ط±ط¬ط§ط¹ ط§ظ„ظƒظ…ظٹط§طھ ظ„ظ„ظ…ط®ط²ظ† ظˆطھط³ط¬ظٹظ„ ط§ظ„ط­ط±ظƒط©
     FOR v_item IN SELECT * FROM public.order_items WHERE order_id = p_order_id LOOP
-        -- زيادة المخزون
+        -- ط²ظٹط§ط¯ط© ط§ظ„ظ…ط®ط²ظˆظ†
         UPDATE public.model_inventory
         SET available_series = available_series + v_item.quantity
         WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
-        -- تسجيل الحركة
+        -- طھط³ط¬ظٹظ„ ط§ظ„ط­ط±ظƒط©
         INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-        VALUES (v_item.model_id, v_item.color_id, 'in', v_item.quantity, 'حذف أوردر من الإدارة: ' || v_invoice);
+        VALUES (v_item.model_id, v_item.color_id, 'in', v_item.quantity, 'ط­ط°ظپ ط£ظˆط±ط¯ط± ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©: ' || v_invoice);
     END LOOP;
 
-    -- 2. حذف العناصر والأوردر (إذا لم يكن هناك Cascade delete مفعل)
+    -- 2. ط­ط°ظپ ط§ظ„ط¹ظ†ط§طµط± ظˆط§ظ„ط£ظˆط±ط¯ط± (ط¥ط°ط§ ظ„ظ… ظٹظƒظ† ظ‡ظ†ط§ظƒ Cascade delete ظ…ظپط¹ظ„)
     DELETE FROM public.order_items WHERE order_id = p_order_id;
     DELETE FROM public.orders WHERE id = p_order_id;
 
@@ -289,26 +289,26 @@ v_item record;
 v_current_stock int;
 v_old_item record;
 BEGIN
--- 🌟 إذا كان وضع "تعديل" (Update)
+-- ًںŒں ط¥ط°ط§ ظƒط§ظ† ظˆط¶ط¹ "طھط¹ط¯ظٹظ„" (Update)
 IF p_order_id IS NOT NULL THEN
 v_order_id := p_order_id;
 SELECT invoice_number INTO v_invoice_number FROM public.orders WHERE id = v_order_id;
 
-    -- 1. إرجاع الكميات القديمة للمخزن
+    -- 1. ط¥ط±ط¬ط§ط¹ ط§ظ„ظƒظ…ظٹط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ظ„ظ„ظ…ط®ط²ظ†
     FOR v_old_item IN SELECT * FROM public.order_items WHERE order_id = v_order_id LOOP
         UPDATE public.model_inventory
         SET available_series = available_series + v_old_item.quantity
         WHERE model_id = v_old_item.model_id AND color_id = v_old_item.color_id;
 
-        -- 🌟 الإضافة: تسجيل حركة (إرجاع للمخزن) بسبب التعديل 🌟
+        -- ًںŒں ط§ظ„ط¥ط¶ط§ظپط©: طھط³ط¬ظٹظ„ ط­ط±ظƒط© (ط¥ط±ط¬ط§ط¹ ظ„ظ„ظ…ط®ط²ظ†) ط¨ط³ط¨ط¨ ط§ظ„طھط¹ط¯ظٹظ„ ًںŒں
         INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-        VALUES (v_old_item.model_id, v_old_item.color_id, 'in', v_old_item.quantity, 'استرجاع لتعديل أوردر: ' || v_invoice_number);
+        VALUES (v_old_item.model_id, v_old_item.color_id, 'in', v_old_item.quantity, 'ط§ط³طھط±ط¬ط§ط¹ ظ„طھط¹ط¯ظٹظ„ ط£ظˆط±ط¯ط±: ' || v_invoice_number);
     END LOOP;
 
-    -- 2. مسح العناصر القديمة
+    -- 2. ظ…ط³ط­ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ظ‚ط¯ظٹظ…ط©
     DELETE FROM public.order_items WHERE order_id = v_order_id;
 
-    -- 3. تحديث بيانات الفاتورة
+    -- 3. طھط­ط¯ظٹط« ط¨ظٹط§ظ†ط§طھ ط§ظ„ظپط§طھظˆط±ط©
     UPDATE public.orders SET
         customer_name = p_order_data->>'customer_name',
         phone_1 = p_order_data->>'phone_1',
@@ -322,7 +322,7 @@ SELECT invoice_number INTO v_invoice_number FROM public.orders WHERE id = v_orde
     WHERE id = v_order_id;
 
 ELSE
--- 🌟 وضع إنشاء جديد (Insert)
+-- ًںŒں ظˆط¶ط¹ ط¥ظ†ط´ط§ط، ط¬ط¯ظٹط¯ (Insert)
 v_invoice_number := nextval('public.invoice_number_seq')::text;
 
     INSERT INTO public.orders (invoice_number, customer_name, phone_1, phone_2, address, deposit, deposit_receiver, notes, total_price, total_series, worker_id)
@@ -336,14 +336,14 @@ v_invoice_number := nextval('public.invoice_number_seq')::text;
 
 END IF;
 
--- 🌟 خصم المخزون وتسجيل العناصر الجديدة (يحدث في الحالتين)
+-- ًںŒں ط®طµظ… ط§ظ„ظ…ط®ط²ظˆظ† ظˆطھط³ط¬ظٹظ„ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ط¬ط¯ظٹط¯ط© (ظٹط­ط¯ط« ظپظٹ ط§ظ„ط­ط§ظ„طھظٹظ†)
 FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, model_name text, price numeric, total numeric)
 LOOP
 SELECT available_series INTO v_current_stock FROM public.model_inventory
 WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
 
     IF v_current_stock < v_item.qty THEN
-       RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+       RAISE EXCEPTION 'ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ط·ظ„ظˆط¨ط© ظ…ظ† ط§ظ„ظ…ظˆط¯ظٹظ„ % ط؛ظٹط± ظ…طھظˆظپط±ط©. ط§ظ„ظ…طھط§ط­: %', v_item.model_name, v_current_stock;
     END IF;
 
     INSERT INTO public.order_items (order_id, model_id, color_id, quantity, price_per_series, total_price)
@@ -352,9 +352,9 @@ WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
     UPDATE public.model_inventory SET available_series = available_series - v_item.qty
     WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
-    -- 🌟 الإضافة: تسجيل حركة البيع في السجل 🌟
+    -- ًںŒں ط§ظ„ط¥ط¶ط§ظپط©: طھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ط¨ظٹط¹ ظپظٹ ط§ظ„ط³ط¬ظ„ ًںŒں
     INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'فاتورة مبيعات: ' || v_invoice_number);
+    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'ظپط§طھظˆط±ط© ظ…ط¨ظٹط¹ط§طھ: ' || v_invoice_number);
 
 END LOOP;
 
@@ -374,22 +374,22 @@ v_invoice_number text;
 v_item record;
 v_current_stock int;
 BEGIN
--- أ) التحقق من المخزون أولاً (Locking the rows to prevent race conditions)
+-- ط£) ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ظ…ط®ط²ظˆظ† ط£ظˆظ„ط§ظ‹ (Locking the rows to prevent race conditions)
 FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, model_name text)
 LOOP
 SELECT available_series INTO v_current_stock FROM public.model_inventory
 WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
 
     IF v_current_stock < v_item.qty THEN
-       RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+       RAISE EXCEPTION 'ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ط·ظ„ظˆط¨ط© ظ…ظ† ط§ظ„ظ…ظˆط¯ظٹظ„ % ط؛ظٹط± ظ…طھظˆظپط±ط©. ط§ظ„ظ…طھط§ط­: %', v_item.model_name, v_current_stock;
     END IF;
 
 END LOOP;
 
--- ب) 🌟 التعديل هنا: سحب الرقم التالي من العداد ليكون هو رقم الفاتورة (1, 2, 3...) 🌟
+-- ط¨) ًںŒں ط§ظ„طھط¹ط¯ظٹظ„ ظ‡ظ†ط§: ط³ط­ط¨ ط§ظ„ط±ظ‚ظ… ط§ظ„طھط§ظ„ظٹ ظ…ظ† ط§ظ„ط¹ط¯ط§ط¯ ظ„ظٹظƒظˆظ† ظ‡ظˆ ط±ظ‚ظ… ط§ظ„ظپط§طھظˆط±ط© (1, 2, 3...) ًںŒں
 v_invoice_number := nextval('public.invoice_number_seq')::text;
 
--- ج) تسجيل الأوردر
+-- ط¬) طھط³ط¬ظٹظ„ ط§ظ„ط£ظˆط±ط¯ط±
 INSERT INTO public.orders (invoice_number, customer_name, phone_1, phone_2, address, deposit, deposit_receiver, notes, total_price, total_series, worker_id)
 VALUES (
 v_invoice_number, p_order_data->>'customer_name', p_order_data->>'phone_1', p_order_data->>'phone_2', p_order_data->>'address',
@@ -397,28 +397,28 @@ v_invoice_number, p_order_data->>'customer_name', p_order_data->>'phone_1', p_or
 (p_order_data->>'total_price')::numeric, (p_order_data->>'total_series')::integer, (p_order_data->>'worker_id')::uuid
 ) RETURNING id INTO v_order_id;
 
--- د) تسجيل العناصر، خصم المخزون، وتسجيل حركة السحب
+-- ط¯) طھط³ط¬ظٹظ„ ط§ظ„ط¹ظ†ط§طµط±طŒ ط®طµظ… ط§ظ„ظ…ط®ط²ظˆظ†طŒ ظˆطھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ط³ط­ط¨
 FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, price numeric, total numeric)
 LOOP
--- إدراج العنصر
+-- ط¥ط¯ط±ط§ط¬ ط§ظ„ط¹ظ†طµط±
 INSERT INTO public.order_items (order_id, model_id, color_id, quantity, price_per_series, total_price)
 VALUES (v_order_id, v_item.model_id, v_item.color_id, v_item.qty, v_item.price, v_item.total);
 
-    -- خصم المخزون
+    -- ط®طµظ… ط§ظ„ظ…ط®ط²ظˆظ†
     UPDATE public.model_inventory SET available_series = available_series - v_item.qty
     WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
-    -- تسجيل حركة المخزون
+    -- طھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ظ…ط®ط²ظˆظ†
     INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'فاتورة مبيعات: ' || v_invoice_number);
+    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'ظپط§طھظˆط±ط© ظ…ط¨ظٹط¹ط§طھ: ' || v_invoice_number);
 
 END LOOP;
 
--- هـ) زيادة عدد فواتير الموظف
+-- ظ‡ظ€) ط²ظٹط§ط¯ط© ط¹ط¯ط¯ ظپظˆط§طھظٹط± ط§ظ„ظ…ظˆط¸ظپ
 UPDATE public.system_users SET invoice_count = COALESCE(invoice_count, 0) + 1
 WHERE id = (p_order_data->>'worker_id')::uuid;
 
--- إرجاع النتيجة للواجهة الأمامية
+-- ط¥ط±ط¬ط§ط¹ ط§ظ„ظ†طھظٹط¬ط© ظ„ظ„ظˆط§ط¬ظ‡ط© ط§ظ„ط£ظ…ط§ظ…ظٹط©
 RETURN jsonb_build_object('success', true, 'invoice_number', v_invoice_number, 'order_id', v_order_id);
 END;
 
@@ -538,7 +538,7 @@ SELECT available_series INTO v_current_stock FROM public.model_inventory
 WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
 
     IF v_current_stock < v_item.qty THEN
-       RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+       RAISE EXCEPTION 'ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ط·ظ„ظˆط¨ط© ظ…ظ† ط§ظ„ظ…ظˆط¯ظٹظ„ % ط؛ظٹط± ظ…طھظˆظپط±ط©. ط§ظ„ظ…طھط§ط­: %', v_item.model_name, v_current_stock;
     END IF;
 
     INSERT INTO public.order_items (order_id, model_id, color_id, quantity, price_per_series, total_price)
@@ -547,9 +547,9 @@ WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
     UPDATE public.model_inventory SET available_series = available_series - v_item.qty
     WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
-    -- 🌟 الإضافة: تسجيل حركة البيع في السجل 🌟
+    -- ًںŒں ط§ظ„ط¥ط¶ط§ظپط©: طھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ط¨ظٹط¹ ظپظٹ ط§ظ„ط³ط¬ظ„ ًںŒں
     INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'فاتورة مبيعات: ' || v_invoice_number);
+    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'ظپط§طھظˆط±ط© ظ…ط¨ظٹط¹ط§طھ: ' || v_invoice_number);
 
 END LOOP;
 
@@ -569,22 +569,22 @@ v_invoice_number text;
 v_item record;
 v_current_stock int;
 BEGIN
--- أ) التحقق من المخزون أولاً (Locking the rows to prevent race conditions)
+-- ط£) ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ظ…ط®ط²ظˆظ† ط£ظˆظ„ط§ظ‹ (Locking the rows to prevent race conditions)
 FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, model_name text)
 LOOP
 SELECT available_series INTO v_current_stock FROM public.model_inventory
 WHERE model_id = v_item.model_id AND color_id = v_item.color_id FOR UPDATE;
 
     IF v_current_stock < v_item.qty THEN
-       RAISE EXCEPTION 'الكمية المطلوبة من الموديل % غير متوفرة. المتاح: %', v_item.model_name, v_current_stock;
+       RAISE EXCEPTION 'ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ط·ظ„ظˆط¨ط© ظ…ظ† ط§ظ„ظ…ظˆط¯ظٹظ„ % ط؛ظٹط± ظ…طھظˆظپط±ط©. ط§ظ„ظ…طھط§ط­: %', v_item.model_name, v_current_stock;
     END IF;
 
 END LOOP;
 
--- ب) 🌟 التعديل هنا: سحب الرقم التالي من العداد ليكون هو رقم الفاتورة (1, 2, 3...) 🌟
+-- ط¨) ًںŒں ط§ظ„طھط¹ط¯ظٹظ„ ظ‡ظ†ط§: ط³ط­ط¨ ط§ظ„ط±ظ‚ظ… ط§ظ„طھط§ظ„ظٹ ظ…ظ† ط§ظ„ط¹ط¯ط§ط¯ ظ„ظٹظƒظˆظ† ظ‡ظˆ ط±ظ‚ظ… ط§ظ„ظپط§طھظˆط±ط© (1, 2, 3...) ًںŒں
 v_invoice_number := nextval('public.invoice_number_seq')::text;
 
--- ج) تسجيل الأوردر
+-- ط¬) طھط³ط¬ظٹظ„ ط§ظ„ط£ظˆط±ط¯ط±
 INSERT INTO public.orders (invoice_number, customer_name, phone_1, phone_2, address, deposit, deposit_receiver, notes, total_price, total_series, worker_id)
 VALUES (
 v_invoice_number, p_order_data->>'customer_name', p_order_data->>'phone_1', p_order_data->>'phone_2', p_order_data->>'address',
@@ -592,28 +592,28 @@ v_invoice_number, p_order_data->>'customer_name', p_order_data->>'phone_1', p_or
 (p_order_data->>'total_price')::numeric, (p_order_data->>'total_series')::integer, (p_order_data->>'worker_id')::uuid
 ) RETURNING id INTO v_order_id;
 
--- د) تسجيل العناصر، خصم المخزون، وتسجيل حركة السحب
+-- ط¯) طھط³ط¬ظٹظ„ ط§ظ„ط¹ظ†ط§طµط±طŒ ط®طµظ… ط§ظ„ظ…ط®ط²ظˆظ†طŒ ظˆطھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ط³ط­ط¨
 FOR v_item IN SELECT \* FROM jsonb_to_recordset(p_order_items) AS x(model_id uuid, color_id uuid, qty int, price numeric, total numeric)
 LOOP
--- إدراج العنصر
+-- ط¥ط¯ط±ط§ط¬ ط§ظ„ط¹ظ†طµط±
 INSERT INTO public.order_items (order_id, model_id, color_id, quantity, price_per_series, total_price)
 VALUES (v_order_id, v_item.model_id, v_item.color_id, v_item.qty, v_item.price, v_item.total);
 
-    -- خصم المخزون
+    -- ط®طµظ… ط§ظ„ظ…ط®ط²ظˆظ†
     UPDATE public.model_inventory SET available_series = available_series - v_item.qty
     WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
-    -- تسجيل حركة المخزون
+    -- طھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ظ…ط®ط²ظˆظ†
     INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'فاتورة مبيعات: ' || v_invoice_number);
+    VALUES (v_item.model_id, v_item.color_id, 'out', v_item.qty, 'ظپط§طھظˆط±ط© ظ…ط¨ظٹط¹ط§طھ: ' || v_invoice_number);
 
 END LOOP;
 
--- هـ) زيادة عدد فواتير الموظف
+-- ظ‡ظ€) ط²ظٹط§ط¯ط© ط¹ط¯ط¯ ظپظˆط§طھظٹط± ط§ظ„ظ…ظˆط¸ظپ
 UPDATE public.system_users SET invoice_count = COALESCE(invoice_count, 0) + 1
 WHERE id = (p_order_data->>'worker_id')::uuid;
 
--- إرجاع النتيجة للواجهة الأمامية
+-- ط¥ط±ط¬ط§ط¹ ط§ظ„ظ†طھظٹط¬ط© ظ„ظ„ظˆط§ط¬ظ‡ط© ط§ظ„ط£ظ…ط§ظ…ظٹط©
 RETURN jsonb_build_object('success', true, 'invoice_number', v_invoice_number, 'order_id', v_order_id);
 END;
 
@@ -729,7 +729,7 @@ END;
 --         INSERT INTO public.stock_movements (
 --             model_id, color_id, movement_type, quantity, reference
 --         ) VALUES (
---             v_item.model_id, v_item.color_id, 'in', v_item.qty, 'مرتجع مبيعات: ' || v_return_number
+--             v_item.model_id, v_item.color_id, 'in', v_item.qty, 'ظ…ط±طھط¬ط¹ ظ…ط¨ظٹط¹ط§طھ: ' || v_return_number
 --         );
 --     END LOOP;
 -- 
@@ -747,7 +747,7 @@ END;
 --   -- 1. Check preparation validation if trying to mark as shipped or delivered
 --   IF NEW.status IN ('shipped', 'delivered') THEN
 --     IF NOT public.can_mark_order_prepared(NEW.id) THEN
---       RAISE EXCEPTION 'لا يمكن شحن أو تسليم الأوردر: يوجد عناصر لم يتم تحضيرها بالكامل بعد في المخزن.';
+--       RAISE EXCEPTION 'ظ„ط§ ظٹظ…ظƒظ† ط´ط­ظ† ط£ظˆ طھط³ظ„ظٹظ… ط§ظ„ط£ظˆط±ط¯ط±: ظٹظˆط¬ط¯ ط¹ظ†ط§طµط± ظ„ظ… ظٹطھظ… طھط­ط¶ظٹط±ظ‡ط§ ط¨ط§ظ„ظƒط§ظ…ظ„ ط¨ط¹ط¯ ظپظٹ ط§ظ„ظ…ط®ط²ظ†.';
 --     END IF;
 --   END IF;
 --
@@ -883,11 +883,11 @@ END;
 --     FROM public.inventory_audits WHERE id = p_audit_id;
 --     
 --     IF v_status IS NULL THEN
---         RETURN jsonb_build_object('success', false, 'error', 'جلسة الجرد غير موجودة');
+--         RETURN jsonb_build_object('success', false, 'error', 'ط¬ظ„ط³ط© ط§ظ„ط¬ط±ط¯ ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©');
 --     END IF;
 --     
 --     IF v_status <> 'submitted' THEN
---         RETURN jsonb_build_object('success', false, 'error', 'جلسة الجرد ليست في حالة انتظار المراجعة');
+--         RETURN jsonb_build_object('success', false, 'error', 'ط¬ظ„ط³ط© ط§ظ„ط¬ط±ط¯ ظ„ظٹط³طھ ظپظٹ ط­ط§ظ„ط© ط§ظ†طھط¸ط§ط± ط§ظ„ظ…ط±ط§ط¬ط¹ط©');
 --     END IF;
 --     
 --     FOR v_item IN SELECT * FROM public.inventory_audit_items WHERE audit_id = p_audit_id
@@ -906,7 +906,7 @@ END;
 --                 v_item.color_id,
 --                 CASE WHEN v_diff > 0 THEN 'in' ELSE 'out' END,
 --                 ABS(v_diff),
---                 'تسوية جرد دوري: ' || v_audit_number
+--                 'طھط³ظˆظٹط© ط¬ط±ط¯ ط¯ظˆط±ظٹ: ' || v_audit_number
 --             );
 --         END IF;
 --     END LOOP;
@@ -968,7 +968,7 @@ END;
 -- $$;
 
 -- =========================================================================
--- 🌟 MIGRATION: ADD ASSIGNED_WORKER_ID TO ORDERS 🌟
+-- ًںŒں MIGRATION: ADD ASSIGNED_WORKER_ID TO ORDERS ًںŒں
 -- =========================================================================
 ALTER TABLE public.orders 
 ADD COLUMN IF NOT EXISTS assigned_worker_id uuid REFERENCES public.system_users(id) ON DELETE SET NULL;
@@ -976,7 +976,7 @@ ADD COLUMN IF NOT EXISTS assigned_worker_id uuid REFERENCES public.system_users(
 CREATE INDEX IF NOT EXISTS idx_orders_assigned_worker_id ON public.orders(assigned_worker_id);
 
 -- =========================================================================
--- 🌟 MIGRATION: CREATE ORDER_LOGS TABLE 🌟
+-- ًںŒں MIGRATION: CREATE ORDER_LOGS TABLE ًںŒں
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS public.order_logs (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -993,7 +993,7 @@ CREATE INDEX IF NOT EXISTS idx_order_logs_order_id ON public.order_logs(order_id
 
 
 -- =========================================================================
--- 🌟 MIGRATION: CREATE THEMES TABLE & SEED DEFAULT THEMES 🌟
+-- ًںŒں MIGRATION: CREATE THEMES TABLE & SEED DEFAULT THEMES ًںŒں
 -- =========================================================================
 
 CREATE TABLE IF NOT EXISTS public.themes (
@@ -1030,7 +1030,7 @@ INSERT INTO public.themes (name, description, is_active, is_system, variables)
 VALUES 
 (
   'Dark Theme', 
-  'المظهر الداكن الافتراضي الخاص بالنظام بألوان برتقالية وسوداء متناسقة.', 
+  'ط§ظ„ظ…ط¸ظ‡ط± ط§ظ„ط¯ط§ظƒظ† ط§ظ„ط§ظپطھط±ط§ط¶ظٹ ط§ظ„ط®ط§طµ ط¨ط§ظ„ظ†ط¸ط§ظ… ط¨ط£ظ„ظˆط§ظ† ط¨ط±طھظ‚ط§ظ„ظٹط© ظˆط³ظˆط¯ط§ط، ظ…طھظ†ط§ط³ظ‚ط©.', 
   true, 
   true, 
   '{
@@ -1229,7 +1229,7 @@ VALUES
 ),
 (
   'Light Theme', 
-  'مظهر فاتح ناصع بألوان برتقالية مميزة وتصميم مريح للعين في الإضاءة القوية.', 
+  'ظ…ط¸ظ‡ط± ظپط§طھط­ ظ†ط§طµط¹ ط¨ط£ظ„ظˆط§ظ† ط¨ط±طھظ‚ط§ظ„ظٹط© ظ…ظ…ظٹط²ط© ظˆطھطµظ…ظٹظ… ظ…ط±ظٹط­ ظ„ظ„ط¹ظٹظ† ظپظٹ ط§ظ„ط¥ط¶ط§ط،ط© ط§ظ„ظ‚ظˆظٹط©.', 
   false, 
   true, 
   '{
@@ -1428,7 +1428,7 @@ VALUES
 ),
 (
   'Modern Theme', 
-  'مظهر حديث وعصري يعتمد على درجات اللون البنفسجي والنيلي ولمسات جمالية مميزة.', 
+  'ظ…ط¸ظ‡ط± ط­ط¯ظٹط« ظˆط¹طµط±ظٹ ظٹط¹طھظ…ط¯ ط¹ظ„ظ‰ ط¯ط±ط¬ط§طھ ط§ظ„ظ„ظˆظ† ط§ظ„ط¨ظ†ظپط³ط¬ظٹ ظˆط§ظ„ظ†ظٹظ„ظٹ ظˆظ„ظ…ط³ط§طھ ط¬ظ…ط§ظ„ظٹط© ظ…ظ…ظٹط²ط©.', 
   false, 
   true, 
   '{
@@ -1627,7 +1627,7 @@ VALUES
 ),
 (
   'Luxury Theme', 
-  'تصميم فخم يعتمد على درجات الأسود الملكي مع لمسات ذهبية راقية تضفي طابع التميز والجاذبية.', 
+  'طھطµظ…ظٹظ… ظپط®ظ… ظٹط¹طھظ…ط¯ ط¹ظ„ظ‰ ط¯ط±ط¬ط§طھ ط§ظ„ط£ط³ظˆط¯ ط§ظ„ظ…ظ„ظƒظٹ ظ…ط¹ ظ„ظ…ط³ط§طھ ط°ظ‡ط¨ظٹط© ط±ط§ظ‚ظٹط© طھط¶ظپظٹ ط·ط§ط¨ط¹ ط§ظ„طھظ…ظٹط² ظˆط§ظ„ط¬ط§ط°ط¨ظٹط©.', 
   false, 
   true, 
   '{
@@ -1826,7 +1826,7 @@ VALUES
 ),
 (
   'Minimal Theme', 
-  'تصميم هادئ وبسيط للغاية، خالي من التكلف والتعقيد، باللونين الأبيض والأسود النقي.', 
+  'طھطµظ…ظٹظ… ظ‡ط§ط¯ط¦ ظˆط¨ط³ظٹط· ظ„ظ„ط؛ط§ظٹط©طŒ ط®ط§ظ„ظٹ ظ…ظ† ط§ظ„طھظƒظ„ظپ ظˆط§ظ„طھط¹ظ‚ظٹط¯طŒ ط¨ط§ظ„ظ„ظˆظ†ظٹظ† ط§ظ„ط£ط¨ظٹط¶ ظˆط§ظ„ط£ط³ظˆط¯ ط§ظ„ظ†ظ‚ظٹ.', 
   false, 
   true, 
   '{
@@ -2027,13 +2027,13 @@ ON CONFLICT (name) DO NOTHING;
 
 
 -- ============================================================
--- 🌟 Inbound Invoices (Stock Batch Replenishments) Schema 🌟
+-- ًںŒں Inbound Invoices (Stock Batch Replenishments) Schema ًںŒں
 -- ============================================================
 
 -- 1. Sequence for inbound invoice numbering
 CREATE SEQUENCE IF NOT EXISTS public.inbound_invoice_number_seq START WITH 1001;
 
--- 2. Inbound Invoices Table (فاتورة دخل)
+-- 2. Inbound Invoices Table (ظپط§طھظˆط±ط© ط¯ط®ظ„)
 CREATE TABLE IF NOT EXISTS public.inbound_invoices (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     invoice_number text NOT NULL UNIQUE,
@@ -2046,7 +2046,7 @@ CREATE TABLE IF NOT EXISTS public.inbound_invoices (
     CONSTRAINT inbound_invoices_pkey PRIMARY KEY (id)
 );
 
--- 3. Inbound Invoice Items Table (تفاصيل فاتورة الدخل)
+-- 3. Inbound Invoice Items Table (طھظپط§طµظٹظ„ ظپط§طھظˆط±ط© ط§ظ„ط¯ط®ظ„)
 CREATE TABLE IF NOT EXISTS public.inbound_invoice_items (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     inbound_invoice_id uuid REFERENCES public.inbound_invoices(id) ON DELETE CASCADE,
@@ -2064,7 +2064,7 @@ CREATE INDEX IF NOT EXISTS idx_inbound_invoice_items_invoice_id ON public.inboun
 ALTER TABLE public.inbound_invoices DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inbound_invoice_items DISABLE ROW LEVEL SECURITY;
 
--- 6. Process Inbound Transaction Function (أهم دالة للتعامل مع دفعات الرصيد والتعديل الآمن)
+-- 6. Process Inbound Transaction Function (ط£ظ‡ظ… ط¯ط§ظ„ط© ظ„ظ„طھط¹ط§ظ…ظ„ ظ…ط¹ ط¯ظپط¹ط§طھ ط§ظ„ط±طµظٹط¯ ظˆط§ظ„طھط¹ط¯ظٹظ„ ط§ظ„ط¢ظ…ظ†)
 CREATE OR REPLACE FUNCTION public.process_inbound_transaction(
     p_invoice_id uuid,
     p_invoice_data jsonb,
@@ -2083,7 +2083,7 @@ DECLARE
     v_model_name text;
     v_color_name text;
 BEGIN
-    -- أ) إنشاء جدول مؤقت لتخزين الأصناف المتأثرة للتحقق النهائي من المخزون
+    -- ط£) ط¥ظ†ط´ط§ط، ط¬ط¯ظˆظ„ ظ…ط¤ظ‚طھ ظ„طھط®ط²ظٹظ† ط§ظ„ط£طµظ†ط§ظپ ط§ظ„ظ…طھط£ط«ط±ط© ظ„ظ„طھط­ظ‚ظ‚ ط§ظ„ظ†ظ‡ط§ط¦ظٹ ظ…ظ† ط§ظ„ظ…ط®ط²ظˆظ†
     CREATE TEMP TABLE affected_items_temp ON COMMIT DROP AS
     SELECT DISTINCT model_id, color_id FROM (
         SELECT model_id, color_id FROM public.inbound_invoice_items WHERE inbound_invoice_id = p_invoice_id
@@ -2092,23 +2092,23 @@ BEGIN
         FROM jsonb_to_recordset(p_invoice_items) AS x(model_id uuid, color_id uuid, qty int)
     ) AS tmp WHERE model_id IS NOT NULL AND color_id IS NOT NULL;
 
-    -- ب) التحقق من وضع التعديل مقابل الإنشاء الجديد
+    -- ط¨) ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ظˆط¶ط¹ ط§ظ„طھط¹ط¯ظٹظ„ ظ…ظ‚ط§ط¨ظ„ ط§ظ„ط¥ظ†ط´ط§ط، ط§ظ„ط¬ط¯ظٹط¯
     IF p_invoice_id IS NOT NULL THEN
         v_invoice_id := p_invoice_id;
         SELECT invoice_number INTO v_invoice_number FROM public.inbound_invoices WHERE id = v_invoice_id;
         
-        -- إرجاع/خصم الكميات القديمة من رصيد المخزن
+        -- ط¥ط±ط¬ط§ط¹/ط®طµظ… ط§ظ„ظƒظ…ظٹط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ظ…ظ† ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ†
         FOR v_old_item IN SELECT * FROM public.inbound_invoice_items WHERE inbound_invoice_id = v_invoice_id LOOP
             UPDATE public.model_inventory
             SET available_series = available_series - v_old_item.quantity
             WHERE model_id = v_old_item.model_id AND color_id = v_old_item.color_id;
             
-            -- تسجيل حركة المخزون كحركة مخرجات مؤقتة للتصحيح
+            -- طھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ظ…ط®ط²ظˆظ† ظƒط­ط±ظƒط© ظ…ط®ط±ط¬ط§طھ ظ…ط¤ظ‚طھط© ظ„ظ„طھطµط­ظٹط­
             INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-            VALUES (v_old_item.model_id, v_old_item.color_id, 'out', v_old_item.quantity, 'تعديل فاتورة دخل (إرجاع كمية قديمة): ' || v_invoice_number);
+            VALUES (v_old_item.model_id, v_old_item.color_id, 'out', v_old_item.quantity, 'طھط¹ط¯ظٹظ„ ظپط§طھظˆط±ط© ط¯ط®ظ„ (ط¥ط±ط¬ط§ط¹ ظƒظ…ظٹط© ظ‚ط¯ظٹظ…ط©): ' || v_invoice_number);
         END LOOP;
         
-        -- تحديث تفاصيل الفاتورة الرئيسية
+        -- طھط­ط¯ظٹط« طھظپط§طµظٹظ„ ط§ظ„ظپط§طھظˆط±ط© ط§ظ„ط±ط¦ظٹط³ظٹط©
         UPDATE public.inbound_invoices SET
             supplier_name = p_invoice_data->>'supplier_name',
             notes = p_invoice_data->>'notes',
@@ -2116,11 +2116,11 @@ BEGIN
             updated_at = now()
         WHERE id = v_invoice_id;
         
-        -- مسح العناصر القديمة
+        -- ظ…ط³ط­ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ظ‚ط¯ظٹظ…ط©
         DELETE FROM public.inbound_invoice_items WHERE inbound_invoice_id = v_invoice_id;
         
     ELSE
-        -- إنشاء جديد
+        -- ط¥ظ†ط´ط§ط، ط¬ط¯ظٹط¯
         v_invoice_number := 'IN-' || nextval('public.inbound_invoice_number_seq')::text;
         
         INSERT INTO public.inbound_invoices (invoice_number, supplier_name, notes, total_series, worker_id)
@@ -2133,14 +2133,14 @@ BEGIN
         ) RETURNING id INTO v_invoice_id;
     END IF;
     
-    -- ج) إدخال الكميات الجديدة وتحديث الرصيد الفعلي
+    -- ط¬) ط¥ط¯ط®ط§ظ„ ط§ظ„ظƒظ…ظٹط§طھ ط§ظ„ط¬ط¯ظٹط¯ط© ظˆطھط­ط¯ظٹط« ط§ظ„ط±طµظٹط¯ ط§ظ„ظپط¹ظ„ظٹ
     FOR v_item IN SELECT * FROM jsonb_to_recordset(p_invoice_items) AS x(model_id uuid, color_id uuid, qty int)
     LOOP
-        -- إدراج العنصر
+        -- ط¥ط¯ط±ط§ط¬ ط§ظ„ط¹ظ†طµط±
         INSERT INTO public.inbound_invoice_items (inbound_invoice_id, model_id, color_id, quantity)
         VALUES (v_invoice_id, v_item.model_id, v_item.color_id, v_item.qty);
         
-        -- تحديث رصيد المخزن (وإنشائه إن لم يكن موجوداً)
+        -- طھط­ط¯ظٹط« ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† (ظˆط¥ظ†ط´ط§ط¦ظ‡ ط¥ظ† ظ„ظ… ظٹظƒظ† ظ…ظˆط¬ظˆط¯ط§ظ‹)
         IF EXISTS (SELECT 1 FROM public.model_inventory WHERE model_id = v_item.model_id AND color_id = v_item.color_id) THEN
             UPDATE public.model_inventory
             SET available_series = available_series + v_item.qty
@@ -2150,12 +2150,12 @@ BEGIN
             VALUES (v_item.model_id, v_item.color_id, v_item.qty);
         END IF;
         
-        -- تسجيل الحركة كمدخلات
+        -- طھط³ط¬ظٹظ„ ط§ظ„ط­ط±ظƒط© ظƒظ…ط¯ط®ظ„ط§طھ
         INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-        VALUES (v_item.model_id, v_item.color_id, 'in', v_item.qty, 'فاتورة دخل: ' || v_invoice_number);
+        VALUES (v_item.model_id, v_item.color_id, 'in', v_item.qty, 'ظپط§طھظˆط±ط© ط¯ط®ظ„: ' || v_invoice_number);
     END LOOP;
     
-    -- د) التحقق الأمني الحرج: التأكد أن رصيد المخزن الفعلي لم يقل عن الصفر لأي صنف تأثر بالتعديل
+    -- ط¯) ط§ظ„طھط­ظ‚ظ‚ ط§ظ„ط£ظ…ظ†ظٹ ط§ظ„ط­ط±ط¬: ط§ظ„طھط£ظƒط¯ ط£ظ† ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† ط§ظ„ظپط¹ظ„ظٹ ظ„ظ… ظٹظ‚ظ„ ط¹ظ† ط§ظ„طµظپط± ظ„ط£ظٹ طµظ†ظپ طھط£ط«ط± ط¨ط§ظ„طھط¹ط¯ظٹظ„
     FOR v_item IN SELECT * FROM affected_items_temp
     LOOP
         SELECT available_series INTO v_current_stock FROM public.model_inventory
@@ -2165,9 +2165,9 @@ BEGIN
             SELECT name INTO v_model_name FROM public.models WHERE id = v_item.model_id;
             SELECT name INTO v_color_name FROM public.colors WHERE id = v_item.color_id;
             
-            RAISE EXCEPTION 'لا يمكن تعديل الفاتورة. الموديل (%) لون (%) تم سحب رصيد منه مسبقاً، والكمية الجديدة المقترحة ستجعل رصيد المخزن بالسالب (%).', 
-                COALESCE(v_model_name, 'غير معروف'), 
-                COALESCE(v_color_name, 'غير معروف'), 
+            RAISE EXCEPTION 'ظ„ط§ ظٹظ…ظƒظ† طھط¹ط¯ظٹظ„ ط§ظ„ظپط§طھظˆط±ط©. ط§ظ„ظ…ظˆط¯ظٹظ„ (%) ظ„ظˆظ† (%) طھظ… ط³ط­ط¨ ط±طµظٹط¯ ظ…ظ†ظ‡ ظ…ط³ط¨ظ‚ط§ظ‹طŒ ظˆط§ظ„ظƒظ…ظٹط© ط§ظ„ط¬ط¯ظٹط¯ط© ط§ظ„ظ…ظ‚طھط±ط­ط© ط³طھط¬ط¹ظ„ ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† ط¨ط§ظ„ط³ط§ظ„ط¨ (%).', 
+                COALESCE(v_model_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
+                COALESCE(v_color_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
                 v_current_stock;
         END IF;
     END LOOP;
@@ -2176,7 +2176,7 @@ BEGIN
 END;
 $$;
 
--- 7. Delete Inbound Invoice Safely Function (حذف آمن للفواتير مع التحقق من عدم ترك رصيد سالب)
+-- 7. Delete Inbound Invoice Safely Function (ط­ط°ظپ ط¢ظ…ظ† ظ„ظ„ظپظˆط§طھظٹط± ظ…ط¹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط¹ط¯ظ… طھط±ظƒ ط±طµظٹط¯ ط³ط§ظ„ط¨)
 CREATE OR REPLACE FUNCTION public.delete_inbound_invoice_safely(
     p_invoice_id uuid
 )
@@ -2193,20 +2193,20 @@ DECLARE
 BEGIN
     SELECT invoice_number INTO v_invoice_number FROM public.inbound_invoices WHERE id = p_invoice_id;
     IF v_invoice_number IS NULL THEN
-        RAISE EXCEPTION 'فاتورة الدخل غير موجودة.';
+        RAISE EXCEPTION 'ظپط§طھظˆط±ط© ط§ظ„ط¯ط®ظ„ ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©.';
     END IF;
 
-    -- أ) خصم الكميات من رصيد المخزن مؤقتاً وتسجيل الحركات
+    -- ط£) ط®طµظ… ط§ظ„ظƒظ…ظٹط§طھ ظ…ظ† ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† ظ…ط¤ظ‚طھط§ظ‹ ظˆطھط³ط¬ظٹظ„ ط§ظ„ط­ط±ظƒط§طھ
     FOR v_item IN SELECT * FROM public.inbound_invoice_items WHERE inbound_invoice_id = p_invoice_id LOOP
         UPDATE public.model_inventory
         SET available_series = available_series - v_item.quantity
         WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
         INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-        VALUES (v_item.model_id, v_item.color_id, 'out', v_item.quantity, 'حذف فاتورة دخل: ' || v_invoice_number);
+        VALUES (v_item.model_id, v_item.color_id, 'out', v_item.quantity, 'ط­ط°ظپ ظپط§طھظˆط±ط© ط¯ط®ظ„: ' || v_invoice_number);
     END LOOP;
 
-    -- b) التحقق من أن الخصم لم يتسبب في رصيد مخزن سالب
+    -- b) ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط£ظ† ط§ظ„ط®طµظ… ظ„ظ… ظٹطھط³ط¨ط¨ ظپظٹ ط±طµظٹط¯ ظ…ط®ط²ظ† ط³ط§ظ„ط¨
     FOR v_item IN SELECT * FROM public.inbound_invoice_items WHERE inbound_invoice_id = p_invoice_id LOOP
         SELECT available_series INTO v_current_stock FROM public.model_inventory
         WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
@@ -2215,15 +2215,15 @@ BEGIN
             SELECT name INTO v_model_name FROM public.models WHERE id = v_item.model_id;
             SELECT name INTO v_color_name FROM public.colors WHERE id = v_item.color_id;
 
-            RAISE EXCEPTION 'لا يمكن حذف الفاتورة (%) لأن الموديل (%) لون (%) تم بيع أجزاء منه وسيتسبب الحذف في رصيد سالب للكمية بالمخزن (%).', 
+            RAISE EXCEPTION 'ظ„ط§ ظٹظ…ظƒظ† ط­ط°ظپ ط§ظ„ظپط§طھظˆط±ط© (%) ظ„ط£ظ† ط§ظ„ظ…ظˆط¯ظٹظ„ (%) ظ„ظˆظ† (%) طھظ… ط¨ظٹط¹ ط£ط¬ط²ط§ط، ظ…ظ†ظ‡ ظˆط³ظٹطھط³ط¨ط¨ ط§ظ„ط­ط°ظپ ظپظٹ ط±طµظٹط¯ ط³ط§ظ„ط¨ ظ„ظ„ظƒظ…ظٹط© ط¨ط§ظ„ظ…ط®ط²ظ† (%).', 
                 v_invoice_number,
-                COALESCE(v_model_name, 'غير معروف'), 
-                COALESCE(v_color_name, 'غير معروف'), 
+                COALESCE(v_model_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
+                COALESCE(v_color_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
                 v_current_stock;
         END IF;
     END LOOP;
 
-    -- ج) الحذف الفعلي للفاتورة وعناصرها (الاعتماد على cascade delete)
+    -- ط¬) ط§ظ„ط­ط°ظپ ط§ظ„ظپط¹ظ„ظٹ ظ„ظ„ظپط§طھظˆط±ط© ظˆط¹ظ†ط§طµط±ظ‡ط§ (ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰ cascade delete)
     DELETE FROM public.inbound_invoices WHERE id = p_invoice_id;
 
     RETURN true;

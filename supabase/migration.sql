@@ -294,7 +294,8 @@ BEGIN
     UPDATE public.orders
     SET is_locked = false,
         assigned_worker_id = NULL,
-        assigned_admin_name = NULL
+        assigned_admin_name = NULL,
+        status = 'created'
     WHERE id = p_order_id;
 
     RETURN true;

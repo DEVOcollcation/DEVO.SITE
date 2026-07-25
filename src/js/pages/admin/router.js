@@ -171,7 +171,7 @@ async function loadViewLogic(targetId) {
             initDefinitionsView();
             break;
         case 'view-models':
-            const { initModelsView } = await import('./models.js?v=1.0.1'); 
+            const { initModelsView } = await import('./models.js?v=8.0'); 
             await initModelsView(); 
             break;
         case 'view-home-settings':
@@ -186,7 +186,7 @@ async function loadViewLogic(targetId) {
             await initPrintBarcodesView();
             break;
         case 'view-admin-orders':
-            const { initAdminOrdersView } = await import('./admin_orders.js');
+            const { initAdminOrdersView } = await import('./admin_orders.js?v=8.0');
             await initAdminOrdersView();
             break;
         case 'view-import-stock':
@@ -197,10 +197,7 @@ async function loadViewLogic(targetId) {
             const { initInboundInvoicesView } = await import('./inbound_invoices.js');
             await initInboundInvoicesView();
             break;
-        case 'view-preparation':
-            const { initPreparationView } = await import('./preparation.js');
-            await initPreparationView();
-            break;
+
         case 'view-audits':
             await initAuditsView();
             break;
@@ -331,13 +328,7 @@ export async function refreshAllSystemData(options = {}) {
                     }
                     break;
                 }
-                case 'view-preparation': {
-                    const prepMod = await import('./preparation.js').catch(() => null);
-                    if (prepMod && typeof prepMod.fetchOrders === 'function') {
-                        await prepMod.fetchOrders();
-                    }
-                    break;
-                }
+
                 case 'view-audits': {
                     const auditsMod = await import('./audits.js').catch(() => null);
                     if (auditsMod && typeof auditsMod.fetchAudits === 'function') {

@@ -412,6 +412,9 @@ function wrapMultiSelectDropdown(dropdown) {
 
     // Reset search on dropdown close, and position dynamically on open
     const menuObserver = new MutationObserver((mutations) => {
+        // Disconnect temporarily to prevent recursive loops when modifying class
+        menuObserver.disconnect();
+
         mutations.forEach(m => {
             if (m.type === 'attributes' && m.attributeName === 'class') {
                 if (menu.classList.contains('hidden')) {
@@ -444,6 +447,9 @@ function wrapMultiSelectDropdown(dropdown) {
                 }
             }
         });
+
+        // Reconnect observer
+        menuObserver.observe(menu, { attributes: true, attributeFilter: ['class'] });
     });
     menuObserver.observe(menu, { attributes: true, attributeFilter: ['class'] });
 }

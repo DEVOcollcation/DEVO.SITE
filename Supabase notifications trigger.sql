@@ -65,7 +65,7 @@ BEGIN
     IF (TG_OP = 'INSERT') THEN
         notification_type := 'order_created';
         notification_title := '🚨 أوردر جديد قد وصل!';
-        notification_body := '🧾 رقم الأوردر: ' || COALESCE(NEW.invoice_number, 'غير حدد') || E'\n' ||
+        notification_body := '🧾 رقم الأوردر: ' || COALESCE(NEW.invoice_number, 'غير محدد') || E'\n' ||
                              '👤 اسم العميل: ' || COALESCE(NEW.customer_name, 'غير معروف') || E'\n' ||
                              '📞 رقم الهاتف: ' || COALESCE(NEW.phone_1, 'غير محدد') || 
                              CASE WHEN NEW.phone_2 IS NOT NULL AND NEW.phone_2 <> '' THEN ' / ' || NEW.phone_2 ELSE '' END || E'\n' ||
@@ -91,13 +91,13 @@ BEGIN
             VALUES (notification_type, notification_title, notification_body, jsonb_build_object('order_id', NEW.id), target_user_id);
         END IF;
 
-        -- 2. تحقق من وجود تعديلات أخرى هامة (مثل حالة الطلب أو تعديل الأصناف وإعادة الحفظ)
-        IF (NEW.status IS DISTINCT FROM OLD.status OR NEW.total_price IS DISTINCT FROM OLD.total_price OR NEW.is_locked IS DISTINCT FROM OLD.is_locked) THEN
-            notification_type := 'order_updated';
-            notification_title := '🔄 تحديث في الأوردر #' || COALESCE(NEW.invoice_number, 'غير محدد');
+        -- 2. إشعار بدء تعديل الأوردر فقط عند تحول حالته إلى 'editing'
+        IF ((NEW.status = 'editing' OR NEW.status = 'in_progress') AND OLD.status NOT IN ('editing', 'in_progress')) THEN
+            notification_type := 'order_edit_start';
+            notification_title := '✏️ بدأ تعديل الأوردر #' || COALESCE(NEW.invoice_number, 'غير محدد');
             notification_body := '👤 اسم العميل: ' || COALESCE(NEW.customer_name, 'غير معروف') || E'\n' ||
-                                 '📊 الحالة الحالية: ' || COALESCE(NEW.status, 'غير معروف') || E'\n' ||
-                                 '💵 إجمالي المبلغ: ' || NEW.total_price || ' ج.م';
+                                 '👤 القائم بالتعديل: ' || COALESCE(NEW.assigned_admin_name, 'غير معروف') || E'\n' ||
+                                 '💵 إجمالي المبلغ الحالي: ' || NEW.total_price || ' ج.م';
             
             INSERT INTO public.system_notifications (type, title, body, metadata)
             VALUES (notification_type, notification_title, notification_body, jsonb_build_object('order_id', NEW.id, 'status', NEW.status, 'total_price', NEW.total_price));

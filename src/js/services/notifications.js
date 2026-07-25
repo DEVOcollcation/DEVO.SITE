@@ -36,6 +36,15 @@ export async function initNotifications() {
         await fetchUnreadNotifications();
         setupRealtimeSubscription();
 
+        if (!isAuthStateListenerSet) {
+            isAuthStateListenerSet = true;
+            supabase.auth.onAuthStateChange(async (event) => {
+                if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+                    loadUserSession();
+                }
+            });
+        }
+
         // الاستماع لحدث التحديث اليدوي من صفحة إدارة الإشعارات لإعادة الجلب
         window.addEventListener('devo:notifications-updated', async () => {
             await fetchUnreadNotifications();
@@ -240,10 +249,16 @@ export async function fetchUnreadNotifications() {
     }
 }
 
+let realtimeRetryTimeout = null;
+let isAuthStateListenerSet = false;
+
 // الاتصال اللحظي بـ Supabase لمراقبة جدول الإشعارات
 function setupRealtimeSubscription() {
     if (realtimeChannel) {
-        realtimeChannel.unsubscribe();
+        try {
+            supabase.removeChannel(realtimeChannel);
+        } catch (e) {}
+        realtimeChannel = null;
     }
 
     realtimeChannel = supabase.channel('global_system_notifications_tracker')
@@ -287,9 +302,38 @@ function setupRealtimeSubscription() {
             // إرسال حدث عام لتحديث صفحة الإشعارات بالأدمن لو كانت مفتوحة حالياً
             window.dispatchEvent(new CustomEvent('devo:notifications-received'));
         })
-        .subscribe((status, err) => {
+        .subscribe(async (status, err) => {
             console.log('📡 حالة اتصال رادار الإشعارات المركزي:', status);
             if (err) console.error('⚠️ خطأ في اتصال قناة الإشعارات:', err);
+
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                const errStr = err ? String(err.message || err) : '';
+                const isJwtExpired = errStr.includes('InvalidJWTToken') || errStr.includes('expired') || errStr.includes('1006') || errStr.includes('1000');
+
+                if (isJwtExpired) {
+                    console.warn('🔄 انتهت صلاحية رمز الـ JWT أو انقطع الاتصال، جاري تحديث الجلسة وإعادة المحاولة...');
+                    try {
+                        await supabase.auth.getSession();
+                    } catch (refreshErr) {
+                        console.error('فشل تحديث جلسة Supabase:', refreshErr);
+                    }
+                }
+
+                if (!realtimeRetryTimeout) {
+                    realtimeRetryTimeout = setTimeout(() => {
+                        realtimeRetryTimeout = null;
+                        if (webNotificationsEnabled) {
+                            console.log('🔄 إعادة الاتصال بقناة الإشعارات اللحظية...');
+                            setupRealtimeSubscription();
+                        }
+                    }, 10000);
+                }
+            } else if (status === 'SUBSCRIBED') {
+                if (realtimeRetryTimeout) {
+                    clearTimeout(realtimeRetryTimeout);
+                    realtimeRetryTimeout = null;
+                }
+            }
         });
 }
 

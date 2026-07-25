@@ -7,6 +7,7 @@ let bulkAllModels = [];
 let filteredBulkModels = [];
 let selectedModelIds = new Set();
 let lastSnapshot = null; 
+let bulkClasses = [];
 
 let bulkCurrentPage = 1;
 const bulkItemsPerPage = 50;
@@ -121,10 +122,12 @@ export async function fetchBulkFilterOptions() {
     try {
         const [cats, clss, colors, sizes] = await Promise.all([
             supabase.from('categories').select('id, name'),
-            supabase.from('classes').select('id, name'),
+            supabase.from('classes').select('id, name, class_sizes(size_id)'),
             supabase.from('colors').select('id, name'),
             supabase.from('sizes').select('id, name')
         ]);
+
+        bulkClasses = clss.data || [];
 
         const populateCheckbox = (containerId, data, key) => {
             const container = document.getElementById(containerId);
@@ -538,9 +541,38 @@ window.executeBulkEdit = async () => {
     btn.disabled = true;
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري التنفيذ...`;
 
+    // إظهار شريط التقدم وتصفير البيانات
+    const progressContainer = document.getElementById('bulk-progress-container');
+    const progressBar = document.getElementById('bulk-progress-bar');
+    const progressText = document.getElementById('bulk-progress-text');
+    const progressPercent = document.getElementById('bulk-progress-percent');
+    const progressErrors = document.getElementById('bulk-progress-errors');
+
+    if (progressContainer) progressContainer.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'جاري التحضير لبدء العملية...';
+    if (progressErrors) {
+        progressErrors.innerHTML = '';
+        progressErrors.classList.add('hidden');
+    }
+
+    // تعطيل الحقول أثناء العمل
+    const inputsToDisable = [
+        document.getElementById('bulk-action-type'),
+        document.getElementById('bulk-action-input'),
+        document.getElementById('bulk-action-select'),
+        document.getElementById('bulk-action-class-select'),
+        document.getElementById('btn-bulk-undo')
+    ];
+    inputsToDisable.forEach(input => {
+        if (input) input.disabled = true;
+    });
+
     try {
         const modelsToEdit = bulkAllModels.filter(m => selectedModelIds.has(m.id));
-        const CHUNK_SIZE = 300;
+        const CHUNK_SIZE = 100; // معالجة الموديلات على دفعات من 100
+        const errorsCollected = [];
 
         if (isDelete) {
             // 🌟 حفظ لقطة تراجع للحذف المجمع 🌟
@@ -582,23 +614,49 @@ window.executeBulkEdit = async () => {
                 )
             };
 
-            // 🌟 خوارزمية الحذف المجمع 🌟
+            // 🌟 الحذف المجمع على دفعات 🌟
             const idsToDelete = Array.from(selectedModelIds);
+            const totalBatches = Math.ceil(idsToDelete.length / CHUNK_SIZE);
+
             for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
+                const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                 const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
-                const { error } = await supabase.from('models').delete().in('id', chunk);
-                if (error) throw error;
+                
+                if (progressText) {
+                    progressText.textContent = `جاري حذف الموديلات المحددة (${idsToDelete.length} موديل - مجموعة ${batchNum} من ${totalBatches})...`;
+                }
+
+                try {
+                    const { error } = await supabase.from('models').delete().in('id', chunk);
+                    if (error) throw error;
+                } catch (chunkErr) {
+                    console.error(`Error deleting batch ${batchNum}:`, chunkErr);
+                    errorsCollected.push(`المجموعة ${batchNum} (حذف الموديلات): ${chunkErr.message || chunkErr}`);
+                }
+
+                const percent = Math.round((batchNum / totalBatches) * 100);
+                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressPercent) progressPercent.textContent = `${percent}%`;
             }
             
-            showToast(`تم حذف ${selectedModelIds.size} موديل بنجاح!`, 'success');
+            if (errorsCollected.length === 0) {
+                showToast(`تم حذف ${selectedModelIds.size} موديل بنجاح!`, 'success');
+                if (progressText) progressText.textContent = 'تم إتمام عملية الحذف بنجاح!';
+            } else {
+                showToast(`اكتمل الحذف مع وجود أخطاء في بعض المجموعات`, 'warning');
+                if (progressText) progressText.textContent = 'اكتملت العملية مع وجود أخطاء.';
+            }
             
             // إظهار زر التراجع للحذف
-            document.getElementById('btn-bulk-undo').classList.remove('hidden');
-            document.getElementById('btn-bulk-undo').classList.add('flex');
+            const undoBtn = document.getElementById('btn-bulk-undo');
+            if (undoBtn) {
+                undoBtn.classList.remove('hidden');
+                undoBtn.classList.add('flex');
+            }
             selectedModelIds.clear();
             
         } else {
-            // 🌟 خوارزميات التعديل (النسب المئوية والأسعار) 🌟
+            // 🌟 التعديل المجمع على دفعات 🌟
             lastSnapshot = modelsToEdit.map(m => ({
                 id: m.id, system_code: m.system_code, factory_code: m.factory_code,
                 name: m.name, price: m.price, category_id: m.category_id, 
@@ -623,19 +681,41 @@ window.executeBulkEdit = async () => {
                 return newModel;
             });
 
+            const totalBatches = Math.ceil(updatedModels.length / CHUNK_SIZE);
+            const classChanged = (action === 'change_class' && classSelectVal);
+            
+            // نسبة التقدم: إذا كان هناك تعديل فئة (الذي يحدث تعديل مخزون لاحقاً)، سنخصص 50% لتعديل الموديلات و50% لتعديل المخزون
+            const maxProgressForModels = classChanged ? 50 : 100;
+
             for (let i = 0; i < updatedModels.length; i += CHUNK_SIZE) {
+                const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                 const chunk = updatedModels.slice(i, i + CHUNK_SIZE);
-                const { error } = await supabase.from('models').upsert(chunk);
-                if (error) throw error;
+                
+                if (progressText) {
+                    progressText.textContent = `جاري تعديل الموديلات (${updatedModels.length} موديل - مجموعة ${batchNum} من ${totalBatches})...`;
+                }
+
+                try {
+                    const { error } = await supabase.from('models').upsert(chunk);
+                    if (error) throw error;
+                } catch (chunkErr) {
+                    console.error(`Error updating models batch ${batchNum}:`, chunkErr);
+                    errorsCollected.push(`المجموعة ${batchNum} (تعديل الموديلات): ${chunkErr.message || chunkErr}`);
+                }
+
+                const percent = Math.round((batchNum / totalBatches) * maxProgressForModels);
+                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressPercent) progressPercent.textContent = `${percent}%`;
             }
 
-            if (action === 'change_class' && classSelectVal) {
-                const newClass = defCache.clss.find(c => c.id === classSelectVal);
+            // تعديل فئات المقاسات والمخزون التابع لها
+            if (classChanged) {
+                const newClass = bulkClasses.find(c => c.id === classSelectVal);
                 const S_new = newClass?.class_sizes?.length || 1;
                 
                 const inventoryUpdates = [];
                 modelsToEdit.forEach(m => {
-                    const oldClass = defCache.clss.find(c => c.id === m.class_id);
+                    const oldClass = bulkClasses.find(c => c.id === m.class_id);
                     const S_old = oldClass?.class_sizes?.length || 1;
                     if (S_old !== S_new && m.model_inventory && m.model_inventory.length > 0) {
                         m.model_inventory.forEach(inv => {
@@ -652,17 +732,55 @@ window.executeBulkEdit = async () => {
                 });
                 
                 if (inventoryUpdates.length > 0) {
+                    const totalInvBatches = Math.ceil(inventoryUpdates.length / CHUNK_SIZE);
                     for (let i = 0; i < inventoryUpdates.length; i += CHUNK_SIZE) {
+                        const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                         const chunk = inventoryUpdates.slice(i, i + CHUNK_SIZE);
-                        const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'id' });
-                        if (error) throw error;
+                        
+                        if (progressText) {
+                            progressText.textContent = `جاري تعديل المخزون المتأثر بالفئة العمرية (${inventoryUpdates.length} تحديث - مجموعة ${batchNum} من ${totalInvBatches})...`;
+                        }
+
+                        try {
+                            const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'id' });
+                            if (error) throw error;
+                        } catch (chunkErr) {
+                            console.error(`Error updating inventory batch ${batchNum}:`, chunkErr);
+                            errorsCollected.push(`المجموعة ${batchNum} (تحديث مخزون الفئة): ${chunkErr.message || chunkErr}`);
+                        }
+
+                        const percent = Math.round(50 + (batchNum / totalInvBatches) * 50);
+                        if (progressBar) progressBar.style.width = `${percent}%`;
+                        if (progressPercent) progressPercent.textContent = `${percent}%`;
                     }
                 }
             }
 
-            showToast(`تم تعديل ${selectedModelIds.size} موديل بنجاح!`, 'success');
-            document.getElementById('btn-bulk-undo').classList.remove('hidden');
-            document.getElementById('btn-bulk-undo').classList.add('flex');
+            if (progressBar) progressBar.style.width = '100%';
+            if (progressPercent) progressPercent.textContent = '100%';
+
+            if (errorsCollected.length === 0) {
+                showToast(`تم تعديل ${selectedModelIds.size} موديل بنجاح!`, 'success');
+                if (progressText) progressText.textContent = 'تم إتمام التعديل المجمع بنجاح!';
+            } else {
+                showToast(`اكتمل التعديل مع وجود أخطاء في بعض المجموعات`, 'warning');
+                if (progressText) progressText.textContent = 'اكتملت العملية مع وجود أخطاء.';
+            }
+
+            const undoBtn = document.getElementById('btn-bulk-undo');
+            if (undoBtn) {
+                undoBtn.classList.remove('hidden');
+                undoBtn.classList.add('flex');
+            }
+        }
+
+        // عرض الأخطاء المجمعة إن وجدت
+        if (errorsCollected.length > 0 && progressErrors) {
+            progressErrors.innerHTML = `
+                <div class="font-bold mb-1">الأخطاء التي حدثت أثناء المعالجة:</div>
+                ${errorsCollected.map(err => `<div>• ${err}</div>`).join('')}
+            `;
+            progressErrors.classList.remove('hidden');
         }
 
         await fetchBulkModels();
@@ -673,7 +791,21 @@ window.executeBulkEdit = async () => {
         showToast(`خطأ أثناء التنفيذ: ${err.message}`, 'error');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i class="ph ph-lightning text-lg"></i> تنفيذ الإجراءات`;
+        btn.innerHTML = `<i class="ph ph-lightning text-lg"></i> تنفيذ التعديلات`;
+        
+        // إعادة تمكين الحقول
+        inputsToDisable.forEach(input => {
+            if (input) input.disabled = false;
+        });
+
+        // إخفاء حاوية شريط التقدم بعد 5 ثوانٍ إن لم يكن هناك أخطاء
+        const hasErrors = progressErrors && !progressErrors.classList.contains('hidden');
+        if (!hasErrors) {
+            setTimeout(() => {
+                if (progressContainer) progressContainer.classList.add('hidden');
+            }, 5000);
+        }
+
         updateBulkActionBar(); 
     }
 };
@@ -695,56 +827,193 @@ window.undoBulkEdit = async () => {
     btn.disabled = true;
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري التراجع...`;
 
+    // إظهار شريط التقدم للتراجع
+    const progressContainer = document.getElementById('bulk-progress-container');
+    const progressBar = document.getElementById('bulk-progress-bar');
+    const progressText = document.getElementById('bulk-progress-text');
+    const progressPercent = document.getElementById('bulk-progress-percent');
+    const progressErrors = document.getElementById('bulk-progress-errors');
+
+    if (progressContainer) progressContainer.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'جاري التحضير لبدء عملية التراجع...';
+    if (progressErrors) {
+        progressErrors.innerHTML = '';
+        progressErrors.classList.add('hidden');
+    }
+
+    const execBtn = document.getElementById('btn-bulk-execute');
+    if (execBtn) execBtn.disabled = true;
+
     try {
-        const CHUNK_SIZE = 300;
+        const CHUNK_SIZE = 100;
+        const errorsCollected = [];
         
         if (isDeleteUndo) {
-            // 1. Restore models table
-            for (let i = 0; i < lastSnapshot.models.length; i += CHUNK_SIZE) {
+            // 1. استعادة جدول الموديلات (Models)
+            const totalModels = lastSnapshot.models.length;
+            const totalModelBatches = Math.ceil(totalModels / CHUNK_SIZE);
+            
+            for (let i = 0; i < totalModels; i += CHUNK_SIZE) {
+                const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                 const chunk = lastSnapshot.models.slice(i, i + CHUNK_SIZE);
-                const { error } = await supabase.from('models').insert(chunk);
-                if (error) throw error;
+                
+                if (progressText) {
+                    progressText.textContent = `جاري استعادة الموديلات (${totalModels} موديل - مجموعة ${batchNum} من ${totalModelBatches})...`;
+                }
+                
+                try {
+                    const { error } = await supabase.from('models').insert(chunk);
+                    if (error) throw error;
+                } catch (chunkErr) {
+                    console.error(`Error restoring models batch ${batchNum}:`, chunkErr);
+                    errorsCollected.push(`المجموعة ${batchNum} (استعادة الموديلات): ${chunkErr.message || chunkErr}`);
+                }
+
+                const percent = Math.round((batchNum / totalModelBatches) * 25);
+                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressPercent) progressPercent.textContent = `${percent}%`;
             }
 
-            // 2. Restore model_sizes table
+            // 2. استعادة المقاسات (Model Sizes)
             if (lastSnapshot.sizes.length > 0) {
-                for (let i = 0; i < lastSnapshot.sizes.length; i += CHUNK_SIZE) {
+                const totalSizes = lastSnapshot.sizes.length;
+                const totalSizeBatches = Math.ceil(totalSizes / CHUNK_SIZE);
+                
+                for (let i = 0; i < totalSizes; i += CHUNK_SIZE) {
+                    const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                     const chunk = lastSnapshot.sizes.slice(i, i + CHUNK_SIZE);
-                    const { error } = await supabase.from('model_sizes').insert(chunk);
-                    if (error) throw error;
+                    
+                    if (progressText) {
+                        progressText.textContent = `جاري استعادة المقاسات المحددة (${totalSizes} مقاس - مجموعة ${batchNum} من ${totalSizeBatches})...`;
+                    }
+                    
+                    try {
+                        const { error } = await supabase.from('model_sizes').insert(chunk);
+                        if (error) throw error;
+                    } catch (chunkErr) {
+                        console.error(`Error restoring sizes batch ${batchNum}:`, chunkErr);
+                        errorsCollected.push(`المجموعة ${batchNum} (استعادة المقاسات): ${chunkErr.message || chunkErr}`);
+                    }
+
+                    const percent = Math.round(25 + (batchNum / totalSizeBatches) * 25);
+                    if (progressBar) progressBar.style.width = `${percent}%`;
+                    if (progressPercent) progressPercent.textContent = `${percent}%`;
                 }
+            } else {
+                if (progressBar) progressBar.style.width = '50%';
+                if (progressPercent) progressPercent.textContent = '50%';
             }
 
-            // 3. Restore model_inventory table
+            // 3. استعادة المخزون (Model Inventory)
             if (lastSnapshot.inventory.length > 0) {
-                for (let i = 0; i < lastSnapshot.inventory.length; i += CHUNK_SIZE) {
+                const totalInventory = lastSnapshot.inventory.length;
+                const totalInvBatches = Math.ceil(totalInventory / CHUNK_SIZE);
+                
+                for (let i = 0; i < totalInventory; i += CHUNK_SIZE) {
+                    const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                     const chunk = lastSnapshot.inventory.slice(i, i + CHUNK_SIZE);
-                    const { error } = await supabase.from('model_inventory').insert(chunk);
-                    if (error) throw error;
+                    
+                    if (progressText) {
+                        progressText.textContent = `جاري استعادة كميات المخزون المحددة (${totalInventory} سجل - مجموعة ${batchNum} من ${totalInvBatches})...`;
+                    }
+                    
+                    try {
+                        const { error } = await supabase.from('model_inventory').insert(chunk);
+                        if (error) throw error;
+                    } catch (chunkErr) {
+                        console.error(`Error restoring inventory batch ${batchNum}:`, chunkErr);
+                        errorsCollected.push(`المجموعة ${batchNum} (استعادة كميات المخزون): ${chunkErr.message || chunkErr}`);
+                    }
+
+                    const percent = Math.round(50 + (batchNum / totalInvBatches) * 25);
+                    if (progressBar) progressBar.style.width = `${percent}%`;
+                    if (progressPercent) progressPercent.textContent = `${percent}%`;
                 }
+            } else {
+                if (progressBar) progressBar.style.width = '75%';
+                if (progressPercent) progressPercent.textContent = '75%';
             }
 
-            // 4. Restore model_images table
+            // 4. استعادة صور الموديلات (Model Images)
             if (lastSnapshot.images.length > 0) {
-                for (let i = 0; i < lastSnapshot.images.length; i += CHUNK_SIZE) {
+                const totalImages = lastSnapshot.images.length;
+                const totalImgBatches = Math.ceil(totalImages / CHUNK_SIZE);
+                
+                for (let i = 0; i < totalImages; i += CHUNK_SIZE) {
+                    const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                     const chunk = lastSnapshot.images.slice(i, i + CHUNK_SIZE);
-                    const { error } = await supabase.from('model_images').insert(chunk);
-                    if (error) throw error;
+                    
+                    if (progressText) {
+                        progressText.textContent = `جاري استعادة صور الموديلات (${totalImages} صورة - مجموعة ${batchNum} من ${totalImgBatches})...`;
+                    }
+                    
+                    try {
+                        const { error } = await supabase.from('model_images').insert(chunk);
+                        if (error) throw error;
+                    } catch (chunkErr) {
+                        console.error(`Error restoring images batch ${batchNum}:`, chunkErr);
+                        errorsCollected.push(`المجموعة ${batchNum} (استعادة الصور): ${chunkErr.message || chunkErr}`);
+                    }
+
+                    const percent = Math.round(75 + (batchNum / totalImgBatches) * 25);
+                    if (progressBar) progressBar.style.width = `${percent}%`;
+                    if (progressPercent) progressPercent.textContent = `${percent}%`;
                 }
+            } else {
+                if (progressBar) progressBar.style.width = '100%';
+                if (progressPercent) progressPercent.textContent = '100%';
             }
         } else {
-            // Restore updates (original logic)
-            for (let i = 0; i < lastSnapshot.length; i += CHUNK_SIZE) {
+            // استعادة تعديل الخصائص (Original update undo)
+            const totalUpdates = lastSnapshot.length;
+            const totalUpdateBatches = Math.ceil(totalUpdates / CHUNK_SIZE);
+            
+            for (let i = 0; i < totalUpdates; i += CHUNK_SIZE) {
+                const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
                 const chunk = lastSnapshot.slice(i, i + CHUNK_SIZE);
-                const { error } = await supabase.from('models').upsert(chunk);
-                if (error) throw error;
+                
+                if (progressText) {
+                    progressText.textContent = `جاري استعادة البيانات القديمة (${totalUpdates} موديل - مجموعة ${batchNum} من ${totalUpdateBatches})...`;
+                }
+                
+                try {
+                    const { error } = await supabase.from('models').upsert(chunk);
+                    if (error) throw error;
+                } catch (chunkErr) {
+                    console.error(`Error restoring updates batch ${batchNum}:`, chunkErr);
+                    errorsCollected.push(`المجموعة ${batchNum} (استعادة التعديلات السابقة): ${chunkErr.message || chunkErr}`);
+                }
+
+                const percent = Math.round((batchNum / totalUpdateBatches) * 100);
+                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressPercent) progressPercent.textContent = `${percent}%`;
             }
         }
 
-        showToast('تم التراجع بنجاح وإعادة البيانات القديمة!', 'success');
-        btn.classList.add('hidden');
-        btn.classList.remove('flex');
-        lastSnapshot = null; 
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressPercent) progressPercent.textContent = '100%';
+
+        if (errorsCollected.length === 0) {
+            showToast('تم التراجع بنجاح وإعادة البيانات القديمة!', 'success');
+            if (progressText) progressText.textContent = 'تم استعادة الحالة السابقة للبيانات بنجاح!';
+            btn.classList.add('hidden');
+            btn.classList.remove('flex');
+            lastSnapshot = null; 
+        } else {
+            showToast('اكتمل التراجع مع وجود بعض الأخطاء', 'warning');
+            if (progressText) progressText.textContent = 'اكتملت عملية الاستعادة مع وجود أخطاء.';
+        }
+
+        // عرض الأخطاء المجمعة في التراجع
+        if (errorsCollected.length > 0 && progressErrors) {
+            progressErrors.innerHTML = `
+                <div class="font-bold mb-1">الأخطاء التي حدثت أثناء التراجع والاستعادة:</div>
+                ${errorsCollected.map(err => `<div>• ${err}</div>`).join('')}
+            `;
+            progressErrors.classList.remove('hidden');
+        }
 
         await fetchBulkModels();
         if (typeof window.refreshModelsData === 'function') window.refreshModelsData();
@@ -755,6 +1024,16 @@ window.undoBulkEdit = async () => {
     } finally {
         btn.disabled = false;
         btn.innerHTML = `<i class="ph ph-arrow-u-up-left text-lg"></i> تراجع (Undo)`;
+        if (execBtn) execBtn.disabled = false;
+
+        // إخفاء حاوية شريط التقدم بعد 5 ثوانٍ إن لم يكن هناك أخطاء
+        const hasErrors = progressErrors && !progressErrors.classList.contains('hidden');
+        if (!hasErrors) {
+            setTimeout(() => {
+                if (progressContainer) progressContainer.classList.add('hidden');
+            }, 5000);
+        }
+
         updateBulkActionBar();
     }
 };

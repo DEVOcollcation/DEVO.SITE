@@ -1,8 +1,8 @@
 import { initNavbar } from './navbar.js';
 import { initGallery } from './gallery.js';
 import { initHomeContent } from './home_content.js';
-import { initCart } from './cart.js';
-import { initOrdersView } from './orders.js';
+import { initCart } from './cart.js?v=8.0';
+import { initOrdersView } from './orders.js?v=8.0';
 import { initBarcode } from './barcode.js';
 import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';

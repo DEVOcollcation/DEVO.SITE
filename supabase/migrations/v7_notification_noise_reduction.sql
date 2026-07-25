@@ -1,44 +1,71 @@
 -- =========================================================================
--- 🌟 MIGRATION V3: PERMANENT PIECE PRICING & SIZES COUNT FOR ORDER ITEMS 🌟
+-- 🌟 MIGRATION V7: NOTIFICATION NOISE REDUCTION & SELECTIVE TELEGRAM ALERTS 🌟
 -- =========================================================================
--- تاريخ الإنشاء: 2026-07-24
--- الإصدار: v3.0
+-- تاريخ الإنشاء: 2026-07-25
+-- الإصدار: v7.0
 -- الوصف: 
--- 1. إضافة أعمدة (sizes_count, piece_price, total_pieces) إلى جدول order_items لحفظ حسابات القطع والسعر الفردي بشكل دائم ومستقر عند كل طلب.
--- 2. تحديث السجلات القديمة وحساب قيمها تلقائياً.
--- 3. تحديث دالة process_order_transaction لتسجيل هذه القيم فورياً عند إنشاء/تعديل الفواتير.
+-- 1. تحديث handle_order_changes_notification لتقليل الضوضاء: إرسال تنبيهات فقط عند إنشاء الأوردر، عند إسناد عامل، أو عند بدء التعديل (الحالة تصبح in_progress).
+-- 2. تحديث process_order_transaction لإرسال إشعار تعديل وحفظ الأوردر بنجاح فقط عند حفظ التعديلات فعلياً، وتخطي إرسال إشعارات مع كل تغيير حالة.
 -- =========================================================================
 
--- 1. إضافة الأعمدة الجديدة لجدول order_items
-ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS sizes_count INT DEFAULT 1;
-ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS piece_price NUMERIC DEFAULT 0;
-ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS total_pieces INT DEFAULT 1;
+-- 1. تحديث دالة التريجر لجدول الطلبات لتقليل التنبيهات
+CREATE OR REPLACE FUNCTION public.handle_order_changes_notification()
+RETURNS TRIGGER AS $$
+DECLARE
+    notification_title text;
+    notification_body text;
+    notification_type text;
+    target_user_id uuid := NULL;
+BEGIN
+    -- أ) عند إضافة أوردر جديد بالسيستم
+    IF (TG_OP = 'INSERT') THEN
+        notification_type := 'order_created';
+        notification_title := '🚨 أوردر جديد قد وصل!';
+        notification_body := '🧾 رقم الأوردر: ' || COALESCE(NEW.invoice_number, 'غير محدد') || E'\n' ||
+                             '👤 اسم العميل: ' || COALESCE(NEW.customer_name, 'غير معروف') || E'\n' ||
+                             '📞 رقم الهاتف: ' || COALESCE(NEW.phone_1, 'غير محدد') || 
+                             CASE WHEN NEW.phone_2 IS NOT NULL AND NEW.phone_2 <> '' THEN ' / ' || NEW.phone_2 ELSE '' END || E'\n' ||
+                             '📍 العنوان: ' || COALESCE(NEW.address, 'غير محدد') || E'\n' ||
+                             '💵 إجمالي المبلغ: ' || NEW.total_price || ' ج.م' ||
+                             CASE WHEN NEW.notes IS NOT NULL AND NEW.notes <> '' THEN E'\n📝 ملاحظات: ' || NEW.notes ELSE '' END;
+        
+        INSERT INTO public.system_notifications (type, title, body, metadata)
+        VALUES (notification_type, notification_title, notification_body, jsonb_build_object('order_id', NEW.id, 'customer_name', NEW.customer_name, 'total_price', NEW.total_price));
+        
+    -- ب) عند تعديل أوردر بالسيستم
+    ELSIF (TG_OP = 'UPDATE') THEN
+        -- 1. تحقق مما إذا كان هناك تغيير في العامل المسند إليه تحضير الأوردر (إشعار للموظف داخل النظام فقط)
+        IF (NEW.worker_id IS DISTINCT FROM OLD.worker_id AND NEW.worker_id IS NOT NULL) THEN
+            notification_type := 'order_assigned';
+            notification_title := '📋 تم تعيين أوردر جديد لك!';
+            notification_body := '📦 تم إسناد الأوردر رقم: ' || COALESCE(NEW.invoice_number, 'غير محدد') || E'\n' ||
+                                 '👤 للعميل: ' || COALESCE(NEW.customer_name, 'غير معروف') || E'\n' ||
+                                 'يرجى البدء في تحضير الطلب بالمخزن.';
+            target_user_id := NEW.worker_id;
+            
+            INSERT INTO public.system_notifications (type, title, body, metadata, user_id)
+            VALUES (notification_type, notification_title, notification_body, jsonb_build_object('order_id', NEW.id), target_user_id);
+        END IF;
 
--- 2. تحديث قيم السجلات القديمة
-UPDATE public.order_items oi
-SET sizes_count = COALESCE(
-    (
-        SELECT CASE WHEN COUNT(cs.size_id) > 0 THEN COUNT(cs.size_id) ELSE NULL END
-        FROM public.models m
-        LEFT JOIN public.classes c ON c.id = m.class_id
-        LEFT JOIN public.class_sizes cs ON cs.class_id = c.id
-        WHERE m.id = oi.model_id
-    ),
-    (
-        SELECT CASE WHEN COUNT(ms.size_id) > 0 THEN COUNT(ms.size_id) ELSE NULL END
-        FROM public.model_sizes ms
-        WHERE ms.model_id = oi.model_id
-    ),
-    1
-)
-WHERE oi.sizes_count IS NULL OR oi.sizes_count = 1;
+        -- 2. إشعار بدء تعديل الأوردر فقط عند تحول حالته إلى 'editing'
+        IF ((NEW.status = 'editing' OR NEW.status = 'in_progress') AND OLD.status NOT IN ('editing', 'in_progress')) THEN
+            notification_type := 'order_edit_start';
+            notification_title := '✏️ بدأ تعديل الأوردر #' || COALESCE(NEW.invoice_number, 'غير محدد');
+            notification_body := '👤 اسم العميل: ' || COALESCE(NEW.customer_name, 'غير معروف') || E'\n' ||
+                                 '👤 القائم بالتعديل: ' || COALESCE(NEW.assigned_admin_name, 'غير معروف') || E'\n' ||
+                                 '💵 إجمالي المبلغ الحالي: ' || NEW.total_price || ' ج.م';
+            
+            INSERT INTO public.system_notifications (type, title, body, metadata)
+            VALUES (notification_type, notification_title, notification_body, jsonb_build_object('order_id', NEW.id, 'status', NEW.status, 'total_price', NEW.total_price));
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-UPDATE public.order_items
-SET 
-    total_pieces = quantity * COALESCE(sizes_count, 1),
-    piece_price = CASE WHEN COALESCE(sizes_count, 1) > 0 THEN price_per_series / sizes_count ELSE price_per_series END;
 
--- 3. تحديث دالة process_order_transaction لتسجيل الأعمدة الجديدة
+-- 2. تحديث دالة عملية حفظ الأوردر لإدراج إشعار تعديل الطلب مباشرة عند الحفظ الناجح
 CREATE OR REPLACE FUNCTION public.process_order_transaction(
     p_order_id uuid,
     p_order_data jsonb,

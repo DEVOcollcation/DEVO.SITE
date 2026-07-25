@@ -105,6 +105,14 @@ export async function initImportStockView() {
         btnConfirmSave.addEventListener('click', handleConfirmSave);
     }
 
+    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', handlePreviewSearch);
+    });
+
+    const filterChange = document.getElementById('import-stock-filter-change');
+    if (filterChange) filterChange.addEventListener('change', handlePreviewSearch);
+
     const previewSearch = document.getElementById('preview-search');
     if (previewSearch) {
         previewSearch.addEventListener('input', handlePreviewSearch);
@@ -112,6 +120,12 @@ export async function initImportStockView() {
 
     await loadInitialData();
     isInitialized = true;
+}
+
+function handlePreviewSearch(e) {
+    if (typeof window.applyImportStockFilters === 'function') {
+        window.applyImportStockFilters();
+    }
 }
 
 // 🌟 1. Load active models and colors from Supabase 🌟
@@ -749,6 +763,8 @@ async function processAndRenderPreview() {
         }
     }
 
+    selectedImportStockModelCodes = new Set(previewData.map(m => m.systemCode));
+
     document.getElementById('preview-stat-excel-rows').textContent = excelRawData.length;
     document.getElementById('preview-stat-updated-qty').textContent = qtyUpdatesCount;
     document.getElementById('preview-stat-models').textContent = previewData.length;
@@ -756,8 +772,106 @@ async function processAndRenderPreview() {
     document.getElementById('preview-stat-prices').textContent = priceChangesCount;
     document.getElementById('preview-stat-movements').textContent = movementsCount + priceChangesCount;
 
-    renderPreviewTable(previewData);
+    window.applyImportStockFilters();
 }
+
+let selectedImportStockModelCodes = new Set();
+let filteredPreviewData = [];
+
+window.toggleImportStockFilters = () => {
+    const container = document.getElementById('import-stock-filters-container');
+    const icon = document.getElementById('import-stock-filter-icon');
+    if (!container) return;
+    if (container.classList.contains('hidden')) {
+        container.classList.remove('hidden');
+        if (icon) icon.style.transform = 'rotate(0deg)';
+    } else {
+        container.classList.add('hidden');
+        if (icon) icon.style.transform = 'rotate(180deg)';
+    }
+};
+
+window.applyImportStockFilters = () => {
+    const nameTerm = document.getElementById('import-stock-search-name')?.value.toLowerCase().trim() || '';
+    const factoryTerm = document.getElementById('import-stock-search-factory')?.value.toLowerCase().trim() || '';
+    const systemTerm = document.getElementById('import-stock-search-system')?.value.toLowerCase().trim() || '';
+
+    const factoryFromVal = document.getElementById('import-stock-factory-from')?.value.trim() || '';
+    const factoryToVal = document.getElementById('import-stock-factory-to')?.value.trim() || '';
+
+    const changeTerm = document.getElementById('import-stock-filter-change')?.value || '';
+
+    filteredPreviewData = previewData.filter(item => {
+        let isMatch = true;
+
+        if (nameTerm && !item.modelName.toLowerCase().includes(nameTerm)) isMatch = false;
+        if (factoryTerm && !item.factoryCode.toLowerCase().includes(factoryTerm)) isMatch = false;
+        if (systemTerm && !String(item.systemCode).toLowerCase().includes(systemTerm)) isMatch = false;
+
+        if (factoryFromVal || factoryToVal) {
+            const codeNum = parseInt(item.factoryCode, 10);
+            const fromNum = factoryFromVal ? parseInt(factoryFromVal, 10) : NaN;
+            const toNum = factoryToVal ? parseInt(factoryToVal, 10) : NaN;
+
+            if (!isNaN(codeNum)) {
+                if (!isNaN(fromNum) && codeNum < fromNum) isMatch = false;
+                if (!isNaN(toNum) && codeNum > toNum) isMatch = false;
+            } else {
+                if (factoryFromVal && item.factoryCode < factoryFromVal) isMatch = false;
+                if (factoryToVal && item.factoryCode > factoryToVal) isMatch = false;
+            }
+        }
+
+        const hasQtyChange = item.colors.some(c => c.diff !== 0);
+        if (changeTerm === 'changed' && !hasQtyChange && !item.priceChanged && !item.isNew) isMatch = false;
+        if (changeTerm === 'unchanged' && hasQtyChange) isMatch = false;
+        if (changeTerm === 'price_changed' && !item.priceChanged) isMatch = false;
+        if (changeTerm === 'selected' && !selectedImportStockModelCodes.has(item.systemCode)) isMatch = false;
+
+        return isMatch;
+    });
+
+    renderPreviewTable(filteredPreviewData);
+};
+
+window.clearImportStockFilters = () => {
+    ['import-stock-search-name', 'import-stock-search-factory', 'import-stock-search-system', 'import-stock-factory-from', 'import-stock-factory-to', 'import-stock-filter-change'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    window.applyImportStockFilters();
+};
+
+window.toggleImportStockSelectAll = (masterCb) => {
+    const isChecked = masterCb.checked;
+    filteredPreviewData.forEach(item => {
+        if (isChecked) {
+            selectedImportStockModelCodes.add(item.systemCode);
+        } else {
+            selectedImportStockModelCodes.delete(item.systemCode);
+        }
+    });
+    renderPreviewTable(filteredPreviewData);
+};
+
+window.toggleImportStockModelSelection = (code, checked) => {
+    if (checked) {
+        selectedImportStockModelCodes.add(code);
+    } else {
+        selectedImportStockModelCodes.delete(code);
+    }
+
+    const selectedCount = selectedImportStockModelCodes.size;
+    const countEl = document.getElementById('import-stock-selected-count');
+    const btnCountEl = document.getElementById('import-stock-btn-selected-count');
+    if (countEl) countEl.textContent = selectedCount;
+    if (btnCountEl) btnCountEl.textContent = selectedCount;
+
+    const masterCb = document.getElementById('import-stock-select-all');
+    if (masterCb) {
+        masterCb.checked = filteredPreviewData.length > 0 && filteredPreviewData.every(item => selectedImportStockModelCodes.has(item.systemCode));
+    }
+};
 
 // 🌟 Render preview table rows with clear model separators 🌟
 function renderPreviewTable(data) {
@@ -768,8 +882,8 @@ function renderPreviewTable(data) {
         tbodyContainer.innerHTML = `
             <tbody>
                 <tr>
-                    <td colspan="7" class="p-8 text-center text-devo-muted text-xs">
-                        لا توجد أي تغييرات مطلوبة للمزامنة (تطابق كامل بين البيانات الحالية والملف).
+                    <td colspan="8" class="p-8 text-center text-devo-muted text-xs">
+                        لا توجد أي نتائج مطابقة للفلترة بالمعاينة.
                     </td>
                 </tr>
             </tbody>`;
@@ -803,7 +917,6 @@ function renderPreviewTable(data) {
             const qtyDiffClass = color.diff > 0 ? 'text-devo-success' : (color.diff < 0 ? 'text-devo-error' : 'text-devo-muted');
             const qtyDiffIcon = color.diff > 0 ? ' ph-arrow-up-right' : (color.diff < 0 ? ' ph-arrow-down-left' : '');
             
-            // Format floats for preview display
             const displayCalculated = color.calculatedQty % 1 !== 0 ? color.calculatedQty.toFixed(2) : color.calculatedQty;
             const displayDiff = color.diff % 1 !== 0 ? (color.diff > 0 ? '+' : '') + color.diff.toFixed(2) : (color.diff > 0 ? '+' : '') + color.diff;
 
@@ -813,6 +926,7 @@ function renderPreviewTable(data) {
 
             rowsHtml += `
                 <tr class="transition-colors border-b border-devo-gray/30">
+                    ${isFirst ? `<td class="p-3 text-center border-l border-devo-gray/50" rowspan="${rowSpan}"><input type="checkbox" ${selectedImportStockModelCodes.has(item.systemCode) ? 'checked' : ''} onchange="toggleImportStockModelSelection('${item.systemCode}', this.checked)" class="accent-devo-orange w-4 h-4 cursor-pointer"></td>` : ''}
                     ${isFirst ? `<td class="p-3 font-mono text-xs text-devo-muted border-l border-devo-gray/50" rowspan="${rowSpan}">${newBadge}${item.systemCode}</td>` : ''}
                     ${isFirst ? `<td class="p-3 font-bold text-white border-l border-devo-gray/50" rowspan="${rowSpan}">${nameDisplay}</td>` : ''}
                     <td class="p-3 text-white text-xs border-l border-devo-gray/50">${color.displayColorName}</td>
@@ -828,27 +942,35 @@ function renderPreviewTable(data) {
     });
 
     tbodyContainer.innerHTML = bodiesHtml;
-}
 
-// Live search filter in preview table
-function handlePreviewSearch(e) {
-    const term = e.target.value.toLowerCase().trim();
-    const filtered = previewData.filter(item => {
-        return item.modelName.toLowerCase().includes(term) ||
-               String(item.systemCode).toLowerCase().includes(term) ||
-               String(item.factoryCode).toLowerCase().includes(term);
-    });
-    renderPreviewTable(filtered);
+    const filteredEl = document.getElementById('import-stock-filtered-count');
+    const selectedEl = document.getElementById('import-stock-selected-count');
+    const btnSelectedEl = document.getElementById('import-stock-btn-selected-count');
+
+    if (filteredEl) filteredEl.textContent = data.length;
+    if (selectedEl) selectedEl.textContent = selectedImportStockModelCodes.size;
+    if (btnSelectedEl) btnSelectedEl.textContent = selectedImportStockModelCodes.size;
+
+    const masterCb = document.getElementById('import-stock-select-all');
+    if (masterCb) {
+        masterCb.checked = filteredPreviewData.length > 0 && filteredPreviewData.every(item => selectedImportStockModelCodes.has(item.systemCode));
+    }
 }
 
 // 🌟 9. Execute Import & Save to Supabase (Save button) 🌟
 async function handleConfirmSave() {
+    const selectedPreviewData = previewData.filter(item => selectedImportStockModelCodes.has(item.systemCode));
+
+    if (selectedPreviewData.length === 0) {
+        return showToast('الرجاء اختيار أو اصطياد موديل واحد على الأقل قبل الحفظ', 'warning');
+    }
+
     showProgress('مزامنة وحفظ البيانات', 'جاري بدء الحفظ بقاعدة البيانات...');
 
     try {
         // Step A: Create new models in bulk batches
         const newModelsToInsert = [];
-        for (const item of previewData) {
+        for (const item of selectedPreviewData) {
             if (item.isNew) {
                 const unreg = unregisteredModels.find(m => String(m.systemCode) === String(item.systemCode));
                 if (unreg) {
@@ -877,7 +999,7 @@ async function handleConfirmSave() {
 
                 if (newModels) {
                     newModels.forEach(newM => {
-                        const item = previewData.find(p => String(p.systemCode) === String(newM.system_code));
+                        const item = selectedPreviewData.find(p => String(p.systemCode) === String(newM.system_code));
                         if (item) {
                             item.modelId = newM.id;
                             initialMovements.push({
@@ -941,8 +1063,8 @@ async function handleConfirmSave() {
 
         // Step C: Fetch existing inventory records for all imported models in batch
         updateProgress('جاري فحص أرصدة المخزون السابقة...', 40);
-        const affectedModelIds = previewData.map(item => item.modelId).filter(Boolean);
-        const existingInventoryMap = new Map(); // "modelId_colorId" -> inventoryId
+        const affectedModelIds = selectedPreviewData.map(item => item.modelId).filter(Boolean);
+        const existingInventoryMap = new Map();
 
         for (let i = 0; i < affectedModelIds.length; i += 1000) {
             const chunk = affectedModelIds.slice(i, i + 1000);
@@ -965,7 +1087,7 @@ async function handleConfirmSave() {
         const inventoryInserts = [];
         const allMovementsToInsert = [...initialMovements];
 
-        for (const item of previewData) {
+        for (const item of selectedPreviewData) {
             if (!item.modelId) continue;
 
             // Price updates

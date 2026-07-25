@@ -525,6 +525,7 @@
                     <option value="">كل الحالات</option>
                     <option value="created">تم إنشاء الأوردر</option>
                     <option value="in_progress">جاري العمل</option>
+                    <option value="editing">جاري التعديل</option>
                     <option value="registered">تم التسجيل على السيستم</option>
                     <option value="preparing">جاري تجهيز الأوردر</option>
                     <option value="shipped">تم الشحن</option>
@@ -1093,72 +1094,168 @@
             </div>
         </div>
 
-        <div id="excel-import-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-2xl p-8 flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-                <div class="flex justify-between items-center mb-6">
+        <div id="excel-import-modal" class="fixed inset-0 bg-black/95 backdrop-blur-md z-[300] hidden flex flex-col p-3 md:p-6 opacity-0 transition-opacity duration-300">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full h-full flex flex-col shadow-devo-float overflow-hidden">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center px-6 py-4 border-b border-devo-gray shrink-0 bg-devo-black/40">
                     <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-file-xls text-devo-success text-3xl"></i> استيراد ومعاينة الموديلات
+                        <i class="ph ph-file-xls text-devo-success text-3xl"></i> استيراد ومعاينة الأصناف والموديلات (Excel)
                     </h3>
-                    <button onclick="closeExcelImportModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
+                    <button onclick="closeExcelImportModal()" class="text-devo-muted hover:text-white transition-colors"><i class="ph ph-x text-2xl"></i></button>
                 </div>
 
-                <div id="excel-step-1" class="flex flex-col">
-                    <p class="text-sm text-devo-muted mb-6 leading-relaxed">
-                        قم برفع ملف الإكسيل (.xlsx). سيقوم النظام باستخراج البيانات وفحصها أولاً قبل تسجيل أي عنصر في قاعدة البيانات.
+                <!-- Step 1: Upload Zone (Centered) -->
+                <div id="excel-step-1" class="flex flex-col items-center justify-center flex-1 p-8 max-w-xl mx-auto w-full">
+                    <p class="text-sm text-devo-muted mb-6 text-center leading-relaxed">
+                        قم برفع ملف الإكسيل (.xlsx). سيقوم النظام باستخراج البيانات وفحصها أولاً وتفريغها في جدول صياد الموديلات لمعاينتها واصطياد العناصر المراد تسجيلها.
                     </p>
 
-                    <div class="border-2 border-dashed border-devo-gray hover:border-devo-success transition-colors rounded-xl p-8 text-center bg-devo-black mb-6 relative">
+                    <div class="border-2 border-dashed border-devo-gray hover:border-devo-success transition-colors rounded-2xl p-10 text-center bg-devo-black mb-8 relative w-full group">
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-                        <i class="ph ph-upload-simple text-4xl text-devo-muted mb-2"></i>
-                        <p class="text-white font-bold" id="excel-file-name">اسحب الملف هنا أو اضغط للاختيار</p>
+                        <i class="ph ph-upload-simple text-5xl text-devo-muted group-hover:text-devo-success transition-colors mb-3"></i>
+                        <p class="text-white font-bold text-lg" id="excel-file-name">اسحب الملف هنا أو اضغط للاختيار</p>
+                        <span class="text-xs text-devo-muted mt-2 block">تدعم الملفات التي تحتوي على أعمدة: الكود، الصنف، النوع، بيع 1</span>
                     </div>
 
-                    <div class="flex gap-3 mt-auto">
-                        <button type="button" onclick="closeExcelImportModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
-                        <button type="button" onclick="processExcelPreview()" id="excel-preview-btn" class="flex-[2] py-3 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
+                    <div class="flex gap-4 w-full">
+                        <button type="button" onclick="closeExcelImportModal()" class="flex-1 py-3.5 rounded-xl border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
+                        <button type="button" onclick="processExcelPreview()" id="excel-preview-btn" class="flex-[2] py-3.5 rounded-xl bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
                             <i class="ph ph-magnifying-glass text-xl"></i> تحليل ومعاينة الملف
                         </button>
                     </div>
                 </div>
 
-                <div id="excel-step-2" class="hidden flex-col gap-4">
-                    <div class="grid grid-cols-2 gap-4 mb-2">
-                        <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
-                            <span class="block text-devo-muted text-xs mb-1">موديلات جديدة صالحة للإضافة</span>
-                            <span class="text-3xl font-bold text-devo-success" id="excel-new-count">0</span>
+                <!-- Step 2: Full Screen Hunter & Preview -->
+                <div id="excel-step-2" class="hidden flex-col h-full overflow-hidden p-4 md:p-6 space-y-4">
+                    <!-- Stats Bar -->
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 shrink-0">
+                        <div class="bg-devo-black border border-devo-gray p-3 rounded-xl text-center">
+                            <span class="block text-devo-muted text-[11px] mb-1">إجمالي سجلات الملف</span>
+                            <span class="text-2xl font-black text-white" id="excel-total-count">0</span>
                         </div>
-                        <div class="bg-devo-black border border-devo-gray p-4 rounded-xl text-center">
-                            <span class="block text-devo-muted text-xs mb-1">مكررة (سيتم تجاهلها)</span>
-                            <span class="text-3xl font-bold text-devo-error" id="excel-dup-count">0</span>
+                        <div class="bg-devo-black border border-devo-gray p-3 rounded-xl text-center">
+                            <span class="block text-devo-muted text-[11px] mb-1">المطابق للفلترة</span>
+                            <span class="text-2xl font-black text-devo-orange" id="excel-filtered-count">0</span>
+                        </div>
+                        <div class="bg-devo-black border border-devo-orange/40 bg-devo-orange/5 p-3 rounded-xl text-center">
+                            <span class="block text-devo-orange text-[11px] font-bold mb-1">المحدد للاستيراد (المصطاد)</span>
+                            <span class="text-2xl font-black text-white" id="excel-selected-count">0</span>
+                        </div>
+                        <div class="bg-devo-black border border-devo-success/40 p-3 rounded-xl text-center">
+                            <span class="block text-devo-muted text-[11px] mb-1">موديلات جديدة صالحة</span>
+                            <span class="text-2xl font-black text-devo-success" id="excel-new-count">0</span>
+                        </div>
+                        <div class="bg-devo-black border border-devo-error/40 p-3 rounded-xl text-center cursor-pointer hover:border-devo-error transition-all" onclick="document.getElementById('excel-dup-warning')?.scrollIntoView({ behavior: 'smooth' })">
+                            <span class="block text-devo-muted text-[11px] mb-1">مكررة بالسيستم</span>
+                            <span class="text-2xl font-black text-devo-error" id="excel-dup-count">0</span>
                         </div>
                     </div>
 
-                    <div id="excel-dup-warning" class="hidden bg-devo-error/10 border border-devo-error/30 p-4 rounded-xl text-sm text-devo-error leading-relaxed">
-                        <p class="font-bold flex items-center gap-1 mb-2"><i class="ph ph-warning-circle text-lg"></i> تحذير: تم اكتشاف بيانات متكررة</p>
-                        <p>الموديلات التالية مسجلة مسبقاً بنفس "كود السيستم". <span class="font-bold text-white">لن يتم تسجيلها أو العبث بها</span> منعاً لتلف البيانات القديمة. يرجى الذهاب للوحة وتعديلها يدوياً إن أردت.</p>
-                        <div class="mt-3 max-h-32 overflow-y-auto custom-scrollbar text-xs space-y-1" id="excel-dup-list">
+                    <!-- Model Hunter Filter Panel for Items Import -->
+                    <div class="bg-devo-black/80 border border-devo-gray rounded-xl shrink-0">
+                        <div class="p-3 flex justify-between items-center cursor-pointer select-none border-b border-transparent hover:border-devo-gray/50 transition-colors" onclick="toggleExcelItemFilters()">
+                            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                                <i class="ph ph-funnel text-devo-orange"></i> صياد الموديلات (فلترة سريعة في عناصر الملف)
+                            </h4>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[11px] text-devo-muted">اضغط للطي/الفتح</span>
+                                <i id="excel-item-filter-icon" class="ph ph-caret-up text-lg text-devo-muted transition-transform duration-300"></i>
                             </div>
+                        </div>
+
+                        <div id="excel-item-filters-container" class="p-3 border-t border-devo-gray transition-all duration-300">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                <div class="lg:col-span-2 relative">
+                                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                                    <input type="text" id="excel-filter-name" autocomplete="off" placeholder="البحث باسم الصنف..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-8 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                                </div>
+                                <div class="relative">
+                                    <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                                    <input type="text" id="excel-filter-factory" autocomplete="off" placeholder="كود المصنع..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-8 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                                </div>
+                                <div class="relative">
+                                    <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                                    <input type="text" id="excel-filter-system" autocomplete="off" placeholder="كود السيستم..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-8 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                                </div>
+
+                                <div class="lg:col-span-2 flex items-center gap-2 bg-devo-dark border border-devo-gray rounded-lg px-3 py-1">
+                                    <span class="text-xs text-devo-muted whitespace-nowrap">رينج كود المصنع:</span>
+                                    <input type="text" id="excel-factory-from" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="من كود">
+                                    <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                                    <input type="text" id="excel-factory-to" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="إلى كود">
+                                </div>
+
+                                <select id="excel-filter-cat" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                                    <option value="">جميع التصنيفات بالملف</option>
+                                </select>
+
+                                <select id="excel-filter-status" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                                    <option value="">حالة الاصطياد/التكرار (الكل)</option>
+                                    <option value="new">الموديلات الجديدة فقط</option>
+                                    <option value="duplicate">الموديلات المكررة بالسيستم</option>
+                                    <option value="selected">المحددة للاستيراد فقط</option>
+                                </select>
+
+                                <div class="col-span-full flex gap-2">
+                                    <button type="button" onclick="applyExcelItemFilters()" class="flex-1 bg-devo-orange hover:bg-devo-orangeHover text-white py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-1.5 shadow-md">
+                                        <i class="ph ph-magnifying-glass text-sm"></i> بحث وتطبيق الفلاتر
+                                    </button>
+                                    <button type="button" onclick="clearExcelItemFilters()" class="bg-devo-gray hover:bg-devo-black border border-devo-gray text-white px-4 py-2 rounded-lg text-xs transition-all" title="مسح الفلاتر">
+                                        <i class="ph ph-eraser text-sm"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Progress Bar for Excel Import -->
-                    <div id="excel-import-progress-container" class="hidden w-full space-y-2 mt-4 bg-devo-black/50 border border-devo-gray p-4 rounded-xl">
+                    <!-- Duplicates Warning Banner -->
+                    <div id="excel-dup-warning" class="hidden bg-devo-error/10 border border-devo-error/30 p-3 rounded-xl text-xs text-devo-error shrink-0">
+                        <p class="font-bold flex items-center gap-1 mb-1"><i class="ph ph-warning-circle text-base"></i> تنبيه: تم اكتشاف موديلات مكررة بالسيستم</p>
+                        <p>الموديلات المظللة بالأحمر مسجلة مسبقاً بنفس "كود السيستم". <span class="font-bold text-white">يمكنك إلغاء تحديدها أو اصطياد ما تريده منها بحذر</span>.</p>
+                        <div class="mt-2 max-h-24 overflow-y-auto custom-scrollbar text-xs space-y-1 hidden" id="excel-dup-list"></div>
+                    </div>
+
+                    <!-- Detailed Interactive Table -->
+                    <div class="flex-1 overflow-y-auto border border-devo-gray rounded-xl custom-scrollbar min-h-0">
+                        <table class="w-full text-right text-xs border-collapse">
+                            <thead class="bg-devo-black text-devo-muted sticky top-0 border-b border-devo-gray z-10">
+                                <tr>
+                                    <th class="p-3 w-10 text-center border-l border-devo-gray/50">
+                                        <input type="checkbox" id="excel-preview-select-all" onchange="toggleExcelSelectAll(this)" class="accent-devo-orange w-4 h-4 cursor-pointer" title="تحديد / إلغاء تحديد الكل">
+                                    </th>
+                                    <th class="p-3 border-l border-devo-gray/50">كود السيستم</th>
+                                    <th class="p-3 border-l border-devo-gray/50">اسم الصنف</th>
+                                    <th class="p-3 border-l border-devo-gray/50">كود المصنع</th>
+                                    <th class="p-3 border-l border-devo-gray/50">التصنيف / النوع</th>
+                                    <th class="p-3 text-center border-l border-devo-gray/50">السعر</th>
+                                    <th class="p-3 text-center">الحالة بالسيستم</th>
+                                </tr>
+                            </thead>
+                            <tbody id="excel-preview-tbody" class="divide-y divide-devo-gray text-white">
+                                <!-- Rendered dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div id="excel-import-progress-container" class="hidden w-full space-y-2 bg-devo-black/50 border border-devo-gray p-3 rounded-xl shrink-0">
                         <div class="flex justify-between text-xs text-white font-bold">
                             <span id="excel-progress-text">جاري حفظ الموديلات...</span>
                             <span id="excel-progress-percent">0%</span>
                         </div>
-                        <div class="w-full bg-devo-black border border-devo-gray rounded-full h-3 overflow-hidden p-[2px]">
+                        <div class="w-full bg-devo-black border border-devo-gray rounded-full h-2.5 overflow-hidden p-[2px]">
                             <div id="excel-progress-bar" class="bg-devo-orange h-full rounded-full transition-all duration-300 w-0"></div>
                         </div>
                     </div>
 
-                    <div class="flex gap-3 mt-4">
-                        <button type="button" onclick="resetExcelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">رجوع للخلف</button>
-                        <button type="button" onclick="executeExcelImport()" id="excel-import-btn" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg shadow-devo-orange/20 transition-all text-sm flex items-center justify-center gap-2">
-                            <i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الموديلات الجديدة
+                    <!-- Actions Bar -->
+                    <div class="flex gap-3 pt-2 shrink-0 border-t border-devo-gray">
+                        <button type="button" onclick="resetExcelModal()" class="flex-1 py-3 rounded-xl border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">رجوع لرفع ملف آخر</button>
+                        <button type="button" onclick="executeExcelImport()" id="excel-import-btn" class="flex-[2] py-3 rounded-xl bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg shadow-devo-orange/20 transition-all text-sm flex items-center justify-center gap-2">
+                            <i class="ph ph-check-circle text-xl"></i> تأكيد واستيراد الأصناف المصطادة (<span id="excel-btn-selected-count">0</span> صنف)
                         </button>
                     </div>
                 </div>
-
             </div>
         </div>
 
@@ -1360,6 +1457,20 @@
         </div>
 
         <div class="sticky bottom-0 w-full bg-devo-black/95 backdrop-blur-md border-t border-devo-orange/50 p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] z-40 hidden rounded-b-xl" id="bulk-action-bar">
+            <!-- Progress Bar for Bulk Edits -->
+            <div id="bulk-progress-container" class="hidden w-full mb-4 space-y-2 bg-devo-dark/50 border border-devo-gray p-3 rounded-xl">
+                <div class="flex justify-between text-xs text-white font-bold">
+                    <span id="bulk-progress-text">جاري بدء التعديل المجمع...</span>
+                    <span id="bulk-progress-percent">0%</span>
+                </div>
+                <div class="w-full bg-devo-black border border-devo-gray rounded-full h-2.5 overflow-hidden p-[2px]">
+                    <div id="bulk-progress-bar" class="bg-devo-orange h-full rounded-full transition-all duration-300 w-0"></div>
+                </div>
+                <!-- Error messages container -->
+                <div id="bulk-progress-errors" class="hidden text-xs text-devo-error mt-2 max-h-24 overflow-y-auto custom-scrollbar space-y-1">
+                </div>
+            </div>
+
             <div class="flex flex-col lg:flex-row items-center gap-4">
                 
                 <div class="flex-1 w-full flex flex-col sm:flex-row items-center gap-3">
@@ -1959,9 +2070,15 @@
 
         <!-- الخطوة 3: شاشة مراجعة ومعاينة البيانات التفصيلية -->
         <div id="import-step-3" class="bg-devo-dark border border-devo-gray rounded-xl p-6 shadow-sm space-y-6 hidden">
-            <h3 class="text-lg font-bold text-devo-orange flex items-center gap-2">
-                <i class="ph ph-eye"></i> 3. مراجعة وتأكيد البيانات قبل الحفظ
-            </h3>
+            <div class="flex flex-wrap justify-between items-center gap-3">
+                <h3 class="text-lg font-bold text-devo-orange flex items-center gap-2">
+                    <i class="ph ph-eye"></i> 3. مراجعة وتأكيد البيانات قبل الحفظ
+                </h3>
+                <div class="flex items-center gap-3 text-xs">
+                    <span class="text-devo-muted">المطابق بالمعاينة: <span id="import-stock-filtered-count" class="font-bold text-white">0</span></span>
+                    <span class="text-devo-orange font-bold bg-devo-orange/10 border border-devo-orange/20 px-3 py-1 rounded-lg">المصطاد/المحدد للاستيراد: <span id="import-stock-selected-count" class="font-bold text-sm">0</span></span>
+                </div>
+            </div>
 
             <!-- لوحة إحصائيات المعاينة المحدثة -->
             <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
@@ -1991,10 +2108,58 @@
                 </div>
             </div>
 
-            <!-- فلتر البحث في المعاينة -->
-            <div class="relative w-full max-w-md">
-                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                <input type="text" id="preview-search" autocomplete="off" placeholder="بحث سريع في جدول المعاينة بالاسم أو الكود..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+            <!-- صياد الموديلات (فلترة متقدمة بالمعاينة) -->
+            <div class="bg-devo-black/80 border border-devo-gray rounded-xl shadow-sm">
+                <div class="p-3 flex justify-between items-center cursor-pointer select-none border-b border-transparent hover:border-devo-gray/50 transition-colors" onclick="toggleImportStockFilters()">
+                    <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-funnel text-devo-orange"></i> صياد الموديلات (فلترة واصطياد بالمعاينة)
+                    </h4>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-devo-muted">اضغط للطي/الفتح</span>
+                        <i id="import-stock-filter-icon" class="ph ph-caret-up text-lg text-devo-muted transition-transform duration-300"></i>
+                    </div>
+                </div>
+
+                <div id="import-stock-filters-container" class="p-4 border-t border-devo-gray transition-all duration-300">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div class="lg:col-span-2 relative">
+                            <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                            <input type="text" id="import-stock-search-name" autocomplete="off" placeholder="البحث باسم الصنف..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                        </div>
+                        <div class="relative">
+                            <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                            <input type="text" id="import-stock-search-factory" autocomplete="off" placeholder="كود المصنع..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                        </div>
+                        <div class="relative">
+                            <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                            <input type="text" id="import-stock-search-system" autocomplete="off" placeholder="كود السيستم..." class="w-full bg-devo-dark border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white outline-none focus:border-devo-orange text-xs">
+                        </div>
+
+                        <div class="lg:col-span-2 flex items-center gap-2 bg-devo-dark border border-devo-gray rounded-lg px-3 py-1">
+                            <span class="text-xs text-devo-muted whitespace-nowrap">رينج كود المصنع:</span>
+                            <input type="text" id="import-stock-factory-from" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="من كود">
+                            <span class="text-xs text-devo-muted whitespace-nowrap border-r border-devo-gray pr-2 pl-1">إلى:</span>
+                            <input type="text" id="import-stock-factory-to" class="bg-transparent text-white outline-none text-xs w-full text-center" placeholder="إلى كود">
+                        </div>
+
+                        <select id="import-stock-filter-change" class="bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-white outline-none focus:border-devo-orange text-xs cursor-pointer">
+                            <option value="">نوع التغيير بالمعاينة (الكل)</option>
+                            <option value="changed">يحتوي على تغيير مخزون/سعر</option>
+                            <option value="unchanged">بدون تغيير رصيد</option>
+                            <option value="price_changed">تغير بالسعر فقط</option>
+                            <option value="selected">المحددة للاستيراد فقط</option>
+                        </select>
+
+                        <div class="col-span-full flex gap-2">
+                            <button type="button" onclick="applyImportStockFilters()" class="flex-1 bg-devo-orange hover:bg-devo-orangeHover text-white py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-1.5 shadow-md">
+                                <i class="ph ph-magnifying-glass text-sm"></i> بحث وتطبيق الفلاتر
+                            </button>
+                            <button type="button" onclick="clearImportStockFilters()" class="bg-devo-gray hover:bg-devo-black border border-devo-gray text-white px-4 py-2 rounded-lg text-xs transition-all" title="مسح الفلاتر">
+                                <i class="ph ph-eraser text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- جدول المعاينة التفصيلي -->
@@ -2002,6 +2167,9 @@
                 <table class="w-full text-right text-sm border-collapse">
                     <thead class="bg-devo-black text-devo-muted text-xs sticky top-0 border-b border-devo-gray z-10">
                         <tr>
+                            <th class="p-3 w-10 text-center border-l border-devo-gray/50">
+                                <input type="checkbox" id="import-stock-select-all" onchange="toggleImportStockSelectAll(this)" class="accent-devo-orange w-4 h-4 cursor-pointer" title="تحديد/إلغاء تحديد كل النتائج">
+                            </th>
                             <th class="p-3 border-l border-devo-gray/50">كود السيستم</th>
                             <th class="p-3 border-l border-devo-gray/50">الموديل وكود المصنع</th>
                             <th class="p-3 border-l border-devo-gray/50">اللون</th>
@@ -2023,7 +2191,7 @@
                 </button>
                 <button type="button" id="import-btn-confirm-save" class="flex-[2] py-3.5 rounded-lg bg-devo-success text-white font-bold hover:bg-green-600 shadow-lg shadow-devo-success/20 transition-all text-sm flex items-center justify-center gap-2">
                     <i class="ph ph-check-circle text-xl"></i>
-                    <span>تأكيد وحفظ البيانات في قاعدة البيانات</span>
+                    <span>تأكيد وحفظ الأصناف المصطادة (<span id="import-stock-btn-selected-count">0</span> موديل)</span>
                 </button>
             </div>
         </div>

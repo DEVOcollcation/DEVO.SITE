@@ -1004,17 +1004,26 @@ async function handleAddStockSubmit(e) {
 }
 
 // ==========================================
-// 🌟 6. استيراد Excel 🌟
+// ==========================================
+// 🌟 6. استيراد Excel (مع صياد الموديلات والتحديد) 🌟
 // ==========================================
 let pendingExcelModels = [];
 let pendingExcelCategories = new Set();
+let excelModelsData = [];
+let filteredExcelModels = [];
+let selectedExcelModelCodes = new Set();
 
 window.openExcelImportModal = () => {
     document.getElementById('excel-step-1').classList.remove('hidden');
     document.getElementById('excel-step-2').classList.add('hidden');
     document.getElementById('excel-file-input').value = '';
-    document.getElementById('excel-file-name').textContent = 'اسحب الملف هنا';
-    pendingExcelModels = []; pendingExcelCategories.clear();
+    document.getElementById('excel-file-name').textContent = 'اسحب الملف هنا أو اضغط للاختيار';
+    pendingExcelModels = [];
+    pendingExcelCategories.clear();
+    excelModelsData = [];
+    filteredExcelModels = [];
+    selectedExcelModelCodes.clear();
+
     const modal = document.getElementById('excel-import-modal');
     modal.classList.remove('hidden');
     setTimeout(() => modal.classList.remove('opacity-0'), 10);
@@ -1026,43 +1035,256 @@ window.closeExcelImportModal = () => {
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
-document.getElementById('excel-file-input')?.addEventListener('change', e => document.getElementById('excel-file-name').textContent = e.target.files[0]?.name || 'اسحب الملف هنا');
+window.toggleExcelItemFilters = () => {
+    const container = document.getElementById('excel-item-filters-container');
+    const icon = document.getElementById('excel-item-filter-icon');
+    if (!container) return;
+    if (container.classList.contains('hidden')) {
+        container.classList.remove('hidden');
+        if (icon) icon.style.transform = 'rotate(0deg)';
+    } else {
+        container.classList.add('hidden');
+        if (icon) icon.style.transform = 'rotate(180deg)';
+    }
+};
+
+document.getElementById('excel-file-input')?.addEventListener('change', e => document.getElementById('excel-file-name').textContent = e.target.files[0]?.name || 'اسحب الملف هنا أو اضغط للاختيار');
 
 window.processExcelPreview = async () => {
     const file = document.getElementById('excel-file-input').files[0];
     if (!file) return showToast('الرجاء اختيار ملف', 'warning');
     const btn = document.getElementById('excel-preview-btn');
-    btn.disabled = true; btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i>`;
+    btn.disabled = true; 
+    btn.innerHTML = `<i class="ph ph-spinner animate-spin text-xl"></i> تحليل الملف...`;
+
     try {
         const data = await readExcelFile(file);
-        const existingCodes = new Set(allModels.map(m => String(m.system_code)));
-        const duplicates = [];
+        const dbCodes = new Set(allModels.map(m => String(m.system_code)));
+        
+        pendingExcelModels = [];
+        pendingExcelCategories.clear();
+        excelModelsData = [];
+        selectedExcelModelCodes.clear();
+
+        const seenCodesInFile = new Set();
+        let dupCount = 0;
+        let newCount = 0;
+
         data.forEach(row => {
-            let sysCode = String(row['كود'] || '').trim().replace('.0', '');
+            let sysCode = String(row['كود'] || row['الكود'] || '').trim().replace('.0', '');
             if (!sysCode || sysCode === 'undefined') return;
-            if (existingCodes.has(sysCode)) { duplicates.push({ sysCode, modelName: row['الصنف'] }); } 
-            else {
-                if (row['النوع']) pendingExcelCategories.add(String(row['النوع']).trim());
-                const match = String(row['الصنف']||'').trim().match(/(.+?)\s+(\d+)$/);
-                pendingExcelModels.push({ system_code: sysCode, factory_code: match ? match[2] : '', name: match ? match[1].trim() : String(row['الصنف']||'').trim(), price: parseFloat(row['بيع 1']) || 0, category_name: row['النوع'] ? String(row['النوع']).trim() : null, is_active: false });
-                existingCodes.add(sysCode);
+
+            if (seenCodesInFile.has(sysCode)) return; // skip duplicate rows within file
+            seenCodesInFile.add(sysCode);
+
+            const isDuplicate = dbCodes.has(sysCode);
+            const catName = row['النوع'] ? String(row['النوع']).trim() : null;
+            if (catName) pendingExcelCategories.add(catName);
+
+            const match = String(row['الصنف'] || '').trim().match(/(.+?)\s+(\d+)$/);
+            const cleanName = match ? match[1].trim() : String(row['الصنف'] || '').trim();
+            const factoryCode = match ? match[2] : (row['كود المصنع'] ? String(row['كود المصنع']).trim() : '');
+            const price = parseFloat(row['بيع 1'] || row['السعر'] || 0) || 0;
+
+            const modelItem = {
+                system_code: sysCode,
+                factory_code: factoryCode,
+                name: cleanName || 'صنف بدون اسم',
+                price: price,
+                category_name: catName,
+                is_active: false,
+                is_duplicate: isDuplicate
+            };
+
+            excelModelsData.push(modelItem);
+
+            if (isDuplicate) {
+                dupCount++;
+            } else {
+                newCount++;
+                selectedExcelModelCodes.add(sysCode); // Auto-select new non-duplicate items
             }
         });
-        document.getElementById('excel-new-count').textContent = pendingExcelModels.length;
-        document.getElementById('excel-dup-count').textContent = duplicates.length;
+
+        if (excelModelsData.length === 0) {
+            throw new Error('لم يتم العثور على أي صفوف بيانات صالحة في الملف.');
+        }
+
+        // Populate Categories Filter Dropdown
+        const catSelect = document.getElementById('excel-filter-cat');
+        if (catSelect) {
+            catSelect.innerHTML = `<option value="">جميع التصنيفات بالملف</option>` + 
+                Array.from(pendingExcelCategories).map(c => `<option value="${c}">${c}</option>`).join('');
+        }
+
         document.getElementById('excel-step-1').classList.add('hidden');
         document.getElementById('excel-step-2').classList.remove('hidden');
-    } catch (err) { showToast('خطأ بالقراءة', 'error'); } 
-    finally { btn.disabled = false; btn.innerHTML = `<i class="ph ph-magnifying-glass text-xl"></i> تحليل الملف`; }
+        document.getElementById('excel-step-2').classList.add('flex');
+
+        window.applyExcelItemFilters();
+
+        if (dupCount > 0) {
+            const dupWarning = document.getElementById('excel-dup-warning');
+            if (dupWarning) dupWarning.classList.remove('hidden');
+        } else {
+            const dupWarning = document.getElementById('excel-dup-warning');
+            if (dupWarning) dupWarning.classList.add('hidden');
+        }
+
+    } catch (err) { 
+        showToast(err.message || 'خطأ أثناء قراءة ملف الإكسيل', 'error'); 
+    } 
+    finally { 
+        btn.disabled = false; 
+        btn.innerHTML = `<i class="ph ph-magnifying-glass text-xl"></i> تحليل ومعاينة الملف`; 
+    }
+};
+
+window.applyExcelItemFilters = () => {
+    const nameTerm = document.getElementById('excel-filter-name')?.value.toLowerCase().trim() || '';
+    const factoryTerm = document.getElementById('excel-filter-factory')?.value.toLowerCase().trim() || '';
+    const systemTerm = document.getElementById('excel-filter-system')?.value.toLowerCase().trim() || '';
+
+    const factoryFromVal = document.getElementById('excel-factory-from')?.value.trim() || '';
+    const factoryToVal = document.getElementById('excel-factory-to')?.value.trim() || '';
+
+    const catTerm = document.getElementById('excel-filter-cat')?.value || '';
+    const statusTerm = document.getElementById('excel-filter-status')?.value || '';
+
+    filteredExcelModels = excelModelsData.filter(m => {
+        let isMatch = true;
+
+        if (nameTerm && !m.name.toLowerCase().includes(nameTerm)) isMatch = false;
+        if (factoryTerm && !m.factory_code.toLowerCase().includes(factoryTerm)) isMatch = false;
+        if (systemTerm && !m.system_code.toLowerCase().includes(systemTerm)) isMatch = false;
+
+        if (factoryFromVal || factoryToVal) {
+            const codeNum = parseInt(m.factory_code, 10);
+            const fromNum = factoryFromVal ? parseInt(factoryFromVal, 10) : NaN;
+            const toNum = factoryToVal ? parseInt(factoryToVal, 10) : NaN;
+
+            if (!isNaN(codeNum)) {
+                if (!isNaN(fromNum) && codeNum < fromNum) isMatch = false;
+                if (!isNaN(toNum) && codeNum > toNum) isMatch = false;
+            } else {
+                if (factoryFromVal && m.factory_code < factoryFromVal) isMatch = false;
+                if (factoryToVal && m.factory_code > factoryToVal) isMatch = false;
+            }
+        }
+
+        if (catTerm && m.category_name !== catTerm) isMatch = false;
+
+        if (statusTerm === 'new' && m.is_duplicate) isMatch = false;
+        if (statusTerm === 'duplicate' && !m.is_duplicate) isMatch = false;
+        if (statusTerm === 'selected' && !selectedExcelModelCodes.has(m.system_code)) isMatch = false;
+
+        return isMatch;
+    });
+
+    renderExcelPreviewTable();
+};
+
+window.clearExcelItemFilters = () => {
+    ['excel-filter-name', 'excel-filter-factory', 'excel-filter-system', 'excel-factory-from', 'excel-factory-to', 'excel-filter-cat', 'excel-filter-status'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    window.applyExcelItemFilters();
+};
+
+function renderExcelPreviewTable() {
+    const tbody = document.getElementById('excel-preview-tbody');
+    if (!tbody) return;
+
+    if (filteredExcelModels.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-devo-muted">لا توجد نتائج مطابقة للفلترة</td></tr>`;
+    } else {
+        tbody.innerHTML = filteredExcelModels.map(m => {
+            const isChecked = selectedExcelModelCodes.has(m.system_code);
+            const dupBadge = m.is_duplicate 
+                ? `<span class="bg-devo-error/20 border border-devo-error/40 text-devo-error px-2 py-0.5 rounded text-[10px] font-bold">مكرر بالسيستم</span>` 
+                : `<span class="bg-devo-success/20 border border-devo-success/40 text-devo-success px-2 py-0.5 rounded text-[10px] font-bold">جديد صالح للإضافة</span>`;
+
+            return `
+                <tr class="hover:bg-devo-black/60 transition-colors ${m.is_duplicate ? 'bg-devo-error/5' : ''}">
+                    <td class="p-3 text-center border-l border-devo-gray/30">
+                        <input type="checkbox" data-syscode="${m.system_code}" ${isChecked ? 'checked' : ''} onchange="toggleExcelModelSelection('${m.system_code}', this.checked)" class="excel-row-checkbox accent-devo-orange w-4 h-4 cursor-pointer">
+                    </td>
+                    <td class="p-3 font-mono font-bold text-devo-orange border-l border-devo-gray/30">${m.system_code}</td>
+                    <td class="p-3 font-bold text-white border-l border-devo-gray/30">${m.name}</td>
+                    <td class="p-3 font-mono text-devo-muted border-l border-devo-gray/30">${m.factory_code || '-'}</td>
+                    <td class="p-3 text-devo-muted border-l border-devo-gray/30">${m.category_name || '-'}</td>
+                    <td class="p-3 text-center font-mono text-devo-orange border-l border-devo-gray/30">${m.price} ج.م</td>
+                    <td class="p-3 text-center">${dupBadge}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Update Counters
+    const total = excelModelsData.length;
+    const newCount = excelModelsData.filter(m => !m.is_duplicate).length;
+    const dupCount = excelModelsData.filter(m => m.is_duplicate).length;
+    const selectedCount = selectedExcelModelCodes.size;
+    const filteredCount = filteredExcelModels.length;
+
+    document.getElementById('excel-total-count').textContent = total;
+    document.getElementById('excel-filtered-count').textContent = filteredCount;
+    document.getElementById('excel-selected-count').textContent = selectedCount;
+    document.getElementById('excel-new-count').textContent = newCount;
+    document.getElementById('excel-dup-count').textContent = dupCount;
+    document.getElementById('excel-btn-selected-count').textContent = selectedCount;
+
+    // Master Select-All checkbox status
+    const masterCb = document.getElementById('excel-preview-select-all');
+    if (masterCb) {
+        masterCb.checked = filteredExcelModels.length > 0 && filteredExcelModels.every(m => selectedExcelModelCodes.has(m.system_code));
+    }
+}
+
+window.toggleExcelSelectAll = (masterCb) => {
+    const isChecked = masterCb.checked;
+    filteredExcelModels.forEach(m => {
+        if (isChecked) {
+            selectedExcelModelCodes.add(m.system_code);
+        } else {
+            selectedExcelModelCodes.delete(m.system_code);
+        }
+    });
+    renderExcelPreviewTable();
+};
+
+window.toggleExcelModelSelection = (sysCode, checked) => {
+    if (checked) {
+        selectedExcelModelCodes.add(sysCode);
+    } else {
+        selectedExcelModelCodes.delete(sysCode);
+    }
+
+    document.getElementById('excel-selected-count').textContent = selectedExcelModelCodes.size;
+    document.getElementById('excel-btn-selected-count').textContent = selectedExcelModelCodes.size;
+
+    const masterCb = document.getElementById('excel-preview-select-all');
+    if (masterCb) {
+        masterCb.checked = filteredExcelModels.length > 0 && filteredExcelModels.every(m => selectedExcelModelCodes.has(m.system_code));
+    }
 };
 
 window.resetExcelModal = () => {
     document.getElementById('excel-step-1').classList.remove('hidden');
     document.getElementById('excel-step-2').classList.add('hidden');
+    document.getElementById('excel-step-2').classList.remove('flex');
     document.getElementById('excel-file-input').value = '';
-    document.getElementById('excel-file-name').textContent = 'اسحب الملف هنا';
+    document.getElementById('excel-file-name').textContent = 'اسحب الملف هنا أو اضغط للاختيار';
     pendingExcelModels = [];
     pendingExcelCategories.clear();
+    excelModelsData = [];
+    filteredExcelModels = [];
+    selectedExcelModelCodes.clear();
+
+    const dupWarning = document.getElementById('excel-dup-warning');
+    if (dupWarning) dupWarning.classList.add('hidden');
+
     const progressContainer = document.getElementById('excel-import-progress-container');
     if (progressContainer) {
         progressContainer.classList.add('hidden');
@@ -1072,9 +1294,15 @@ window.resetExcelModal = () => {
 };
 
 window.executeExcelImport = async () => {
-    if (pendingExcelModels.length === 0) return showToast('لا توجد موديلات صالحة', 'warning');
+    const modelsToInsertRaw = excelModelsData.filter(m => selectedExcelModelCodes.has(m.system_code));
+
+    if (modelsToInsertRaw.length === 0) {
+        return showToast('الرجاء اختيار أو اصطياد موديل واحد على الأقل للاستيراد', 'warning');
+    }
+
     const btn = document.getElementById('excel-import-btn');
-    btn.disabled = true; btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> الحفظ...`;
+    btn.disabled = true; 
+    btn.innerHTML = `<i class="ph ph-spinner animate-spin text-lg"></i> جاري الحفظ...`;
     
     const progressContainer = document.getElementById('excel-import-progress-container');
     const progressBar = document.getElementById('excel-progress-bar');
@@ -1093,13 +1321,15 @@ window.executeExcelImport = async () => {
         if (progressBar) progressBar.style.width = '5%';
         if (progressPercent) progressPercent.textContent = '5%';
 
-        // Bulk insert categories to minimize database queries
+        // Extract unique categories needed for selected models
+        const categoriesNeeded = new Set(modelsToInsertRaw.map(m => m.category_name).filter(Boolean));
         const newCatsToInsert = [];
-        for (const catName of pendingExcelCategories) {
+        for (const catName of categoriesNeeded) {
             if (!defCache.cats.find(c => c.name === catName)) {
                 newCatsToInsert.push({ name: catName });
             }
         }
+
         if (newCatsToInsert.length > 0) {
             const { data, error } = await supabase.from('categories').insert(newCatsToInsert).select();
             if (error) throw error;
@@ -1108,8 +1338,8 @@ window.executeExcelImport = async () => {
             }
         }
 
-        const modelsToInsert = pendingExcelModels.map(m => {
-            const { category_name, ...cleanModel } = m;
+        const modelsToInsert = modelsToInsertRaw.map(m => {
+            const { category_name, is_duplicate, ...cleanModel } = m;
             return {
                 ...cleanModel,
                 category_id: category_name ? defCache.cats.find(c => c.name === category_name)?.id : null
@@ -1125,7 +1355,7 @@ window.executeExcelImport = async () => {
             const currentBatch = modelsToInsert.slice(i, i + batchSize);
             
             if (progressText) {
-                progressText.textContent = `جاري رفع الموديلات (مجموعة ${batchNum} من ${totalBatches})...`;
+                progressText.textContent = `جاري رفع الأصناف المصطادة (${modelsToInsert.length} صنف - مجموعة ${batchNum} من ${totalBatches})...`;
             }
             
             const { error } = await supabase.from('models').upsert(currentBatch, { 
@@ -1144,20 +1374,17 @@ window.executeExcelImport = async () => {
         if (progressBar) progressBar.style.width = '98%';
         if (progressPercent) progressPercent.textContent = '98%';
 
-        // Batch reload all models chunked (very efficient, 2-3 queries total)
         await fetchAllModelsChunked();
 
         if (progressBar) progressBar.style.width = '100%';
         if (progressPercent) progressPercent.textContent = '100%';
-        if (progressText) progressText.textContent = 'تم حفظ جميع البيانات بنجاح!';
+        if (progressText) progressText.textContent = 'تم حفظ جميع الأصناف المصطادة بنجاح!';
         
-        showToast('تم الاستيراد بنجاح', 'success');
+        showToast(`تم استيراد ${modelsToInsert.length} صنف بنجاح`, 'success');
         
         setTimeout(() => {
             closeExcelImportModal();
-            if (progressContainer) progressContainer.classList.add('hidden');
-            if (progressBar) progressBar.style.width = '0%';
-            if (progressPercent) progressPercent.textContent = '0%';
+            resetExcelModal();
         }, 1000);
 
     } catch (err) { 
@@ -1167,7 +1394,7 @@ window.executeExcelImport = async () => {
     finally { 
         isExcelImporting = false;
         btn.disabled = false; 
-        btn.innerHTML = `<i class="ph ph-check-circle text-xl"></i> تأكيد وحفظ الموديلات الجديدة`; 
+        btn.innerHTML = `<i class="ph ph-check-circle text-xl"></i> تأكيد واستيراد الأصناف المصطادة (<span id="excel-btn-selected-count">0</span> صنف)`; 
         if (resetBtn) resetBtn.disabled = false;
     }
 };
@@ -1176,7 +1403,9 @@ function readExcelFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-            try { resolve(XLSX.utils.sheet_to_json(XLSX.read(new Uint8Array(e.target.result), {type: 'array'}).Sheets[XLSX.read(new Uint8Array(e.target.result), {type: 'array'}).SheetNames[0]], { defval: "" })); } 
+            try { 
+                resolve(XLSX.utils.sheet_to_json(XLSX.read(new Uint8Array(e.target.result), {type: 'array'}).Sheets[XLSX.read(new Uint8Array(e.target.result), {type: 'array'}).SheetNames[0]], { defval: "" })); 
+            } 
             catch(err) { reject(err); }
         };
         reader.readAsArrayBuffer(file);

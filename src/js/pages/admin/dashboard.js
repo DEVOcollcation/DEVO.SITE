@@ -7,6 +7,7 @@ let allActiveModels = []; // مصفوفة جديدة تخزن كل المودي�
 const statusConfig = {
     'created': { text: 'مُنشأ', color: 'text-devo-gray bg-devo-gray/10 border border-devo-gray/30' },
     'in_progress': { text: 'جاري العمل', color: 'text-devo-orange bg-devo-orange/10 border border-devo-orange/30' },
+    'editing': { text: 'جاري التعديل', color: 'text-amber-400 bg-amber-500/10 border border-amber-500/30' },
     'registered': { text: 'مسجل', color: 'text-blue-400 bg-blue-500/10 border border-blue-500/30' },
     'preparing': { text: 'تجهيز', color: 'text-purple-400 bg-purple-500/10 border border-purple-500/30' },
     'shipped': { text: 'مشحون', color: 'text-green-400 bg-green-500/10 border border-green-500/30' },
@@ -182,7 +183,7 @@ function applyDashFilters() {
 
 function updateDashStats(orders) {
     let totalSales = 0, totalOrders = orders.length, soldSeries = 0, soldPieces = 0;
-    let statuses = { 'created': 0, 'in_progress': 0, 'registered': 0, 'preparing': 0, 'shipped': 0, 'delivered': 0 };
+    let statuses = { 'created': 0, 'in_progress': 0, 'editing': 0, 'registered': 0, 'preparing': 0, 'shipped': 0, 'delivered': 0 };
 
     // حساب المبيعات (أموال + سريات + قطع)
     orders.forEach(o => {

@@ -177,6 +177,7 @@ async function fetchMyOrders() {
 const statusConfig = {
     'created': { text: 'تم إنشاء الأوردر', color: 'bg-devo-gray text-white border-devo-gray' },
     'in_progress': { text: 'جاري العمل', color: 'bg-devo-orange/20 text-devo-orange border-devo-orange/50' },
+    'editing': { text: 'جاري التعديل', color: 'bg-amber-500/20 text-amber-400 border-amber-500/50' },
     'registered': { text: 'تم التسجيل', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
     'preparing': { text: 'جاري التجهيز', color: 'bg-purple-500/20 text-purple-400 border-purple-500/50' },
     'shipped': { text: 'تم الشحن', color: 'bg-green-500/20 text-green-400 border-green-500/50' },
@@ -518,12 +519,12 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', async () 
     btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري التجهيز...`;
     btn.disabled = true;
 
-    // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن
+    // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن وتغيير الحالة إلى جاري التعديل
     const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
-    const { error } = await supabase.from('orders').update({
-        is_locked: true,
-        assigned_admin_name: userName
-    }).eq('id', targetOrder.id);
+    const { error } = await supabase.rpc('acquire_order_lock', {
+        p_order_id: targetOrder.id,
+        p_assigned_admin_name: userName
+    });
 
     if (error) {
         showToast('فشل قفل الأوردر للتعديل: ' + error.message, 'error');

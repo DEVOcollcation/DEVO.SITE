@@ -10,10 +10,12 @@ let currentUserProfile = null;
 let currentEditingOrderId = null;
 let localEditingItems = [];
 let isLocalEditMode = false;
+let localEditingInventory = {};
 
 const statusConfig = {
     'created': { text: 'تم إنشاء الأوردر', color: 'bg-devo-gray text-white border-devo-gray' },
     'in_progress': { text: 'جاري العمل', color: 'bg-devo-orange/20 text-devo-orange border-devo-orange/50' },
+    'editing': { text: 'جاري التعديل', color: 'bg-amber-500/20 text-amber-400 border-amber-500/50' },
     'registered': { text: 'تم التسجيل', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
     'preparing': { text: 'جاري التجهيز', color: 'bg-purple-500/20 text-purple-400 border-purple-500/50' },
     'shipped': { text: 'تم الشحن', color: 'bg-green-500/20 text-green-400 border-green-500/50' },
@@ -525,14 +527,43 @@ window.filterModalTable = (term) => {
         row.style.display = text.includes(term) ? '' : 'none';
     });
 };
-window.closeAdminOrderDetails = () => {
+window.closeAdminOrderDetails = async () => {
     const modal = document.getElementById('ao-details-modal');
     modal.classList.add('opacity-0');
+    
+    if (isLocalEditMode && currentEditingOrderId) {
+        const orderId = currentEditingOrderId;
+        try {
+            const { error } = await supabase.from('orders').update({
+                is_locked: false,
+                assigned_admin_name: null,
+                status: 'created'
+            }).eq('id', orderId);
+            
+            if (error) {
+                console.error('Failed to unlock order on modal close:', error);
+            } else {
+                const o = allAdminOrders.find(x => x.id === orderId);
+                if (o) {
+                    o.is_locked = false;
+                    o.assigned_admin_name = null;
+                    o.status = 'created';
+                    const row = document.getElementById(`admin-order-row-${orderId}`);
+                    if (row) row.outerHTML = generateOrderRowHTML(o);
+                }
+            }
+            await logOrderAction(orderId, 'local_edit_cancel', `ألغى الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر محلياً (إغلاق التفاصيل)`);
+        } catch (e) {
+            console.error('Error unlocking order on modal close:', e);
+        }
+    }
+
     setTimeout(() => {
         modal.classList.add('hidden');
         currentEditingOrderId = null;
         isLocalEditMode = false;
         localEditingItems = [];
+        localEditingInventory = {};
     }, 300);
 };
 
@@ -917,11 +948,12 @@ window.triggerLocalEdit = async () => {
         return showToast('هذا الأوردر مغلق بواسطة إداري آخر!', 'error');
     }
 
-    // قفل الأوردر بقاعدة البيانات فوراً لمنع التعديل المتزامن
-    const { error } = await supabase.from('orders').update({
-        is_locked: true,
-        assigned_admin_name: currentUserProfile?.full_name || 'أدمن'
-    }).eq('id', o.id);
+    // قفل الأوردر بقاعدة البيانات فوراً لمنع التعديل المتزامن وتغيير الحالة إلى جاري التعديل
+    const adminName = currentUserProfile?.full_name || 'أدمن';
+    const { error } = await supabase.rpc('acquire_order_lock', {
+        p_order_id: o.id,
+        p_assigned_admin_name: adminName
+    });
 
     if (error) {
         return showToast('فشل قفل الأوردر للتعديل: ' + error.message, 'error');
@@ -929,6 +961,7 @@ window.triggerLocalEdit = async () => {
 
     o.is_locked = true;
     o.assigned_admin_name = currentUserProfile?.full_name;
+    o.status = 'editing';
     const row = document.getElementById(`admin-order-row-${o.id}`);
     if (row) row.outerHTML = generateOrderRowHTML(o);
 
@@ -941,6 +974,27 @@ window.triggerLocalEdit = async () => {
         ...item,
         isDeleted: false
     }));
+
+    // جلب كميات المخزن المتاحة لكل موديل ولون معروضين وتخزينها محلياً لتفادي الطلبات المتكررة عند التعديل
+    localEditingInventory = {};
+    const modelIds = [...new Set(localEditingItems.map(item => item.model_id))];
+    if (modelIds.length > 0) {
+        try {
+            const { data: invData, error: invError } = await supabase
+                .from('model_inventory')
+                .select('model_id, color_id, available_series')
+                .in('model_id', modelIds);
+            
+            if (!invError && invData) {
+                invData.forEach(inv => {
+                    const key = `${inv.model_id}_${inv.color_id}`;
+                    localEditingInventory[key] = inv.available_series;
+                });
+            }
+        } catch (e) {
+            console.error('Error fetching inventory for local edit cache:', e);
+        }
+    }
 
     renderLocalEditModal(o);
 };
@@ -965,15 +1019,28 @@ async function renderLocalEditModal(o) {
         const piecePrice = item.price_per_series / sizesCount;
         const itemTotal = item.quantity * item.price_per_series;
 
+        const key = `${item.model_id}_${item.color_id}`;
+        const dbStock = localEditingInventory[key] !== undefined ? localEditingInventory[key] : 0;
+
+        // حساب الرصيد التفاعلي الحقيقي للكمية المتاحة بالمخزن
+        const originalItem = o.order_items.find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
+        const originalQty = originalItem ? originalItem.quantity : 0;
+        const realTimeStock = dbStock - (item.quantity - originalQty);
+
         return `
             <tr class="border-b border-devo-gray last:border-0 hover:bg-devo-black/50 transition-colors">
                 <td class="py-2.5 px-3 text-white text-sm font-bold search-target">${item.models?.name || 'موديل محذوف'} <span class="text-devo-muted text-[10px] font-mono mr-1">(${code})</span></td>
-                <td class="py-2.5 px-3 text-devo-info text-xs">${item.colors?.name || '-'}</td>
+                <td class="py-2.5 px-3 text-devo-info text-xs">
+                    ${item.colors?.name || '-'}
+                    <span class="text-[10px] block mt-0.5 ${realTimeStock <= 0 ? 'text-devo-error font-semibold' : 'text-devo-muted'}">
+                        (متاح: ${realTimeStock} سيريه)
+                    </span>
+                </td>
                 <td class="py-2.5 px-3 text-center">
                     <div class="flex items-center justify-center bg-devo-black border border-devo-gray rounded-lg overflow-hidden h-8 w-28 mx-auto">
                         <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity - 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-minus"></i></button>
-                        <input type="number" onchange="updateLocalItemQty(${index}, parseInt(this.value) || 0)" value="${item.quantity}" class="w-10 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray">
-                        <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity + 1})" class="px-2 text-white hover:text-devo-orange transition-colors h-full"><i class="ph ph-plus"></i></button>
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" onchange="updateLocalItemQty(${index}, parseInt(this.value) || 0)" value="${item.quantity}" class="w-10 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray leading-none">
+                        <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity + 1})" ${realTimeStock <= 0 ? 'disabled' : ''} class="px-2 h-full transition-colors ${realTimeStock <= 0 ? 'text-devo-muted cursor-not-allowed opacity-50' : 'text-white hover:text-devo-orange'}"><i class="ph ph-plus"></i></button>
                     </div>
                     <span class="text-[10px] text-devo-muted font-normal block mt-1">(${pieces} قطعة)</span>
                 </td>
@@ -1118,9 +1185,27 @@ function calculateLocalRemaining(o) {
 
 window.updateLocalItemQty = async (index, newQty) => {
     if (newQty < 1) return;
-    localEditingItems[index].quantity = newQty;
     const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
-    if (o) await renderLocalEditModal(o);
+    if (!o) return;
+    
+    const item = localEditingItems[index];
+    const key = `${item.model_id}_${item.color_id}`;
+    const dbStock = localEditingInventory[key] !== undefined ? localEditingInventory[key] : 0;
+    
+    const originalItem = o.order_items.find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
+    const originalQty = originalItem ? originalItem.quantity : 0;
+    const realTimeStock = dbStock - (item.quantity - originalQty);
+
+    if (newQty > item.quantity) {
+        const diff = newQty - item.quantity;
+        if (diff > realTimeStock) {
+            showToast(`المخزون غير كافي! المتاح إضافته هو: ${realTimeStock} سيريه فقط.`, 'warning');
+            return;
+        }
+    }
+    
+    localEditingItems[index].quantity = newQty;
+    await renderLocalEditModal(o);
 };
 
 window.deleteLocalItem = async (index) => {
@@ -1133,11 +1218,13 @@ window.deleteLocalItem = async (index) => {
 window.cancelLocalEdit = async (orderId) => {
     isLocalEditMode = false;
     localEditingItems = [];
+    localEditingInventory = {};
 
-    // إلغاء قفل الأوردر بقاعدة البيانات وإتاحته
+    // إلغاء قفل الأوردر بقاعدة البيانات وإتاحته وإعادة حالته لتم الإنشاء
     const { error } = await supabase.from('orders').update({
         is_locked: false,
-        assigned_admin_name: null
+        assigned_admin_name: null,
+        status: 'created'
     }).eq('id', orderId);
 
     if (error) {
@@ -1147,6 +1234,7 @@ window.cancelLocalEdit = async (orderId) => {
         if (o) {
             o.is_locked = false;
             o.assigned_admin_name = null;
+            o.status = 'created';
             const row = document.getElementById(`admin-order-row-${orderId}`);
             if (row) row.outerHTML = generateOrderRowHTML(o);
         }
@@ -1238,11 +1326,12 @@ window.saveLocalOrderEdits = async (orderId) => {
 
         if (rpcError) throw rpcError;
 
-        // إزالة الإسناد وإلغاء القفل بعد الحفظ الناجح
+        // إزالة الإسناد وإلغاء القفل بعد الحفظ الناجح وإعادة الحالة إلى تم إنشاء الأوردر
         await supabase.from('orders').update({ 
             assigned_worker_id: null,
             is_locked: false,
-            assigned_admin_name: null
+            assigned_admin_name: null,
+            status: 'created'
         }).eq('id', orderId);
 
         await logOrderAction(orderId, 'edited_locally', `تم تعديل الأصناف محلياً وحفظ الفروقات بالمخزن بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
@@ -1269,11 +1358,12 @@ window.triggerCartEdit = async () => {
         return showToast('هذا الأوردر مغلق بواسطة إداري آخر!', 'error');
     }
 
-    // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن
-    const { error } = await supabase.from('orders').update({
-        is_locked: true,
-        assigned_admin_name: currentUserProfile?.full_name || 'أدمن'
-    }).eq('id', o.id);
+    // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن وتغيير الحالة إلى جاري التعديل
+    const adminName = currentUserProfile?.full_name || 'أدمن';
+    const { error } = await supabase.rpc('acquire_order_lock', {
+        p_order_id: o.id,
+        p_assigned_admin_name: adminName
+    });
 
     if (error) {
         return showToast('فشل قفل الأوردر للتعديل: ' + error.message, 'error');
