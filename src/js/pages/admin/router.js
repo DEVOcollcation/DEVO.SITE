@@ -192,6 +192,10 @@ async function loadViewLogic(targetId) {
             const { initAdminOrdersView } = await import('./admin_orders.js?v=8.0');
             await initAdminOrdersView();
             break;
+        case 'view-deposit-reports':
+            const { initDepositReportsView } = await import('./deposit_reports.js');
+            await initDepositReportsView();
+            break;
         case 'view-import-stock':
             const { initImportStockView } = await import('./import_stock.js');
             await initImportStockView();

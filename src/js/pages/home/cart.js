@@ -125,6 +125,8 @@ async function loadAndRenderCart() {
         document.getElementById('checkout-form')?.reset();
     }
 
+    updateCartHeaderEditState(editingOrderId, originalOrderData?.invoice_number);
+
     const container = document.getElementById('cart-items-container');
     const checkoutBtn = document.getElementById('btn-checkout');
     
@@ -138,7 +140,7 @@ async function loadAndRenderCart() {
         if (sumModelsEl) sumModelsEl.textContent = '0';
         if (sumSeriesEl) sumSeriesEl.textContent = '0';
 
-        if (checkoutBtn) { checkoutBtn.disabled = true; checkoutBtn.innerHTML = `تأكيد وإصدار الفاتورة`; checkoutBtn.classList.replace('bg-devo-orange', 'bg-devo-gray'); }
+        if (checkoutBtn) { checkoutBtn.disabled = true; checkoutBtn.innerHTML = editingOrderId ? `حفظ التعديلات` : `تأكيد وإصدار الفاتورة`; checkoutBtn.classList.replace('bg-devo-orange', 'bg-devo-gray'); }
         updateFloatingCart();
         return;
     }
@@ -162,6 +164,83 @@ async function loadAndRenderCart() {
     
     if(window.filterCartItems) window.filterCartItems();
 }
+
+function updateCartHeaderEditState(editingOrderId, invoiceNumber) {
+    const clearBtnText = document.getElementById('btn-clear-cart-text');
+    const clearBtnIcon = document.getElementById('btn-clear-cart-icon');
+    const clearBtn = document.getElementById('btn-clear-cart');
+    const editBanner = document.getElementById('cart-edit-mode-banner');
+
+    if (editingOrderId) {
+        if (clearBtnText) clearBtnText.textContent = 'إلغاء تعديل الأوردر';
+        if (clearBtnIcon) clearBtnIcon.className = 'ph ph-x-circle text-xl';
+        if (clearBtn) clearBtn.title = 'إلغاء تعديل الأوردر وإفراغ السلة';
+        
+        if (editBanner) {
+            editBanner.classList.remove('hidden');
+            editBanner.innerHTML = `
+                <div class="bg-amber-500/10 border border-amber-500/30 text-amber-400 p-3.5 rounded-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold shadow-sm animate-pulse">
+                    <div class="flex items-center gap-2">
+                        <i class="ph ph-note-pencil text-xl text-amber-400"></i>
+                        <span>أنت تقوم حالياً بتعديل الفاتورة رقم: <strong class="font-mono text-white underline">#${invoiceNumber || ''}</strong></span>
+                    </div>
+                    <span class="bg-amber-500/20 text-amber-300 px-3 py-1 rounded-lg text-xs font-bold border border-amber-500/40 whitespace-nowrap">وضع التعديل نشط</span>
+                </div>
+            `;
+        }
+    } else {
+        if (clearBtnText) clearBtnText.textContent = 'إفراغ السلة';
+        if (clearBtnIcon) clearBtnIcon.className = 'ph ph-trash text-xl';
+        if (clearBtn) clearBtn.title = 'إفراغ السلة';
+
+        if (editBanner) {
+            editBanner.classList.add('hidden');
+            editBanner.innerHTML = '';
+        }
+    }
+}
+
+// 🌟 دالة إفراغ السلة بالكامل وإلغاء وضع التعديل 🌟
+window.clearEntireCart = async () => {
+    if (cartItems.length === 0 && !editingOrderId) {
+        return showToast('السلة فارغة بالفعل', 'info');
+    }
+
+    const isEditMode = !!editingOrderId;
+    const title = isEditMode ? 'إلغاء تعديل الأوردر' : 'إفراغ السلة';
+    const message = isEditMode 
+        ? 'هل أنت متأكد من رغبتك في إلغاء تعديل الأوردر وإفراغ السلة؟ سيتم إلغاء التعديل وإعادة فتح الأوردر بحالة (تم الإنشاء).' 
+        : 'هل أنت متأكد من رغبتك في إفراغ السلة بالكامل؟';
+
+    const confirmed = await confirmDialog({ 
+        title: title, 
+        message: message, 
+        isDestructive: true 
+    });
+    
+    if (confirmed) {
+        if (editingOrderId) {
+            const finalEditingOrderId = editingOrderId;
+            await supabase.rpc('release_order_lock', { p_order_id: finalEditingOrderId });
+
+            const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+            await logOrderAction(finalEditingOrderId, 'cart_edit_cancel', `تم إلغاء تعديل الأوردر وإفراغ السلة بواسطة (${userName})`);
+        }
+
+        cartItems = [];
+        editingOrderId = null;
+        localStorage.removeItem('devo_cart');
+        localStorage.removeItem('devo_edit_order_data');
+        localStorage.removeItem('devo_edit_order_data_cache');
+        
+        const form = document.getElementById('checkout-form');
+        if (form) form.reset();
+        
+        updateFloatingCart();
+        loadAndRenderCart();
+        showToast(isEditMode ? 'تم إلغاء تعديل الأوردر وإعادة فتحه وإفراغ السلة بنجاح' : 'تم إفراغ السلة بنجاح', 'success');
+    }
+};
 
 function renderCartItems(dbInventory, dbModels, originalOrderData) {
     const container = document.getElementById('cart-items-container');

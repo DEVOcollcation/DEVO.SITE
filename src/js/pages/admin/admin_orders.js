@@ -1224,6 +1224,7 @@ window.cancelLocalEdit = async (orderId) => {
     const { error } = await supabase.from('orders').update({
         is_locked: false,
         assigned_admin_name: null,
+        assigned_worker_id: null,
         status: 'created'
     }).eq('id', orderId);
 
@@ -1234,6 +1235,7 @@ window.cancelLocalEdit = async (orderId) => {
         if (o) {
             o.is_locked = false;
             o.assigned_admin_name = null;
+            o.assigned_worker_id = null;
             o.status = 'created';
             const row = document.getElementById(`admin-order-row-${orderId}`);
             if (row) row.outerHTML = generateOrderRowHTML(o);
