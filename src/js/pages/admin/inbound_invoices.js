@@ -743,9 +743,7 @@ async function exportInboundInvoiceToExcel(invoiceId) {
 // 🌟 View Inbound Invoice Details Modal 🌟
 async function viewInboundInvoiceDetails(invoiceId) {
     try {
-        console.log('viewInboundInvoiceDetails initiated with ID:', invoiceId);
         const inv = inboundInvoices.find(i => i.id === invoiceId);
-        console.log('viewInboundInvoiceDetails cached invoice found:', inv);
         if (!inv) {
             showToast('خطأ: لم يتم العثور على بيانات الفاتورة بالذاكرة المؤقتة', 'error');
             return;
@@ -769,7 +767,6 @@ async function viewInboundInvoiceDetails(invoiceId) {
         }
 
         const itemsList = itemsData || [];
-        console.log('viewInboundInvoiceDetails items list fetched:', itemsList);
 
         const groupedItems = {};
         itemsList.forEach(item => {

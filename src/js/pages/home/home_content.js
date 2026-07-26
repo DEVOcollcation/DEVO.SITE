@@ -19,13 +19,31 @@ function resolveImageUrl(url) {
     return url; 
 }
 
-// جلب الإعدادات (نصوص، صور، سوشيال ميديا)
+// جلب الإعدادات (نصوص، صور، سوشيال ميديا) مع الكاش الفوري
 async function loadHeroSettings() {
+    // ⚡ 1. التحميل الفوري السريع من الكاش (0ms Instant Load) ⚡
+    const cachedMap = localStorage.getItem('devo_cached_hero_settings');
+    if (cachedMap) {
+        try {
+            applyHeroSettingsMap(JSON.parse(cachedMap));
+        } catch (e) {}
+    }
+
+    // 🔄 2. الجلب التحديثي من السيرفر في الخلفية 🔄
     const { data, error } = await supabase.from('home_settings').select('*');
     if (error || !data) return;
 
     const map = {};
     data.forEach(item => map[item.setting_key] = item.setting_value);
+
+    applyHeroSettingsMap(map);
+    try {
+        localStorage.setItem('devo_cached_hero_settings', JSON.stringify(map));
+    } catch (e) {}
+}
+
+function applyHeroSettingsMap(map) {
+    if (!map) return;
 
     // 1. حقن النصوص وتحديد ألوانها المخصصة
     const titleEl = document.getElementById('display-hero-title');
@@ -33,12 +51,12 @@ async function loadHeroSettings() {
     const titleColor = map['hero_title_color'] || '#ffffff';
     const subtitleColor = map['hero_subtitle_color'] || '#a3a3a3';
 
-    if (titleEl) {
-        titleEl.innerHTML = map['hero_title'] || 'DEVO';
+    if (titleEl && map['hero_title']) {
+        titleEl.innerHTML = map['hero_title'];
         titleEl.style.setProperty('color', titleColor, 'important');
     }
-    if (subtitleEl) {
-        subtitleEl.innerHTML = map['hero_subtitle'] || '';
+    if (subtitleEl && map['hero_subtitle']) {
+        subtitleEl.innerHTML = map['hero_subtitle'];
         subtitleEl.style.setProperty('color', subtitleColor, 'important');
     }
 
@@ -139,7 +157,7 @@ async function loadHeroSettings() {
         }
     }
 
-    // 5. تطبيق خلفية البانر الرئيسي على الأقسام الأُخرى المفعّلة (المعرض، الباركود، السلة، الأوردرات)
+    // 5. تطبيق خلفية البانر الرئيسي على الأقسام الأُخرى المفعّلة
     applySectionBackgrounds(map);
 }
 
@@ -301,15 +319,34 @@ function initPromoCardsTilt() {
     });
 }
 
-// جلب الكروت الإعلانية بتصميم احترافي موحد الأحجام
+// جلب الكروت الإعلانية بتصميم احترافي موحد الأحجام مع الكاش الفوري
 async function loadPromoCards() {
     const container = document.getElementById('display-promo-cards');
     if (!container) return;
 
+    // ⚡ 1. التحميل الفوري السريع من الكاش (0ms Instant Load) ⚡
+    const cachedCards = localStorage.getItem('devo_cached_promo_cards');
+    if (cachedCards) {
+        try {
+            renderPromoCardsUI(JSON.parse(cachedCards), container);
+        } catch (e) {}
+    }
+
+    // 🔄 2. الجلب التحديثي من السيرفر في الخلفية 🔄
     const { data, error } = await supabase.from('promo_cards').select('*').eq('is_active', true).order('created_at', { ascending: true });
 
-    if (error || !data || data.length === 0) {
-        container.innerHTML = ''; 
+    if (error || !data) return;
+
+    renderPromoCardsUI(data, container);
+    try {
+        localStorage.setItem('devo_cached_promo_cards', JSON.stringify(data));
+    } catch (e) {}
+}
+
+function renderPromoCardsUI(data, container) {
+    if (!container) return;
+    if (!data || data.length === 0) {
+        container.innerHTML = '';
         return;
     }
 
@@ -318,10 +355,10 @@ async function loadPromoCards() {
         
         const imgHtml = imgUrl 
             ? `<div class="promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center p-3 border-b border-devo-gray/30 overflow-hidden">
-                <img src="${imgUrl}" class="promo-blur-bg animate-drift absolute inset-0 w-full h-full object-cover blur-md scale-125 opacity-60 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+                <img src="${imgUrl}" class="promo-blur-bg animate-drift absolute inset-0 w-full h-full object-cover blur-md scale-125 opacity-60 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
                 <div class="absolute inset-0 bg-black/10 backdrop-blur-[2px] pointer-events-none"></div>
                 <div class="w-full h-full transition-transform duration-700 ease-out group-hover:scale-[1.06] flex items-center justify-center relative z-10">
-                    <img src="${imgUrl}" class="promo-main-img max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md animate-kenburns" loading="lazy" onload="window.detectPromoImageAspect(this, '${card.id}')">
+                    <img src="${imgUrl}" class="promo-main-img max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md animate-kenburns" loading="lazy" decoding="async" onload="window.detectPromoImageAspect(this, '${card.id}')">
                 </div>
                </div>`
             : `<div class="promo-img-container w-full h-36 sm:h-40 bg-devo-gray/10 relative shrink-0 flex items-center justify-center text-devo-gray/30 border-b border-devo-gray/30"><i class="ph ${card.icon || 'ph-image'} text-5xl"></i></div>`;

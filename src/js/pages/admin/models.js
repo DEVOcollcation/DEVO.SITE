@@ -411,9 +411,9 @@ function generateModelCardHTML(m) {
     return `
     <div id="admin-model-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl transition-all duration-300 flex flex-col ${cardClass}">
         <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl p-3">
-            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-300 hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'">
+            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-300 hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">
             <div class="absolute top-3 right-3 z-20">${badgeHTML}</div>
             ${!m.is_active ? `<div class="absolute top-3 left-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-20">معطل</div>` : ''}
         </div>
@@ -546,10 +546,10 @@ window.viewDetails = async (id) => {
     let imagesHtml = '';
     if (model.model_images && model.model_images.length > 0) {
         imagesHtml = `<div class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.png'">`).join('')}
+            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}
         </div>`;
     } else {
-        imagesHtml = `<div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.png" class="w-full h-full object-cover"></div>`;
+        imagesHtml = `<div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.png" class="w-full h-full object-cover" loading="lazy" decoding="async"></div>`;
     }
 
     const renderSizesTags = classSizes.length > 0 

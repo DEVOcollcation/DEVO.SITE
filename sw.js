@@ -1,5 +1,7 @@
-const CACHE_NAME = 'devo-v6';
-const assets = [
+const STATIC_CACHE = 'devo-static-v7';
+const IMAGE_CACHE = 'devo-images-v1';
+
+const staticAssets = [
   './',
   './index.html',
   './admin.html',
@@ -11,36 +13,81 @@ const assets = [
   './manifest-admin.json'
 ];
 
-// تثبيت السيرفس وركر
+// تثبيت وتجهيز السيرفس وركر
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(assets);
+    caches.open(STATIC_CACHE).then((cache) => {
+      return cache.addAll(staticAssets);
     })
   );
 });
 
-// تفعيل السيرفس وركر
+// تفعيل وتنظيف النسخ القديمة من الكاش
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.map((key) => {
+          if (key !== STATIC_CACHE && key !== IMAGE_CACHE) {
+            return caches.delete(key);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// الاستجابة للطلبات بتكتيك كاش محسن (Cache-First للصور، Network-First للمستندات)
 self.addEventListener('fetch', (event) => {
-  // Ignore non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // Ignore external API requests (like Supabase)
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
 
-  event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request).then((cachedResponse) => {
+  // 1. كاش الصور الديناميكي (Supabase Storage + صور الأصول)
+  const isImageRequest = 
+    url.hostname.includes('supabase.co') && url.pathname.includes('/storage/v1/object/') ||
+    /\.(png|jpg|jpeg|webp|svg|gif|ico)$/i.test(url.pathname);
+
+  if (isImageRequest) {
+    event.respondWith(
+      caches.open(IMAGE_CACHE).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
         if (cachedResponse) {
           return cachedResponse;
         }
-        return new Response('Network error occurred', {
-          status: 503,
-          statusText: 'Service Unavailable',
-          headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
-        });
-      });
-    })
-  );
+
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch (err) {
+          return new Response('Image unavailable offline', { status: 404 });
+        }
+      })
+    );
+    return;
+  }
+
+  // 2. كاش الملفات المحلية والنظام (App Shell)
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) return cachedResponse;
+            return new Response('Network error occurred', {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
+            });
+          });
+        })
+    );
+  }
 });

@@ -105,8 +105,6 @@ async function fetchFullOrderById(orderId) {
 function setupRealtimeAdminOrders() {
     supabase.channel('admin_orders_tracker')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
-            console.log('🚨 رادار DEVO: تم التقاط أوردر جديد!', payload.new);
-            
             // جلب الأوردر الجديد بالكامل مع علاقاته
             const data = await fetchFullOrderById(payload.new.id);
             
@@ -131,8 +129,6 @@ function setupRealtimeAdminOrders() {
             }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
-            console.log('🔄 رادار DEVO: تم تحديث أوردر!', payload.new.id);
-            
             // جلب الأوردر التراكمي بالأصناف كاملة
             const updatedOrder = await fetchFullOrderById(payload.new.id) || payload.new;
             const index = allAdminOrders.findIndex(o => o.id === payload.new.id);
@@ -153,7 +149,6 @@ function setupRealtimeAdminOrders() {
             }
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
-            console.log('🗑️ رادار DEVO: تم حذف أوردر!', payload.old.id);
             allAdminOrders = allAdminOrders.filter(o => o.id !== payload.old.id);
             updateAdminStats();
             
@@ -165,10 +160,14 @@ function setupRealtimeAdminOrders() {
             }
         })
         .subscribe((status, err) => {
-            console.log('📡 حالة اتصال رادار الأوردرات:', status);
             if (err) console.error('⚠️ خطأ في اتصال الرادار:', err);
         });
 }
+
+// 🌐 إعادة الاتصال التلقائي برادار الأدمن عند عودة الإنترنت 🌐
+window.addEventListener('online', () => {
+    setupRealtimeAdminOrders();
+});
 
 // ==========================================
 // 🌟 3. هندسة الـ HTML للصف الواحد 🌟

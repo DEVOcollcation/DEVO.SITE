@@ -5,6 +5,7 @@ import { initHomeSettingsView } from './home_settings.js';
 import { initUsersView } from './users.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNotifications } from '../../services/notifications.js';
+import { initNetworkStatusMonitor } from '../../components/network_banner.js';
 
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
@@ -222,6 +223,9 @@ async function loadViewLogic(targetId) {
 }
 // --- Event Listeners Initialization ---
 async function initRouter() {
+    // مراقبة وإظهار بنر الاتصال بالإنترنت عند الانقطاع
+    initNetworkStatusMonitor();
+
     // تزامن المظهر النشط من قاعدة البيانات
     syncActiveTheme();
 

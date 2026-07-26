@@ -1279,7 +1279,6 @@ export async function loadAllThemes() {
           const missingSystemThemes = Object.keys(DEFAULT_THEMES).filter(name => !dbSystemThemeNames.includes(name));
           
           if (missingSystemThemes.length > 0) {
-            console.log('Seeding missing system themes:', missingSystemThemes);
             const inserts = missingSystemThemes.map(name => ({
               name: name,
               description: DEFAULT_THEMES[name].description,

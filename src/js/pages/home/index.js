@@ -6,8 +6,12 @@ import { initOrdersView } from './orders.js?v=8.0';
 import { initBarcode } from './barcode.js';
 import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
+import { initNetworkStatusMonitor } from '../../components/network_banner.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // مراقبة وإظهار بنر الاتصال بالإنترنت عند الانقطاع
+    initNetworkStatusMonitor();
+
     // تزامن المظهر النشط من قاعدة البيانات
     syncActiveTheme();
     
@@ -42,12 +46,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // تعيين علامة الزائر عالمياً
     window.isVisitor = !currentUser;
 
-    // تهيئة الهيدر والفوتر بناءً على الإعدادات المحفوظة
-    await initNavbar();
-    await initFooter();
-
-    await initHomeContent();
-    await initGallery();
+    // تهيئة الهيدر والفوتر والمحتوى والمعرض بشكل توازي سريع فوراً (Instant Concurrent Load)
+    Promise.all([
+        initNavbar(),
+        initFooter(),
+        initHomeContent(),
+        initGallery()
+    ]);
     
     // تشغيل السلة والأوردرات والباركود فقط لفريق العمل والمديرين
     if (!window.isVisitor) {

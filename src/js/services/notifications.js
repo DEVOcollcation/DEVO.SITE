@@ -303,7 +303,6 @@ function setupRealtimeSubscription() {
             window.dispatchEvent(new CustomEvent('devo:notifications-received'));
         })
         .subscribe(async (status, err) => {
-            console.log('📡 حالة اتصال رادار الإشعارات المركزي:', status);
             if (err) console.error('⚠️ خطأ في اتصال قناة الإشعارات:', err);
 
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -323,7 +322,6 @@ function setupRealtimeSubscription() {
                     realtimeRetryTimeout = setTimeout(() => {
                         realtimeRetryTimeout = null;
                         if (webNotificationsEnabled) {
-                            console.log('🔄 إعادة الاتصال بقناة الإشعارات اللحظية...');
                             setupRealtimeSubscription();
                         }
                     }, 10000);
@@ -336,6 +334,13 @@ function setupRealtimeSubscription() {
             }
         });
 }
+
+// 🌐 إعادة الاتصال الفوري بالرادار عند عودة الإنترنت للجهاز 🌐
+window.addEventListener('online', () => {
+    if (webNotificationsEnabled) {
+        setupRealtimeSubscription();
+    }
+});
 
 // تحديث واجهة قائمة الإشعارات
 function updateNotificationsListUI() {

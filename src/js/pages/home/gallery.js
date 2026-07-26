@@ -55,16 +55,29 @@ export async function initGallery() {
 }
 
 // ==========================================
-// 🌟 1. استدعاء البيانات لأول مرة 🌟
+// 🌟 1. استدعاء البيانات مع تقنية الكاش الفوري (Stale-While-Revalidate) 🌟
 // ==========================================
 async function fetchGalleryModels() {
     const container = document.getElementById('gallery-grid');
     if(!container) return;
     
+    // ⚡ 1. التحميل الفوري السريع من الـ LocalStorage إذا وجد (0ms Instant Load) ⚡
+    const cachedData = localStorage.getItem('devo_cached_gallery_models');
+    if (cachedData && allModels.length === 0) {
+        try {
+            allModels = JSON.parse(cachedData);
+            populateCategoryFilter();
+            applyGalleryFilters();
+        } catch (e) {
+            console.warn('تجاوز كاش المعرض التالف:', e);
+        }
+    }
+
     if (allModels.length === 0) {
         container.innerHTML = `<div class="col-span-full py-20 text-center"><i class="ph ph-spinner animate-spin text-5xl text-devo-orange"></i></div>`;
     }
 
+    // 🔄 2. التحديث الصامت في الخلفية من Supabase لتنقيح وحفظ البيانات الحديثة 🔄
     const { data, error } = await supabase
         .from('models')
         .select(`
@@ -81,15 +94,28 @@ async function fetchGalleryModels() {
     if (error) return console.error(error);
 
     allModels = data;
+
+    // حفظ أحدث نسخة من البيانات في الـ LocalStorage
+    try {
+        localStorage.setItem('devo_cached_gallery_models', JSON.stringify(data));
+    } catch (e) {
+        console.warn('فشل حفظ كاش المعرض بالـ LocalStorage:', e);
+    }
     
+    populateCategoryFilter();
+    applyGalleryFilters();
+}
+
+function populateCategoryFilter() {
     const catSelect = document.getElementById('gal-category');
+    if (!catSelect) return;
+    const currentVal = catSelect.value;
     currentCategories = new Set();
     allModels.forEach(m => { if(m.categories?.name) currentCategories.add(m.categories.name); });
     let catOptions = `<option value="">جميع التصنيفات</option>`;
     currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
-    if(catSelect) catSelect.innerHTML = catOptions;
-
-    applyGalleryFilters();
+    catSelect.innerHTML = catOptions;
+    if (currentVal) catSelect.value = currentVal;
 }
 
 // ==========================================
@@ -334,9 +360,9 @@ function generateGalleryCardHTML(m) {
     <div id="gallery-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-xl sm:rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
         ${stockBadge}
         <div class="h-44 sm:h-64 md:h-72 bg-devo-black relative overflow-hidden flex items-center justify-center p-3">
-            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-500 group-hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy">
+            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-500 group-hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">
         </div>
         <div class="p-2.5 sm:p-4 flex flex-col flex-1 justify-between z-10 relative bg-devo-dark border-t border-devo-gray/30">
             <div>
@@ -402,11 +428,11 @@ window.openModelViewer = (id, skipHistory = false) => {
     
     let imagesGalleryHtml = `
         <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-56 sm:h-72 md:h-[380px] mb-2 sm:mb-3 flex items-center justify-center p-4 relative">
-            <img src="${mainImg}" id="viewer-blur-bg" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'">
+            <img src="${mainImg}" id="viewer-blur-bg" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-xl border border-devo-gray/50 shadow-lg" onerror="this.src='./src/assets/icons/devo.png'">
+            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-xl border border-devo-gray/50 shadow-lg" onerror="this.src='./src/assets/icons/devo.png'" decoding="async">
         </div>
-        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.png'">`).join('')}</div>` : ''}
+        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}</div>` : ''}
     `;
 
     const renderSizesTags = classSizes.length > 0 
