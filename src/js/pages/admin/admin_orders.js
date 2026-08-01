@@ -159,8 +159,15 @@ function setupRealtimeAdminOrders() {
                 setTimeout(() => existingRow.remove(), 300);
             }
         })
-        .subscribe((status, err) => {
-            if (err) console.error('⚠️ خطأ في اتصال الرادار:', err);
+        .subscribe(async (status, err) => {
+            if (err && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+                console.warn('⚠️ تنبيه في اتصال رادار الطلبات:', err);
+            }
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                try {
+                    await supabase.auth.getSession();
+                } catch (e) {}
+            }
         });
 }
 

@@ -279,7 +279,13 @@ function handleFileSelect(e) {
 }
 
 // 🌟 Progress Modal functions 🌟
+let hideProgressTimeout = null;
+
 function showProgress(title, status) {
+    if (hideProgressTimeout) {
+        clearTimeout(hideProgressTimeout);
+        hideProgressTimeout = null;
+    }
     const modal = document.getElementById('import-progress-modal');
     const modalContent = document.getElementById('import-progress-content');
     if (!modal || !modalContent) return;
@@ -301,9 +307,10 @@ function updateProgress(status, percent) {
     const barEl = document.getElementById('import-progress-bar');
     const percentEl = document.getElementById('import-progress-percent');
 
+    const cleanPercent = Math.min(100, Math.max(0, Math.round(percent)));
     if (statusEl) statusEl.textContent = status;
-    if (barEl) barEl.style.width = `${percent}%`;
-    if (percentEl) percentEl.textContent = `${percent}%`;
+    if (barEl) barEl.style.width = `${cleanPercent}%`;
+    if (percentEl) percentEl.textContent = `${cleanPercent}%`;
 }
 
 function hideProgress() {
@@ -313,8 +320,10 @@ function hideProgress() {
 
     modal.classList.add('opacity-0');
     modalContent.classList.add('scale-95');
-    setTimeout(() => {
+    if (hideProgressTimeout) clearTimeout(hideProgressTimeout);
+    hideProgressTimeout = setTimeout(() => {
         modal.classList.add('hidden');
+        hideProgressTimeout = null;
     }, 300);
 }
 
@@ -620,9 +629,8 @@ async function checkSelectedColorsAndProceed() {
         }
     });
 
-    hideProgress();
-
     if (unknownColorsList.length > 0) {
+        hideProgress();
         renderColorMappingTable();
         switchStep('step-2');
         showToast(`تم اكتشاف ألوان غير معرفة للأصناف المصطادة. يرجى اختيار إجراء المطابقة لكل منها.`, 'warning');
@@ -1143,7 +1151,7 @@ async function handleConfirmSave() {
         return showToast('الرجاء اختيار أو اصطياد موديل واحد على الأقل قبل الحفظ', 'warning');
     }
 
-    showProgress('مزامنة وحفظ البيانات', 'جاري بدء الحفظ بقاعدة البيانات...');
+    showProgress('مزامنة وحفظ البيانات', 'جاري تجهيز وتأكيد القوائم للرفع بقاعدة البيانات...');
 
     try {
         // Step A: Create new models in bulk batches (only 'create' action, truly unregistered)
@@ -1167,8 +1175,13 @@ async function handleConfirmSave() {
 
         const initialMovements = [];
         if (newModelsToInsert.length > 0) {
-            updateProgress('جاري إنشاء الموديلات الجديدة بالسيستم (مجموعات)...', 10);
+            const totalBatches = Math.ceil(newModelsToInsert.length / 200);
             for (let i = 0; i < newModelsToInsert.length; i += 200) {
+                const batchNum = Math.floor(i / 200) + 1;
+                const percent = Math.round(5 + (i / newModelsToInsert.length) * 15);
+                updateProgress(`جاري إنشاء الموديلات الجديدة (الدفعة ${batchNum} من ${totalBatches} - ${newModelsToInsert.length} موديل)...`, percent);
+                await new Promise(r => setTimeout(r, 20));
+
                 const chunk = newModelsToInsert.slice(i, i + 200);
                 const { data: newModels, error: modelErr } = await supabase
                     .from('models')
@@ -1196,7 +1209,7 @@ async function handleConfirmSave() {
         }
 
         // Step B: Create new colors globally in bulk with sequential color_code
-        updateProgress('جاري فحص وإنشاء الألوان الجديدة بالسيستم وتوليد الأكواد...', 25);
+        updateProgress('جاري فحص وتوليد أكواد الألوان الجديدة بالسيستم...', 20);
         let maxCodeNum = 0;
         existingColors.forEach(c => {
             const codeNum = parseInt(c.color_code, 10);
@@ -1229,7 +1242,13 @@ async function handleConfirmSave() {
             });
 
             if (colorsToInsert.length > 0) {
+                const totalColorBatches = Math.ceil(colorsToInsert.length / 200);
                 for (let i = 0; i < colorsToInsert.length; i += 200) {
+                    const batchNum = Math.floor(i / 200) + 1;
+                    const percent = Math.round(20 + (i / colorsToInsert.length) * 15);
+                    updateProgress(`جاري إضافة الألوان الجديدة بالسيستم (الدفعة ${batchNum} من ${totalColorBatches})...`, percent);
+                    await new Promise(r => setTimeout(r, 20));
+
                     const chunk = colorsToInsert.slice(i, i + 200);
                     const { data: createdColors, error: colorErr } = await supabase
                         .from('colors')
@@ -1261,11 +1280,16 @@ async function handleConfirmSave() {
         }
 
         // Step C: Fetch existing inventory records for all imported models in batch
-        updateProgress('جاري فحص أرصدة المخزون السابقة...', 40);
         const affectedModelIds = selectedPreviewData.map(item => item.modelId).filter(Boolean);
         const existingInventoryMap = new Map();
 
+        const totalFetchBatches = Math.ceil(affectedModelIds.length / 1000);
         for (let i = 0; i < affectedModelIds.length; i += 1000) {
+            const batchNum = Math.floor(i / 1000) + 1;
+            const percent = Math.round(35 + (i / Math.max(1, affectedModelIds.length)) * 15);
+            updateProgress(`جاري فحص أرصدة المخزون المسجلة (الدفعة ${batchNum} من ${totalFetchBatches})...`, percent);
+            await new Promise(r => setTimeout(r, 20));
+
             const chunk = affectedModelIds.slice(i, i + 1000);
             const { data: invData, error: fetchInvErr } = await supabase
                 .from('model_inventory')
@@ -1280,7 +1304,7 @@ async function handleConfirmSave() {
         }
 
         // Step D: Build batch payloads in memory
-        updateProgress('جاري معالجة وتجهيز تحديثات المخزون والأسعار...', 55);
+        updateProgress('جاري معالجة وتجهيز تحديثات المخزون والأسعار...', 50);
         const priceUpdates = [];
         const inventoryUpdates = [];
         const inventoryInserts = [];
@@ -1346,10 +1370,15 @@ async function handleConfirmSave() {
             }
         }
 
-        // Step E: Execute Bulk Operations in Batches of 200
+        // Step E: Execute Bulk Operations in Batches of 200 with Progress Feedback
         if (priceUpdates.length > 0) {
-            updateProgress('جاري تحديث أسعار الموديلات (مجموعات)...', 70);
+            const totalBatches = Math.ceil(priceUpdates.length / 200);
             for (let i = 0; i < priceUpdates.length; i += 200) {
+                const batchNum = Math.floor(i / 200) + 1;
+                const percent = Math.round(55 + (i / priceUpdates.length) * 15);
+                updateProgress(`جاري تحديث أسعار الموديلات (الدفعة ${batchNum} من ${totalBatches} - ${priceUpdates.length} سعر)...`, percent);
+                await new Promise(r => setTimeout(r, 20));
+
                 const chunk = priceUpdates.slice(i, i + 200);
                 const { error } = await supabase.from('models').upsert(chunk, { onConflict: 'id' });
                 if (error) throw error;
@@ -1357,8 +1386,13 @@ async function handleConfirmSave() {
         }
 
         if (inventoryUpdates.length > 0) {
-            updateProgress('جاري تحديث أرصدة المخزون الحالية (مجموعات)...', 80);
+            const totalBatches = Math.ceil(inventoryUpdates.length / 200);
             for (let i = 0; i < inventoryUpdates.length; i += 200) {
+                const batchNum = Math.floor(i / 200) + 1;
+                const percent = Math.round(70 + (i / inventoryUpdates.length) * 10);
+                updateProgress(`جاري تحديث كميات المخزون (الدفعة ${batchNum} من ${totalBatches} - ${inventoryUpdates.length} عنصر)...`, percent);
+                await new Promise(r => setTimeout(r, 20));
+
                 const chunk = inventoryUpdates.slice(i, i + 200);
                 const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'id' });
                 if (error) throw error;
@@ -1366,29 +1400,39 @@ async function handleConfirmSave() {
         }
 
         if (inventoryInserts.length > 0) {
-            updateProgress('جاري إضافة عناصر المخزون الجديدة (مجموعات)...', 88);
+            const totalBatches = Math.ceil(inventoryInserts.length / 200);
             for (let i = 0; i < inventoryInserts.length; i += 200) {
+                const batchNum = Math.floor(i / 200) + 1;
+                const percent = Math.round(80 + (i / inventoryInserts.length) * 10);
+                updateProgress(`جاري إضافة كميات المخزون الجديدة (الدفعة ${batchNum} من ${totalBatches} - ${inventoryInserts.length} عنصر)...`, percent);
+                await new Promise(r => setTimeout(r, 20));
+
                 const chunk = inventoryInserts.slice(i, i + 200);
-                const { error } = await supabase.from('model_inventory').insert(chunk);
+                const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'model_id,color_id' });
                 if (error) throw error;
             }
         }
 
         if (allMovementsToInsert.length > 0) {
-            updateProgress('جاري تسجيل حركات الجرد والمخزون (مجموعات)...', 95);
+            const totalBatches = Math.ceil(allMovementsToInsert.length / 200);
             for (let i = 0; i < allMovementsToInsert.length; i += 200) {
+                const batchNum = Math.floor(i / 200) + 1;
+                const percent = Math.round(90 + (i / allMovementsToInsert.length) * 9);
+                updateProgress(`جاري تسجيل حركات المخزون بالجرد (الدفعة ${batchNum} من ${totalBatches} - ${allMovementsToInsert.length} حركة)...`, percent);
+                await new Promise(r => setTimeout(r, 20));
+
                 const chunk = allMovementsToInsert.slice(i, i + 200);
                 const { error } = await supabase.from('stock_movements').insert(chunk);
                 if (error) throw error;
             }
         }
 
-        updateProgress('اكتملت مزامنة وحفظ البيانات بنجاح!', 100);
+        updateProgress('اكتملت مزامنة وحفظ كافة البيانات بنجاح!', 100);
         setTimeout(() => {
             hideProgress();
             showToast('تم حفظ ومزامنة كافة التغييرات وجرد المخزون بنجاح!', 'success');
             resetView();
-        }, 500);
+        }, 600);
 
     } catch (err) {
         console.error("Save Import Error:", err);

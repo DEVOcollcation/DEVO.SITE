@@ -256,6 +256,13 @@
                 <span class="sidebar-tooltip">إدارة الحسابات</span>
             </a>
 
+            <!-- رابط النسخ الاحتياطي والاستعادة -->
+            <a href="#" data-target="view-backup-restore" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="النسخ الاحتياطي والاستعادة">
+                <i class="ph ph-database text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">النسخ الاحتياطي والاستعادة</span>
+                <span class="sidebar-tooltip">النسخ الاحتياطي والاستعادة</span>
+            </a>
+
             <!-- رابط إعادة تهيئة النظام — مخفي افتراضياً، مرئي للملك فقط -->
             <a href="#" data-target="view-system-reset" class="nav-link sidebar-item hidden group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إعادة تهيئة النظام">
                 <i class="ph ph-warning-octagon text-xl shrink-0"></i>
@@ -3771,6 +3778,16 @@
             </div>
         </div>
     </div>
+<!-- ===== VIEW: BACKUP & RESTORE ===== -->
+<div id="view-backup-restore" class="view-section hidden h-full">
+    <div id="backup-restore-content">
+        <!-- يتم حقن المحتوى بواسطة backup_restore.js -->
+        <div class="flex items-center justify-center h-full">
+            <div class="w-8 h-8 rounded-full border-2 border-devo-orange/30 border-t-devo-orange animate-spin"></div>
+        </div>
+    </div>
+</div>
+
 <!-- ===== VIEW: SYSTEM RESET (OWNER ONLY) ===== -->
 <div id="view-system-reset" class="view-section hidden h-full">
     <div id="reset-view-content">

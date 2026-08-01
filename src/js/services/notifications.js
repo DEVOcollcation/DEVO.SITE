@@ -152,14 +152,22 @@ function setupUI() {
         clearBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (unreadOrders.length === 0) return;
-            const ids = unreadOrders.map(o => o.id);
-            try {
-                const { error } = await supabase
-                    .from('system_notifications')
-                    .update({ is_read: true })
-                    .in('id', ids);
+            const validIds = unreadOrders
+                .map(o => o?.id)
+                .filter(id => id && typeof id === 'string' && id.trim() !== '');
 
-                if (error) throw error;
+            try {
+                if (validIds.length > 0) {
+                    for (let i = 0; i < validIds.length; i += 50) {
+                        const chunk = validIds.slice(i, i + 50);
+                        const { error } = await supabase
+                            .from('system_notifications')
+                            .update({ is_read: true })
+                            .in('id', chunk);
+
+                        if (error) console.warn('Warning marking notifications read chunk:', error);
+                    }
+                }
 
                 unreadOrders = [];
                 updateNotificationsListUI();
@@ -303,7 +311,9 @@ function setupRealtimeSubscription() {
             window.dispatchEvent(new CustomEvent('devo:notifications-received'));
         })
         .subscribe(async (status, err) => {
-            if (err) console.error('⚠️ خطأ في اتصال قناة الإشعارات:', err);
+            if (err && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+                console.warn('⚠️ تنبيه في اتصال قناة الإشعارات:', err);
+            }
 
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
                 const errStr = err ? String(err.message || err) : '';

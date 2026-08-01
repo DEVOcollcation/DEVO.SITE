@@ -637,7 +637,7 @@ function updateLiveModalInventory(model) {
 
     container.innerHTML = model.model_inventory?.map(inv => `
         <div class="flex justify-between p-3 bg-devo-black rounded-lg border border-devo-gray items-center transition-all duration-300">
-            <span class="text-white">${inv.colors?.name}</span>
+            <span class="text-white">${inv.colors?.name || 'لون غير محدد'}</span>
             <span class="font-bold ${inv.available_series === 0 ? 'text-devo-error' : 'text-devo-orange'}">
                 ${inv.available_series} سيريه 
                 <span class="text-xs text-devo-muted font-normal">(${inv.available_series * sizesCount} قطعة)</span>
@@ -939,7 +939,25 @@ async function handleSaveModel(e) {
             modelId = data.id;
         }
 
-        if (inventoryData.length > 0) await supabase.from('model_inventory').insert(inventoryData.map(inv => ({ ...inv, model_id: modelId })));
+        if (inventoryData.length > 0) {
+            const invMap = new Map();
+            inventoryData.forEach(inv => {
+                if (inv.color_id) {
+                    invMap.set(String(inv.color_id), {
+                        model_id: modelId,
+                        color_id: inv.color_id,
+                        available_series: inv.available_series || 0
+                    });
+                }
+            });
+            const cleanInv = Array.from(invMap.values());
+            if (cleanInv.length > 0) {
+                const { error: invErr } = await supabase
+                    .from('model_inventory')
+                    .upsert(cleanInv, { onConflict: 'model_id,color_id' });
+                if (invErr) throw invErr;
+            }
+        }
         if (images.length > 0) await supabase.from('model_images').insert(images.map(url => ({ model_id: modelId, image_url: url })));
 
         showToast((id ? 'تم الحفظ' : 'تمت الإضافة') + statusMessage, 'success');

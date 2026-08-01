@@ -991,7 +991,7 @@ window.undoBulkEdit = async () => {
                     }
                     
                     try {
-                        const { error } = await supabase.from('model_inventory').insert(chunk);
+                        const { error } = await supabase.from('model_inventory').upsert(chunk, { onConflict: 'model_id,color_id' });
                         if (error) throw error;
                     } catch (chunkErr) {
                         console.error(`Error restoring inventory batch ${batchNum}:`, chunkErr);

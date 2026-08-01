@@ -162,6 +162,13 @@ async function loadViewLogic(targetId) {
         return;
     }
 
+    if (targetId === 'view-backup-restore' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+        showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return;
+    }
+
     switch (targetId) {
             case 'view-dashboard':
             const { initDashboard } = await import('./dashboard.js');
@@ -214,6 +221,10 @@ async function loadViewLogic(targetId) {
         case 'view-notifications':
             const { initNotificationsView } = await import('./notifications_view.js');
             await initNotificationsView();
+            break;
+        case 'view-backup-restore':
+            const { initBackupRestoreView } = await import('./backup_restore.js');
+            initBackupRestoreView();
             break;
         case 'view-system-reset':
             const { initSystemResetView } = await import('./system_reset.js');

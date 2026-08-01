@@ -258,18 +258,25 @@ export async function deleteNotification(id) {
 // تحديد الكل كمقروء
 export async function bulkMarkNotificationsRead() {
     try {
-        const unreadIds = allNotifications.filter(n => !n.is_read).map(n => n.id);
+        const unreadIds = allNotifications
+            .filter(n => !n.is_read)
+            .map(n => n?.id)
+            .filter(id => id && typeof id === 'string' && id.trim() !== '');
+
         if (unreadIds.length === 0) {
             showToast('لا توجد إشعارات غير مقروءة حالياً', 'info');
             return;
         }
 
-        const { error } = await supabase
-            .from('system_notifications')
-            .update({ is_read: true })
-            .in('id', unreadIds);
+        for (let i = 0; i < unreadIds.length; i += 50) {
+            const chunk = unreadIds.slice(i, i + 50);
+            const { error } = await supabase
+                .from('system_notifications')
+                .update({ is_read: true })
+                .in('id', chunk);
 
-        if (error) throw error;
+            if (error) console.warn('Error marking chunk read:', error);
+        }
 
         allNotifications.forEach(n => n.is_read = true);
         updateStats();
@@ -284,18 +291,25 @@ export async function bulkMarkNotificationsRead() {
 // أرشفة جميع الإشعارات غير المؤرشفة
 export async function bulkArchiveNotifications() {
     try {
-        const nonArchivedIds = allNotifications.filter(n => !n.is_archived).map(n => n.id);
+        const nonArchivedIds = allNotifications
+            .filter(n => !n.is_archived)
+            .map(n => n?.id)
+            .filter(id => id && typeof id === 'string' && id.trim() !== '');
+
         if (nonArchivedIds.length === 0) {
             showToast('جميع الإشعارات مؤرشفة بالفعل', 'info');
             return;
         }
 
-        const { error } = await supabase
-            .from('system_notifications')
-            .update({ is_archived: true })
-            .in('id', nonArchivedIds);
+        for (let i = 0; i < nonArchivedIds.length; i += 50) {
+            const chunk = nonArchivedIds.slice(i, i + 50);
+            const { error } = await supabase
+                .from('system_notifications')
+                .update({ is_archived: true })
+                .in('id', chunk);
 
-        if (error) throw error;
+            if (error) console.warn('Error archiving chunk:', error);
+        }
 
         allNotifications.forEach(n => n.is_archived = true);
         updateStats();
@@ -323,13 +337,21 @@ export async function bulkDeleteNotifications() {
     if (!confirm) return;
 
     try {
-        const ids = allNotifications.map(n => n.id);
-        const { error } = await supabase
-            .from('system_notifications')
-            .delete()
-            .in('id', ids);
+        const ids = allNotifications
+            .map(n => n?.id)
+            .filter(id => id && typeof id === 'string' && id.trim() !== '');
 
-        if (error) throw error;
+        if (ids.length > 0) {
+            for (let i = 0; i < ids.length; i += 50) {
+                const chunk = ids.slice(i, i + 50);
+                const { error } = await supabase
+                    .from('system_notifications')
+                    .delete()
+                    .in('id', chunk);
+
+                if (error) console.warn('Error deleting chunk:', error);
+            }
+        }
 
         allNotifications = [];
         updateStats();

@@ -541,8 +541,16 @@ CREATE POLICY "system_notifications_select" ON public.system_notifications
 
 CREATE POLICY "system_notifications_write" ON public.system_notifications
     FOR ALL TO authenticated
-    USING (public.get_my_role() IN ('owner', 'admin'))
-    WITH CHECK (public.get_my_role() IN ('owner', 'admin'));
+    USING (
+        user_id = auth.uid()
+        OR user_id IS NULL
+        OR public.get_my_role() IN ('owner', 'admin')
+    )
+    WITH CHECK (
+        user_id = auth.uid()
+        OR user_id IS NULL
+        OR public.get_my_role() IN ('owner', 'admin')
+    );
 
 -- ==========================================
 -- ح) جدول الكروت الترويجية وقوائم الجرد (promo_cards, inventory_audits, inventory_audit_items)
