@@ -1649,24 +1649,40 @@
                 <div class="lg:col-span-7 space-y-4">
                     
                     <!-- 1. Search & Select Model Card -->
-                    <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm space-y-3">
+                    <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm space-y-3 relative">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-bold text-white flex items-center gap-2">
                                 <i class="ph ph-magnifying-glass text-devo-orange"></i> اختيار موديل من السيستم
                             </h3>
-                            <button type="button" onclick="clearStandaloneModelSelection()" class="text-xs text-devo-muted hover:text-devo-orange flex items-center gap-1 transition-colors">
+                            <button type="button" onclick="clearStandaloneModelSelection()" class="text-xs text-devo-muted hover:text-devo-orange flex items-center gap-1 transition-colors cursor-pointer">
                                 <i class="ph ph-x-circle"></i> مسح الاختيار
                             </button>
                         </div>
                         
-                        <div class="relative">
-                            <i class="ph ph-t-shirt absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
-                            <input type="text" id="single-barcode-model-search" autocomplete="off" placeholder="ابحث باسم الموديل، كود المصنع، أو كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white outline-none focus:border-devo-orange text-sm transition-all">
-                            
-                            <!-- Search Autocomplete Suggestions Dropdown -->
-                            <div id="single-barcode-search-results" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg max-h-56 overflow-y-auto z-[120] shadow-devo-float divide-y divide-devo-gray/40 custom-scrollbar">
-                                <!-- Dynamic Model Search Items -->
+                        <!-- 3 Separate Direct Search Input Fields -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <!-- Factory Code Search -->
+                            <div class="relative">
+                                <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-orange"></i>
+                                <input type="text" id="single-search-factory" autocomplete="off" placeholder="كود المصنع (مثال: 63)..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-2.5 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono transition-all">
                             </div>
+
+                            <!-- System Code Search -->
+                            <div class="relative">
+                                <i class="ph ph-cpu absolute right-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
+                                <input type="text" id="single-search-system" autocomplete="off" placeholder="كود السيستم (مثال: 63)..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-2.5 py-2 text-white outline-none focus:border-devo-orange text-xs font-mono transition-all">
+                            </div>
+
+                            <!-- Model Name Search -->
+                            <div class="relative">
+                                <i class="ph ph-t-shirt absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                                <input type="text" id="single-search-name" autocomplete="off" placeholder="اسم الموديل..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-2.5 py-2 text-white outline-none focus:border-devo-orange text-xs transition-all">
+                            </div>
+                        </div>
+                        
+                        <!-- Search Autocomplete Suggestions Dropdown -->
+                        <div id="single-barcode-search-results" class="hidden absolute top-full right-0 left-0 mt-1 bg-devo-dark border border-devo-gray rounded-lg max-h-56 overflow-y-auto z-[120] shadow-devo-float divide-y divide-devo-gray/40 custom-scrollbar">
+                            <!-- Dynamic Model Search Items -->
                         </div>
 
                         <!-- Selected Model Info Badge -->

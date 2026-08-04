@@ -251,8 +251,18 @@ window.applyBarcodeFilters = () => {
         
         // 1. Split search fields (AND logic)
         if (nameTerm && !m.name?.toLowerCase().includes(nameTerm)) isMatch = false;
-        if (factoryTerm && !m.factory_code?.toLowerCase().includes(factoryTerm)) isMatch = false;
-        if (systemTerm && !m.system_code?.toLowerCase().includes(systemTerm)) isMatch = false;
+        
+        if (factoryTerm) {
+            const cleanFac = factoryTerm.toLowerCase().replace(/^(FAC-|F)/i, '');
+            const mFac = (m.factory_code || '').toString().toLowerCase().replace(/^(FAC-|F)/i, '');
+            if (mFac !== cleanFac) isMatch = false;
+        }
+
+        if (systemTerm) {
+            const cleanSys = systemTerm.toLowerCase().replace(/^(SYS-|S)/i, '');
+            const mSys = (m.system_code || '').toString().toLowerCase().replace(/^(SYS-|S)/i, '');
+            if (mSys !== cleanSys) isMatch = false;
+        }
         
         // 2. Factory Code Range Filter
         if (factoryFromVal || factoryToVal) {
@@ -1292,66 +1302,98 @@ window.switchBarcodeSubTab = (tabName) => {
     }
 };
 
-// Initialize Standalone Generator Autocomplete & Listeners
+// Initialize Standalone Generator Autocomplete & Listeners for 3 Search Inputs
 function initStandaloneBarcodeGenerator() {
-    const searchInput = document.getElementById('single-barcode-model-search');
+    const inputFactory = document.getElementById('single-search-factory');
+    const inputSystem = document.getElementById('single-search-system');
+    const inputName = document.getElementById('single-search-name');
     const resultsContainer = document.getElementById('single-barcode-search-results');
 
-    if (searchInput && resultsContainer) {
-        searchInput.addEventListener('input', (e) => {
-            const query = e.target.value.trim().toLowerCase();
-            if (!query) {
-                resultsContainer.innerHTML = '';
-                resultsContainer.classList.add('hidden');
-                return;
+    if (!resultsContainer) return;
+
+    const performSearch = () => {
+        const factoryVal = (inputFactory?.value || '').trim();
+        const systemVal = (inputSystem?.value || '').trim();
+        const nameVal = (inputName?.value || '').trim();
+
+        if (!factoryVal && !systemVal && !nameVal) {
+            resultsContainer.innerHTML = '';
+            resultsContainer.classList.add('hidden');
+            return;
+        }
+
+        const matches = barcodeAllModels.filter(m => {
+            let isMatch = true;
+
+            if (factoryVal) {
+                const cleanQ = factoryVal.toLowerCase().replace(/^(FAC-|F)/i, '');
+                const mFac = (m.factory_code || '').toString().toLowerCase().replace(/^(FAC-|F)/i, '');
+                if (mFac !== cleanQ) isMatch = false; // EXACT match
             }
 
-            const matches = barcodeAllModels.filter(m => {
-                const name = (m.name || '').toLowerCase();
-                const factory = (m.factory_code || '').toString().toLowerCase();
-                const system = (m.system_code || '').toString().toLowerCase();
-                return name.includes(query) || factory.includes(query) || system.includes(query);
-            }).slice(0, 15);
+            if (systemVal) {
+                const cleanQ = systemVal.toLowerCase().replace(/^(SYS-|S)/i, '');
+                const mSys = (m.system_code || '').toString().toLowerCase().replace(/^(SYS-|S)/i, '');
+                if (mSys !== cleanQ) isMatch = false; // EXACT match
+            }
 
-            if (matches.length === 0) {
-                resultsContainer.innerHTML = `<div class="p-3 text-xs text-devo-muted text-center">لا توجد موديلات مطابقة لـ "${e.target.value}"</div>`;
-            } else {
-                resultsContainer.innerHTML = matches.map(m => `
-                    <div onclick="selectStandaloneModel('${m.id}')" class="p-2.5 hover:bg-devo-gray/70 cursor-pointer transition-colors flex items-center justify-between gap-3 text-right">
-                        <div class="truncate">
-                            <div class="text-white text-xs font-bold truncate">${m.name}</div>
-                            <div class="text-[10px] text-devo-muted font-mono mt-0.5">
-                                مصنع: <span class="text-devo-orange">${m.factory_code || 'بدون'}</span> | سيستم: <span>${m.system_code || 'بدون'}</span>
-                            </div>
+            if (nameVal) {
+                if (!(m.name || '').toLowerCase().includes(nameVal.toLowerCase())) isMatch = false;
+            }
+
+            return isMatch;
+        }).slice(0, 15);
+
+        if (matches.length === 0) {
+            resultsContainer.innerHTML = `<div class="p-3 text-xs text-devo-muted text-center">لا توجد موديلات مطابقة لبيانات البحث الحالية</div>`;
+        } else {
+            resultsContainer.innerHTML = matches.map(m => `
+                <div onclick="selectStandaloneModel('${m.id}')" class="p-2.5 hover:bg-devo-gray/70 cursor-pointer transition-colors flex items-center justify-between gap-3 text-right">
+                    <div class="truncate">
+                        <div class="text-white text-xs font-bold truncate">${m.name}</div>
+                        <div class="text-[10px] text-devo-muted font-mono mt-0.5">
+                            مصنع: <span class="text-devo-orange">${m.factory_code || 'بدون'}</span> | سيستم: <span>${m.system_code || 'بدون'}</span>
                         </div>
-                        <span class="text-devo-success text-xs font-bold shrink-0">${m.price || 0} ج.م</span>
                     </div>
-                `).join('');
-            }
-            resultsContainer.classList.remove('hidden');
-        });
+                    <span class="text-devo-success text-xs font-bold shrink-0">${m.price || 0} ج.م</span>
+                </div>
+            `).join('');
+        }
+        resultsContainer.classList.remove('hidden');
+    };
 
-        // Close search results when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!searchInput.contains(e.target) && !resultsContainer.contains(e.target)) {
-                resultsContainer.classList.add('hidden');
-            }
-        });
-    }
+    [inputFactory, inputSystem, inputName].forEach(inp => {
+        if (inp) inp.addEventListener('input', performSearch);
+    });
+
+    // Close search results when clicking outside
+    document.addEventListener('click', (e) => {
+        const isClickInside = (inputFactory && inputFactory.contains(e.target)) ||
+                             (inputSystem && inputSystem.contains(e.target)) ||
+                             (inputName && inputName.contains(e.target)) ||
+                             resultsContainer.contains(e.target);
+        if (!isClickInside) {
+            resultsContainer.classList.add('hidden');
+        }
+    });
 }
 
 // Select a model from autocomplete
 window.selectStandaloneModel = (modelId) => {
     const model = barcodeAllModels.find(m => m.id === modelId);
     const resultsContainer = document.getElementById('single-barcode-search-results');
-    const searchInput = document.getElementById('single-barcode-model-search');
+    const inputFactory = document.getElementById('single-search-factory');
+    const inputSystem = document.getElementById('single-search-system');
+    const inputName = document.getElementById('single-search-name');
     const badge = document.getElementById('single-barcode-selected-model-badge');
 
     if (resultsContainer) resultsContainer.classList.add('hidden');
 
     if (model) {
         standaloneSelectedModel = model;
-        if (searchInput) searchInput.value = model.name;
+        if (inputName) inputName.value = model.name;
+        if (inputFactory) inputFactory.value = model.factory_code || '';
+        if (inputSystem) inputSystem.value = model.system_code || '';
 
         // Update badge fields
         const nameEl = document.getElementById('single-selected-model-name');
@@ -1372,13 +1414,19 @@ window.selectStandaloneModel = (modelId) => {
 
 window.clearStandaloneModelSelection = () => {
     standaloneSelectedModel = null;
-    const searchInput = document.getElementById('single-barcode-model-search');
+    const inputFactory = document.getElementById('single-search-factory');
+    const inputSystem = document.getElementById('single-search-system');
+    const inputName = document.getElementById('single-search-name');
     const badge = document.getElementById('single-barcode-selected-model-badge');
     const valInput = document.getElementById('single-barcode-input-value');
+    const resultsContainer = document.getElementById('single-barcode-search-results');
 
-    if (searchInput) searchInput.value = '';
+    if (inputFactory) inputFactory.value = '';
+    if (inputSystem) inputSystem.value = '';
+    if (inputName) inputName.value = '';
     if (badge) badge.classList.add('hidden');
-    if (valInput && !valInput.value) valInput.value = 'SAMPLE-101';
+    if (resultsContainer) resultsContainer.classList.add('hidden');
+    if (valInput && !valInput.value) valInput.value = '101';
 
     window.renderStandaloneBarcode();
 };
