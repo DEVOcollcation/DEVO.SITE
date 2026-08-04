@@ -1723,15 +1723,18 @@
                             </div>
                         </div>
 
-                        <!-- Active Input Field -->
+                        <!-- Active Input Field with Fixed Prefix Tag -->
                         <div>
                             <label class="block text-xs font-bold text-white mb-1.5 flex items-center justify-between">
-                                <span>نص الكود المعالج (الكود النهائي في الصورة):</span>
+                                <span>نص الكود المراد تشفيره:</span>
                                 <span class="text-[10px] text-devo-muted" id="single-code-length-hint">0 حرف</span>
                             </label>
-                            <div class="relative">
-                                <i class="ph ph-qr-code absolute right-3 top-1/2 -translate-y-1/2 text-devo-orange"></i>
-                                <input type="text" id="single-barcode-input-value" dir="ltr" placeholder="أدخل أو اكتب الكود..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white font-mono text-sm outline-none focus:border-devo-orange transition-all" oninput="renderStandaloneBarcode()">
+                            <div class="relative flex items-center bg-devo-black border border-devo-gray rounded-lg overflow-hidden focus-within:border-devo-orange transition-all">
+                                <!-- Fixed Unerasable Prefix Badge -->
+                                <span id="single-barcode-prefix-badge" class="bg-devo-orange/20 text-devo-orange border-l border-devo-gray/50 px-3.5 py-2.5 font-mono text-sm font-black shrink-0 flex items-center gap-1 select-none">
+                                    F
+                                </span>
+                                <input type="text" id="single-barcode-input-value" dir="ltr" placeholder="أدخل كود المصنع (مثال: 5556)..." class="w-full bg-transparent border-0 px-3 py-2.5 text-white font-mono text-sm outline-none" oninput="renderStandaloneBarcode()">
                             </div>
                         </div>
 

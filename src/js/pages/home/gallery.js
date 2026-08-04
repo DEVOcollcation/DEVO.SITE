@@ -853,7 +853,7 @@ export function findModelByCode(code, matchType = 'both') {
 
     cleanCode = cleanCode.replace(/^["']|["']$/g, '').trim();
 
-    // 2. Check for explicit prefix in the code string (SYS- vs FAC- / F-)
+    // 2. Check for explicit prefix in the code string (S5000 vs F5000, as well as legacy SYS- / FAC-)
     if (!explicitType) {
         if (/^(sys-|system-|s-)/i.test(cleanCode)) {
             explicitType = 'system';
@@ -861,6 +861,12 @@ export function findModelByCode(code, matchType = 'both') {
         } else if (/^(fac-|factory-|f-)/i.test(cleanCode)) {
             explicitType = 'factory';
             cleanCode = cleanCode.replace(/^(fac-|factory-|f-)/i, '');
+        } else if (/^s[0-9a-z_]+/i.test(cleanCode)) {
+            explicitType = 'system';
+            cleanCode = cleanCode.substring(1);
+        } else if (/^f[0-9a-z_]+/i.test(cleanCode)) {
+            explicitType = 'factory';
+            cleanCode = cleanCode.substring(1);
         }
     }
 

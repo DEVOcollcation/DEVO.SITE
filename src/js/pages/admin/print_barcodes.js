@@ -613,7 +613,13 @@ window.updateBarcodePreview = () => {
     // رسم الكود التجريبي
     const barcodeSvg = document.getElementById('prev-barcode-svg');
     const qrcodeImg = document.getElementById('prev-qrcode-img');
-    const sampleValue = 'DEVO-12345';
+    
+    let sampleValue = 'S12345';
+    if (valueSource === 'factory') {
+        sampleValue = 'F12345';
+    } else if (valueSource === 'url') {
+        sampleValue = `${window.location.origin}/?system=12345`;
+    }
 
     if (codeType === 'barcode') {
         barcodeSvg.classList.remove('hidden');
@@ -742,13 +748,35 @@ window.generateAndPrintBulkBarcodes = () => {
             colorsList = [''];
         }
 
+        let formattedCodeVal = '';
+        if (valueSource === 'system') {
+            const raw = (m.system_code || m.factory_code || m.id || '101').toString().trim().replace(/^(SYS-|S)/i, '');
+            formattedCodeVal = `S${raw}`;
+        } else if (valueSource === 'factory') {
+            const raw = (m.factory_code || m.system_code || m.id || '101').toString().trim().replace(/^(FAC-|F)/i, '');
+            formattedCodeVal = `F${raw}`;
+        } else if (valueSource === 'url') {
+            if (m.system_code) {
+                const clean = m.system_code.toString().trim().replace(/^(SYS-|S)/i, '');
+                formattedCodeVal = `${window.location.origin}/?system=${encodeURIComponent(clean)}`;
+            } else if (m.factory_code) {
+                const clean = m.factory_code.toString().trim().replace(/^(FAC-|F)/i, '');
+                formattedCodeVal = `${window.location.origin}/?factory=${encodeURIComponent(clean)}`;
+            } else {
+                formattedCodeVal = `${window.location.origin}/?code=${encodeURIComponent(m.id)}`;
+            }
+        } else {
+            formattedCodeVal = (m.system_code || m.factory_code || m.id || '101').toString();
+        }
+
         const baseLabel = {
             name: m.name,
             factory_code: m.factory_code,
             system_code: m.system_code,
+            display_code: formattedCodeVal,
             price: m.price,
             sizesStr: getModelSizesString(m),
-            value: (valueSource === 'system' ? m.system_code : m.factory_code) || m.system_code || '0000000'
+            value: formattedCodeVal
         };
 
         if (qtyMode === 'by_color') {
@@ -915,7 +943,7 @@ window.generateAndPrintBulkBarcodes = () => {
             
             labelDiv.innerHTML = '<div>' +
                 '<div class="model-name">' + lbl.name + '</div>' +
-                '<div class="model-code">' + (lbl.factory_code || lbl.system_code || '') + '</div>' +
+                '<div class="model-code">' + (lbl.display_code || lbl.factory_code || lbl.system_code || '') + '</div>' +
                 (lbl.sizesStr ? '<div class="model-sizes">' + lbl.sizesStr + '</div>' : '') +
                 (lbl.colorStr ? '<div class="model-colors">' + lbl.colorStr + '</div>' : '') +
             '</div>' +
@@ -1358,54 +1386,49 @@ window.clearStandaloneModelSelection = () => {
 window.updateStandaloneSourceMode = (mode) => {
     standaloneCodeSourceMode = mode;
     const inputVal = document.getElementById('single-barcode-input-value');
+    const badgeEl = document.getElementById('single-barcode-prefix-badge');
     if (!inputVal) return;
 
+    // Update Badge UI
+    if (badgeEl) {
+        if (mode === 'factory') {
+            badgeEl.textContent = 'F';
+            badgeEl.className = "bg-devo-orange/20 text-devo-orange border-l border-devo-gray/50 px-3.5 py-2.5 font-mono text-sm font-black shrink-0 flex items-center gap-1 select-none";
+            badgeEl.classList.remove('hidden');
+            inputVal.placeholder = "أدخل كود المصنع فقط (مثال: 5556)...";
+        } else if (mode === 'system') {
+            badgeEl.textContent = 'S';
+            badgeEl.className = "bg-sky-500/20 text-sky-400 border-l border-devo-gray/50 px-3.5 py-2.5 font-mono text-sm font-black shrink-0 flex items-center gap-1 select-none";
+            badgeEl.classList.remove('hidden');
+            inputVal.placeholder = "أدخل كود السيستم فقط (مثال: 5556)...";
+        } else if (mode === 'url') {
+            badgeEl.textContent = '🌐 LINK';
+            badgeEl.className = "bg-emerald-500/20 text-emerald-400 border-l border-devo-gray/50 px-3 py-2.5 font-mono text-xs font-bold shrink-0 flex items-center gap-1 select-none";
+            badgeEl.classList.remove('hidden');
+            inputVal.placeholder = "أدخل الكود لرابط المنتج (مثال: 5556)...";
+        } else {
+            badgeEl.classList.add('hidden');
+            inputVal.placeholder = "أدخل النص المخصص هنا...";
+        }
+    }
+
     if (standaloneSelectedModel) {
-        const facRaw = (standaloneSelectedModel.factory_code || '').toString().trim();
-        const sysRaw = (standaloneSelectedModel.system_code || '').toString().trim();
+        const facRaw = (standaloneSelectedModel.factory_code || '').toString().trim().replace(/^(FAC-|F)/i, '');
+        const sysRaw = (standaloneSelectedModel.system_code || '').toString().trim().replace(/^(SYS-|S)/i, '');
         const idRaw = (standaloneSelectedModel.id || '').toString().trim();
 
         if (mode === 'factory') {
-            const raw = facRaw || sysRaw || idRaw;
-            inputVal.value = raw.startsWith('FAC-') ? raw : `FAC-${raw.replace(/^SYS-/, '')}`;
+            inputVal.value = facRaw || sysRaw || idRaw;
         } else if (mode === 'system') {
-            const raw = sysRaw || facRaw || idRaw;
-            inputVal.value = raw.startsWith('SYS-') ? raw : `SYS-${raw.replace(/^FAC-/, '')}`;
+            inputVal.value = sysRaw || facRaw || idRaw;
         } else if (mode === 'url') {
-            if (sysRaw) {
-                const cleanSys = sysRaw.replace(/^SYS-/, '');
-                inputVal.value = `${window.location.origin}/?system=${encodeURIComponent(cleanSys)}`;
-            } else if (facRaw) {
-                const cleanFac = facRaw.replace(/^FAC-/, '');
-                inputVal.value = `${window.location.origin}/?factory=${encodeURIComponent(cleanFac)}`;
-            } else {
-                inputVal.value = `${window.location.origin}/?code=${encodeURIComponent(idRaw)}`;
-            }
+            inputVal.value = sysRaw || facRaw || idRaw;
         }
     } else {
-        const currentCode = inputVal.value.trim();
-        if (mode === 'factory') {
-            if (currentCode.startsWith('SYS-')) {
-                inputVal.value = `FAC-${currentCode.substring(4)}`;
-            } else if (!currentCode.startsWith('FAC-') && currentCode && !currentCode.startsWith('http')) {
-                inputVal.value = `FAC-${currentCode}`;
-            }
-        } else if (mode === 'system') {
-            if (currentCode.startsWith('FAC-')) {
-                inputVal.value = `SYS-${currentCode.substring(4)}`;
-            } else if (!currentCode.startsWith('SYS-') && currentCode && !currentCode.startsWith('http')) {
-                inputVal.value = `SYS-${currentCode}`;
-            }
-        } else if (mode === 'url') {
-            if (!currentCode.startsWith('http')) {
-                if (currentCode.startsWith('SYS-')) {
-                    inputVal.value = `${window.location.origin}/?system=${encodeURIComponent(currentCode.substring(4))}`;
-                } else if (currentCode.startsWith('FAC-')) {
-                    inputVal.value = `${window.location.origin}/?factory=${encodeURIComponent(currentCode.substring(4))}`;
-                } else {
-                    inputVal.value = `${window.location.origin}/?code=${encodeURIComponent(currentCode || '101')}`;
-                }
-            }
+        // Strip prefixes if present in input when switching modes
+        let currentCode = inputVal.value.trim();
+        if (/^(FAC-|SYS-|F|S)/i.test(currentCode)) {
+            inputVal.value = currentCode.replace(/^(FAC-|SYS-|F|S)/i, '');
         }
     }
 
@@ -1417,14 +1440,7 @@ window.generateRandomStandaloneCode = () => {
     if (!inputVal) return;
 
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-    if (standaloneCodeSourceMode === 'system') {
-        inputVal.value = `SYS-${randomNum}`;
-    } else if (standaloneCodeSourceMode === 'url') {
-        inputVal.value = `${window.location.origin}/?code=${randomNum}`;
-    } else {
-        inputVal.value = `${randomNum}`;
-    }
-
+    inputVal.value = `${randomNum}`;
     window.renderStandaloneBarcode();
 };
 
@@ -1436,11 +1452,22 @@ window.renderStandaloneBarcode = async () => {
     const canvas = document.getElementById('single-barcode-canvas');
     if (!inputValEl || !canvas) return;
 
-    const codeVal = inputValEl.value.trim() || 'SAMPLE-101';
-    
+    let rawVal = inputValEl.value.trim().replace(/^(FAC-|SYS-|F|S)/i, '');
+    let codeVal = 'SAMPLE101';
+
+    if (standaloneCodeSourceMode === 'factory') {
+        codeVal = rawVal ? `F${rawVal}` : 'F101';
+    } else if (standaloneCodeSourceMode === 'system') {
+        codeVal = rawVal ? `S${rawVal}` : 'S101';
+    } else if (standaloneCodeSourceMode === 'url') {
+        codeVal = `${window.location.origin}/?system=${encodeURIComponent(rawVal || '101')}`;
+    } else {
+        codeVal = inputValEl.value.trim() || 'SAMPLE101';
+    }
+
     // Length hint
     const lengthHint = document.getElementById('single-code-length-hint');
-    if (lengthHint) lengthHint.textContent = `${codeVal.length} حرف`;
+    if (lengthHint) lengthHint.textContent = `${codeVal.length} حرف (${codeVal})`;
 
     // Options
     const codeType = document.querySelector('input[name="single-code-type"]:checked')?.value || 'qrcode';
@@ -1672,7 +1699,7 @@ function updateScannerCompatibilityStatus(codeVal) {
         badge.innerHTML = `<i class="ph ph-check-circle text-base"></i> <span>متوافق 100% مع قارئ الموقع: سيفتح الموديل "${matchedModel.name}" فوراً عند الكسح</span>`;
     } else {
         badge.className = "w-full bg-devo-black border border-devo-gray text-devo-muted p-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2";
-        badge.innerHTML = `<i class="ph ph-info text-base text-devo-orange"></i> <span>رمز مخصص نشط (جاهز للكسح ونسخ الصورة لاستخدامها بأي تصميم)</span>`;
+        badge.innerHTML = `<i class="ph ph-info text-base text-devo-orange"></i> <span>رمز مخصص نشط (  نسخ الصورة لاستخدامها بأي تصميم)</span>`;
     }
 }
 
