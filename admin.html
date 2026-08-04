@@ -1633,7 +1633,7 @@
         <div class="flex items-center gap-2 bg-devo-dark border border-devo-gray p-1.5 rounded-xl shrink-0">
             <button id="tab-btn-standalone-generator" onclick="switchBarcodeSubTab('standalone')" class="flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 bg-devo-orange text-white shadow-sm cursor-pointer">
                 <i class="ph ph-qr-code text-lg"></i>
-                <span>مولّد الباركود والـ QR المستقل (تنزيل ونسخ كصورة high-res) 🔳</span>
+                <span>مولّد الباركود والـ QR المستقل  🔳</span>
             </button>
             <button id="tab-btn-bulk-printer" onclick="switchBarcodeSubTab('bulk')" class="flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 text-devo-muted hover:text-white hover:bg-devo-black/50 cursor-pointer">
                 <i class="ph ph-printer text-lg"></i>
@@ -1652,10 +1652,10 @@
                     <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm space-y-3">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                                <i class="ph ph-magnifying-glass text-devo-orange"></i> اختيار موديل من السيستم (أو إدخال يدوي)
+                                <i class="ph ph-magnifying-glass text-devo-orange"></i> اختيار موديل من السيستم
                             </h3>
                             <button type="button" onclick="clearStandaloneModelSelection()" class="text-xs text-devo-muted hover:text-devo-orange flex items-center gap-1 transition-colors">
-                                <i class="ph ph-x-circle"></i> مسح الاختيار / يدوي
+                                <i class="ph ph-x-circle"></i> مسح الاختيار
                             </button>
                         </div>
                         
@@ -1776,15 +1776,15 @@
 
                             <!-- Center DEVO Logo Toggle -->
                             <label class="flex items-center gap-2 p-2.5 bg-devo-black border border-devo-gray rounded-lg cursor-pointer hover:border-devo-orange/50 transition-all select-none">
-                                <input type="checkbox" id="single-barcode-center-logo" checked onchange="renderStandaloneBarcode()" class="accent-devo-orange w-4 h-4 rounded">
-                                <span class="text-xs font-bold text-white">شعار DEVO بالمنتصف 🛡️</span>
+                                <input type="checkbox" id="single-barcode-center-logo" onchange="renderStandaloneBarcode()" class="accent-devo-orange w-4 h-4 rounded">
+                                <span class="text-xs font-bold text-white">شعار بالمنتصف 🛡️</span>
                             </label>
                         </div>
 
                         <div class="flex items-center gap-4 pt-2 border-t border-devo-gray/40">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs text-devo-muted font-bold">لون الرمز:</span>
-                                <input type="color" id="single-barcode-color" value="#FFFFFF" onchange="renderStandaloneBarcode()" class="w-8 h-8 rounded border border-devo-gray bg-transparent cursor-pointer">
+                                <input type="color" id="single-barcode-color" value="#000000" onchange="renderStandaloneBarcode()" class="w-8 h-8 rounded border border-devo-gray bg-transparent cursor-pointer">
                             </div>
                             <div id="single-barcode-bg-color-wrapper" class="hidden flex items-center gap-2">
                                 <span class="text-xs text-devo-muted font-bold">لون الخلفية:</span>
@@ -1808,11 +1808,11 @@
                             <span id="single-barcode-resolution-badge" class="bg-devo-black border border-devo-gray px-2.5 py-1 rounded text-[11px] font-mono text-devo-orange font-bold">1200 × 1200 px</span>
                         </div>
 
-                        <!-- Checkered background canvas preview box for transparent PNG visibility -->
-                        <div class="w-full flex-1 flex items-center justify-center p-6 rounded-xl border border-devo-gray bg-repeat min-h-[260px] relative overflow-hidden" style="background-image: radial-gradient(#333 1px, transparent 0); background-size: 16px 16px; background-color: #121212;">
+                        <!-- Checkered light background canvas preview box -->
+                        <div class="w-full flex-1 flex items-center justify-center p-6 rounded-xl border border-devo-gray bg-repeat min-h-[260px] relative overflow-hidden shadow-inner" style="background-image: radial-gradient(#cbd5e1 1.5px, transparent 0); background-size: 16px 16px; background-color: #f8fafc;">
                             
                             <!-- Main render Canvas -->
-                            <canvas id="single-barcode-canvas" class="max-w-full max-h-[260px] object-contain shadow-2xl rounded-lg transition-transform hover:scale-105 duration-300"></canvas>
+                            <canvas id="single-barcode-canvas" class="max-w-full max-h-[260px] object-contain shadow-md rounded-lg transition-transform hover:scale-105 duration-300"></canvas>
                             
                             <!-- Fallback Container if Canvas fails -->
                             <div id="single-barcode-preview-fallback" class="hidden text-devo-muted text-xs">
@@ -1824,24 +1824,24 @@
                         <!-- Compatibility Badge -->
                         <div id="single-barcode-compat-badge" class="w-full bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 p-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
                             <i class="ph ph-check-circle text-base"></i>
-                            <span>متوافق 100% مع قارئ الباركود بالموقع (يفتح الموديل فوراً عند الكسح)</span>
+                            <span>متوافق 100% مع قارئ الباركود بالموقع</span>
                         </div>
 
                         <!-- Main Primary Action: Copy to Clipboard -->
                         <div class="w-full space-y-2.5 pt-2">
                             <button type="button" onclick="copySingleBarcodeImage()" class="w-full py-3.5 px-5 bg-gradient-to-r from-devo-orange to-amber-600 hover:from-devo-orangeHover hover:to-amber-700 text-white rounded-xl font-bold text-sm shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all flex items-center justify-center gap-2.5 group cursor-pointer active:scale-95">
                                 <i class="ph ph-copy-simple text-xl group-hover:scale-110 transition-transform"></i>
-                                <span>نسخ صورة الباركود للحافظة (Copy Image) 📋</span>
+                                <span>نسخ صورة الباركود</span>
                             </button>
 
                             <div class="grid grid-cols-2 gap-2">
                                 <button type="button" onclick="downloadSingleBarcodeImage('png')" class="py-2.5 px-3 bg-devo-black hover:bg-devo-gray border border-devo-gray text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer">
                                     <i class="ph ph-download-simple text-base text-devo-orange"></i>
-                                    <span>تنزيل PNG 📥</span>
+                                    <span> PNG 📥</span>
                                 </button>
                                 <button type="button" onclick="downloadSingleBarcodeImage('svg')" class="py-2.5 px-3 bg-devo-black hover:bg-devo-gray border border-devo-gray text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer">
                                     <i class="ph ph-file-svg text-base text-devo-info"></i>
-                                    <span>تنزيل SVG 📐</span>
+                                    <span> SVG 📐</span>
                                 </button>
                             </div>
                         </div>

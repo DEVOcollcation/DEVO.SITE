@@ -1473,9 +1473,9 @@ window.renderStandaloneBarcode = async () => {
     const codeType = document.querySelector('input[name="single-code-type"]:checked')?.value || 'qrcode';
     const scaleFactor = parseInt(document.getElementById('single-barcode-scale')?.value || '8', 10);
     const isTransparent = document.getElementById('single-barcode-transparent')?.checked ?? true;
-    const centerLogo = document.getElementById('single-barcode-center-logo')?.checked ?? true;
+    const centerLogo = document.getElementById('single-barcode-center-logo')?.checked ?? false;
     const captionStyle = document.getElementById('single-barcode-caption-style')?.value || 'code_only';
-    const codeColor = document.getElementById('single-barcode-color')?.value || '#FFFFFF';
+    const codeColor = document.getElementById('single-barcode-color')?.value || '#000000';
     const bgColorVal = document.getElementById('single-barcode-bg-color')?.value || '#FFFFFF';
 
     // Show/hide background color picker
@@ -1486,8 +1486,8 @@ window.renderStandaloneBarcode = async () => {
     }
 
     // Ensure valid contrast hex colors for QR Code library
-    let qrDarkColor = (codeColor && codeColor.startsWith('#') && codeColor.length >= 4) ? codeColor : '#FFFFFF';
-    let qrLightColor = isTransparent ? '#00000000' : ((bgColorVal && bgColorVal.startsWith('#')) ? bgColorVal : '#000000');
+    let qrDarkColor = (codeColor && codeColor.startsWith('#') && codeColor.length >= 4) ? codeColor : '#000000';
+    let qrLightColor = isTransparent ? '#00000000' : ((bgColorVal && bgColorVal.startsWith('#')) ? bgColorVal : '#FFFFFF');
 
     // Force contrast if colors match
     if (qrDarkColor.toLowerCase() === qrLightColor.toLowerCase()) {
