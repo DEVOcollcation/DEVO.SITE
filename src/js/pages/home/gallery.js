@@ -827,17 +827,66 @@ function updateFloatingCart() {
 
 export function findModelByCode(code, matchType = 'both') {
     if (!code) return null;
-    const cleanCode = code.trim().toLowerCase();
+    let rawStr = code.trim();
+    let cleanCode = rawStr.toLowerCase();
+    let explicitType = null; // 'system' | 'factory' | null
+
+    // 1. Support URL query parameter parsing if scanner reads a direct link (e.g. ?system=1024 or ?factory=XYZ or ?code=SYS-101)
+    if (cleanCode.includes('?') || cleanCode.includes('=')) {
+        try {
+            const urlObj = new URL(cleanCode.startsWith('http') ? cleanCode : `http://dummy.com/${cleanCode.startsWith('?') ? '' : '?'}${cleanCode}`);
+            if (urlObj.searchParams.has('system')) {
+                explicitType = 'system';
+                cleanCode = urlObj.searchParams.get('system').toLowerCase();
+            } else if (urlObj.searchParams.has('factory')) {
+                explicitType = 'factory';
+                cleanCode = urlObj.searchParams.get('factory').toLowerCase();
+            } else if (urlObj.searchParams.has('code')) {
+                cleanCode = urlObj.searchParams.get('code').toLowerCase();
+            } else if (urlObj.searchParams.has('model') || urlObj.searchParams.has('id')) {
+                cleanCode = (urlObj.searchParams.get('model') || urlObj.searchParams.get('id')).toLowerCase();
+            }
+        } catch(e) {
+            // fallback if URL parsing fails
+        }
+    }
+
+    cleanCode = cleanCode.replace(/^["']|["']$/g, '').trim();
+
+    // 2. Check for explicit prefix in the code string (SYS- vs FAC- / F-)
+    if (!explicitType) {
+        if (/^(sys-|system-|s-)/i.test(cleanCode)) {
+            explicitType = 'system';
+            cleanCode = cleanCode.replace(/^(sys-|system-|s-)/i, '');
+        } else if (/^(fac-|factory-|f-)/i.test(cleanCode)) {
+            explicitType = 'factory';
+            cleanCode = cleanCode.replace(/^(fac-|factory-|f-)/i, '');
+        }
+    }
+
+    // 3. Match against allModels based on explicitType
     return allModels.find(m => {
-        const isSystemMatch = m.system_code && m.system_code.toString().toLowerCase() === cleanCode;
-        const isFactoryMatch = m.factory_code && m.factory_code.toString().toLowerCase() === cleanCode;
-        
-        if (matchType === 'system') {
-            return isSystemMatch;
-        } else if (matchType === 'factory') {
-            return isFactoryMatch;
+        const sysCode = m.system_code ? m.system_code.toString().toLowerCase() : '';
+        const facCode = m.factory_code ? m.factory_code.toString().toLowerCase() : '';
+        const modelId = m.id ? m.id.toString().toLowerCase() : '';
+
+        if (explicitType === 'system') {
+            return sysCode === cleanCode || modelId === cleanCode;
+        } else if (explicitType === 'factory') {
+            return facCode === cleanCode;
         } else {
-            return isSystemMatch || isFactoryMatch;
+            // Legacy / Unprefixed barcode fallback (Backward compatible with all existing printed barcodes)
+            const isSystemMatch = sysCode && sysCode === cleanCode;
+            const isFactoryMatch = facCode && facCode === cleanCode;
+            const isIdMatch = modelId && modelId === cleanCode;
+
+            if (matchType === 'system') {
+                return isSystemMatch || isFactoryMatch || isIdMatch;
+            } else if (matchType === 'factory') {
+                return isFactoryMatch || isSystemMatch || isIdMatch;
+            } else {
+                return isFactoryMatch || isSystemMatch || isIdMatch;
+            }
         }
     });
 }

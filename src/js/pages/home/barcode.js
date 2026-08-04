@@ -48,7 +48,11 @@ function updateManualInputPlaceholder() {
 }
 
 function createScannerInstance() {
-    const configs = {};
+    const configs = {
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+        }
+    };
     if (window.Html5QrcodeSupportedFormats) {
         if (scanMode === 'qr') {
             configs.formatsToSupport = [window.Html5QrcodeSupportedFormats.QR_CODE];
@@ -63,6 +67,17 @@ function createScannerInstance() {
                 window.Html5QrcodeSupportedFormats.UPC_A,
                 window.Html5QrcodeSupportedFormats.UPC_E,
                 window.Html5QrcodeSupportedFormats.ITF
+            ];
+        } else {
+            // BOTH: explicitly support all common 1D and 2D formats
+            configs.formatsToSupport = [
+                window.Html5QrcodeSupportedFormats.QR_CODE,
+                window.Html5QrcodeSupportedFormats.CODE_128,
+                window.Html5QrcodeSupportedFormats.CODE_39,
+                window.Html5QrcodeSupportedFormats.EAN_13,
+                window.Html5QrcodeSupportedFormats.EAN_8,
+                window.Html5QrcodeSupportedFormats.UPC_A,
+                window.Html5QrcodeSupportedFormats.UPC_E
             ];
         }
     }
@@ -227,10 +242,10 @@ async function startScanning() {
         const config = {
             fps: 15,
             qrbox: function(width, height) {
-                // Focus area optimized for 1D barcode and QR codes
+                // Focus area optimized for both 1D barcodes and 2D QR codes
                 return {
-                    width: Math.min(width * 0.85, 320),
-                    height: Math.min(height * 0.45, 160)
+                    width: Math.min(width * 0.9, 360),
+                    height: Math.min(height * 0.65, 260)
                 };
             },
             aspectRatio: 1.333333

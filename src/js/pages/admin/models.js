@@ -429,10 +429,11 @@ function generateModelCardHTML(m) {
                     المتاح: ${totalSeries} سيريه <span class="font-normal text-devo-muted">(${totalPieces} قطعة)</span>
                 </span>
             </div>
-            <div class="grid grid-cols-3 gap-2 pt-2">
-                <button onclick="viewDetails('${m.id}')" class="col-span-1 py-1.5 bg-devo-black hover:bg-devo-gray text-white rounded text-xs transition-colors" title="التفاصيل والحركات"><i class="ph ph-eye"></i> عرض</button>
-                <button onclick="openModelModal('${m.id}')" class="col-span-1 py-1.5 bg-devo-info/10 hover:bg-devo-info text-devo-info hover:text-white rounded text-xs transition-colors" title="تعديل الموديل"><i class="ph ph-pencil"></i> تعديل</button>
-                <button onclick="handleDeleteModel('${m.id}')" class="col-span-1 py-1.5 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded text-xs transition-colors" title="حذف الموديل"><i class="ph ph-trash"></i> حذف</button>
+            <div class="grid grid-cols-4 gap-1.5 pt-2">
+                <button onclick="viewDetails('${m.id}')" class="py-1.5 bg-devo-black hover:bg-devo-gray text-white rounded text-xs transition-colors flex items-center justify-center gap-1" title="التفاصيل"><i class="ph ph-eye"></i> <span>عرض</span></button>
+                <button onclick="openModelModal('${m.id}')" class="py-1.5 bg-devo-info/10 hover:bg-devo-info text-devo-info hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1" title="تعديل الموديل"><i class="ph ph-pencil"></i> <span>تعديل</span></button>
+                <button onclick="openStandaloneBarcodeForModel('${m.id}')" class="py-1.5 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white rounded text-xs transition-colors font-bold flex items-center justify-center gap-1" title="إنشاء وتصدير QR/باركود للموديل"><i class="ph ph-qr-code"></i> <span>QR</span></button>
+                <button onclick="handleDeleteModel('${m.id}')" class="py-1.5 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1" title="حذف الموديل"><i class="ph ph-trash"></i> <span>حذف</span></button>
             </div>
         </div>
     </div>`;
