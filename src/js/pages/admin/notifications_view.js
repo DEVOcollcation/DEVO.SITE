@@ -34,6 +34,9 @@ function setupWindowBindings() {
     window.saveTelegramSettings = saveTelegramSettings;
     window.toggleTelegramSettingsCard = toggleTelegramSettingsCard;
     window.testTelegramConnection = testTelegramConnection;
+    window.sendDailyReportToTelegramNow = sendDailyReportToTelegramNow;
+    window.sendWeeklyReportToTelegramNow = sendWeeklyReportToTelegramNow;
+    window.sendBackupToTelegramNow = sendBackupToTelegramNow;
 }
 
 // 1. جلب الإشعارات بالكامل من قاعدة البيانات
@@ -440,7 +443,21 @@ async function loadTelegramSettings() {
         const { data, error } = await supabase
             .from('home_settings')
             .select('*')
-            .in('setting_key', ['telegram_enabled', 'telegram_stock_enabled', 'web_notifications_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_stock_chat_id', 'telegram_backup_chat_id']);
+            .in('setting_key', [
+                'telegram_enabled', 
+                'telegram_stock_enabled', 
+                'telegram_reports_enabled',
+                'web_notifications_enabled', 
+                'telegram_bot_token', 
+                'telegram_chat_id', 
+                'telegram_stock_chat_id', 
+                'telegram_backup_chat_id',
+                'telegram_reports_chat_id',
+                'telegram_reports_group_link',
+                'telegram_daily_report_time',
+                'telegram_weekly_report_day',
+                'telegram_weekly_report_time'
+            ]);
             
         if (error) throw error;
         
@@ -451,19 +468,31 @@ async function loadTelegramSettings() {
         
         const enabledInput = document.getElementById('telegram-enabled');
         const stockEnabledInput = document.getElementById('telegram-stock-enabled');
+        const reportsEnabledInput = document.getElementById('telegram-reports-enabled');
         const webNotificationsInput = document.getElementById('web-notifications-enabled');
         const tokenInput = document.getElementById('telegram-bot-token');
         const chatInput = document.getElementById('telegram-chat-id');
         const stockChatInput = document.getElementById('telegram-stock-chat-id');
         const backupChatInput = document.getElementById('telegram-backup-chat-id');
+        const reportsChatInput = document.getElementById('telegram-reports-chat-id');
+        const reportsGroupLinkInput = document.getElementById('telegram-reports-group-link');
+        const dailyTimeInput = document.getElementById('telegram-daily-report-time');
+        const weeklyDayInput = document.getElementById('telegram-weekly-report-day');
+        const weeklyTimeInput = document.getElementById('telegram-weekly-report-time');
         
         if (enabledInput) enabledInput.checked = settings['telegram_enabled'] === 'true';
         if (stockEnabledInput) stockEnabledInput.checked = settings['telegram_stock_enabled'] !== 'false';
+        if (reportsEnabledInput) reportsEnabledInput.checked = settings['telegram_reports_enabled'] !== 'false';
         if (webNotificationsInput) webNotificationsInput.checked = settings['web_notifications_enabled'] !== 'false';
         if (tokenInput) tokenInput.value = settings['telegram_bot_token'] || '';
-        if (chatInput) chatInput.value = settings['telegram_chat_id'] || '';
-        if (stockChatInput) stockChatInput.value = settings['telegram_stock_chat_id'] || '';
-        if (backupChatInput) backupChatInput.value = settings['telegram_backup_chat_id'] || '-5367921849';
+        if (chatInput) chatInput.value = settings['telegram_chat_id'] || '-5488929514';
+        if (stockChatInput) stockChatInput.value = settings['telegram_stock_chat_id'] || '-1004482360716';
+        if (backupChatInput) backupChatInput.value = settings['telegram_backup_chat_id'] || '-1004363122042';
+        if (reportsChatInput) reportsChatInput.value = settings['telegram_reports_chat_id'] || '-1004352609361';
+        if (reportsGroupLinkInput) reportsGroupLinkInput.value = settings['telegram_reports_group_link'] || 'https://t.me/+3LkR_kgCBPY3MzFk';
+        if (dailyTimeInput) dailyTimeInput.value = settings['telegram_daily_report_time'] || '23:55';
+        if (weeklyDayInput) weeklyDayInput.value = settings['telegram_weekly_report_day'] || 'friday';
+        if (weeklyTimeInput) weeklyTimeInput.value = settings['telegram_weekly_report_time'] || '23:59';
     } catch (e) {
         console.error('Error loading Telegram settings:', e);
     }
@@ -473,22 +502,34 @@ async function loadTelegramSettings() {
 export async function saveTelegramSettings() {
     const enabledInput = document.getElementById('telegram-enabled');
     const stockEnabledInput = document.getElementById('telegram-stock-enabled');
+    const reportsEnabledInput = document.getElementById('telegram-reports-enabled');
     const webNotificationsInput = document.getElementById('web-notifications-enabled');
     const tokenInput = document.getElementById('telegram-bot-token');
     const chatInput = document.getElementById('telegram-chat-id');
     const stockChatInput = document.getElementById('telegram-stock-chat-id');
     const backupChatInput = document.getElementById('telegram-backup-chat-id');
+    const reportsChatInput = document.getElementById('telegram-reports-chat-id');
+    const reportsGroupLinkInput = document.getElementById('telegram-reports-group-link');
+    const dailyTimeInput = document.getElementById('telegram-daily-report-time');
+    const weeklyDayInput = document.getElementById('telegram-weekly-report-day');
+    const weeklyTimeInput = document.getElementById('telegram-weekly-report-time');
     const btn = document.getElementById('save-tg-btn');
     
     if (!enabledInput || !tokenInput || !chatInput) return;
     
     const enabled = enabledInput.checked ? 'true' : 'false';
     const stockEnabled = stockEnabledInput ? (stockEnabledInput.checked ? 'true' : 'false') : 'true';
+    const reportsEnabled = reportsEnabledInput ? (reportsEnabledInput.checked ? 'true' : 'false') : 'true';
     const webNotifications = webNotificationsInput ? (webNotificationsInput.checked ? 'true' : 'false') : 'true';
     const token = tokenInput.value.trim();
-    const chat = chatInput.value.trim();
-    const stockChat = stockChatInput ? stockChatInput.value.trim() : '';
-    const backupChat = backupChatInput ? backupChatInput.value.trim() : '-5367921849';
+    const chat = chatInput.value.trim() || '-5488929514';
+    const stockChat = stockChatInput ? stockChatInput.value.trim() : '-1004482360716';
+    const backupChat = backupChatInput ? backupChatInput.value.trim() : '-1004363122042';
+    const reportsChat = reportsChatInput ? reportsChatInput.value.trim() : '-1004352609361';
+    const reportsGroupLink = reportsGroupLinkInput ? reportsGroupLinkInput.value.trim() : 'https://t.me/+3LkR_kgCBPY3MzFk';
+    const dailyTime = dailyTimeInput ? dailyTimeInput.value : '23:55';
+    const weeklyDay = weeklyDayInput ? weeklyDayInput.value : 'friday';
+    const weeklyTime = weeklyTimeInput ? weeklyTimeInput.value : '23:59';
     
     if (enabled === 'true' && (!token || !chat)) {
         showToast('يرجى إدخال التوكن ومعرّف المحادثة لتفعيل التنبيهات', 'warning');
@@ -504,11 +545,17 @@ export async function saveTelegramSettings() {
         const updates = [
             { setting_key: 'telegram_enabled', setting_value: enabled },
             { setting_key: 'telegram_stock_enabled', setting_value: stockEnabled },
+            { setting_key: 'telegram_reports_enabled', setting_value: reportsEnabled },
             { setting_key: 'web_notifications_enabled', setting_value: webNotifications },
             { setting_key: 'telegram_bot_token', setting_value: token },
             { setting_key: 'telegram_chat_id', setting_value: chat },
             { setting_key: 'telegram_stock_chat_id', setting_value: stockChat },
-            { setting_key: 'telegram_backup_chat_id', setting_value: backupChat }
+            { setting_key: 'telegram_backup_chat_id', setting_value: backupChat },
+            { setting_key: 'telegram_reports_chat_id', setting_value: reportsChat },
+            { setting_key: 'telegram_reports_group_link', setting_value: reportsGroupLink },
+            { setting_key: 'telegram_daily_report_time', setting_value: dailyTime },
+            { setting_key: 'telegram_weekly_report_day', setting_value: weeklyDay },
+            { setting_key: 'telegram_weekly_report_time', setting_value: weeklyTime }
         ];
         
         const { error } = await supabase
@@ -516,15 +563,22 @@ export async function saveTelegramSettings() {
             .upsert(updates, { onConflict: 'setting_key' });
             
         if (error) throw error;
+
+        // تحديث جدول المواعيد تلقائياً في pg_cron
+        try {
+            await supabase.rpc('reschedule_telegram_reports_cron');
+        } catch (cronErr) {
+            console.warn('Cron rescheduling notice:', cronErr);
+        }
         
-        showToast('تم حفظ إعدادات تليجرام بنجاح 💾', 'success');
+        showToast('تم حفظ إعدادات ومواعيد تقارير تليجرام بنجاح 💾⏰', 'success');
     } catch (e) {
         console.error('Error saving Telegram settings:', e);
         showToast('خطأ أثناء حفظ الإعدادات في قاعدة البيانات', 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = `<i class="ph ph-floppy-disk text-base"></i> حفظ إعدادات تليجرام`;
+            btn.innerHTML = `<i class="ph ph-floppy-disk text-base"></i> حفظ الإعدادات`;
         }
     }
 }
@@ -545,24 +599,26 @@ export function toggleTelegramSettingsCard() {
     }
 }
 
-// 12. تجربة وإرسال إشعار فحص فوري لبوت التليجرام (حل خطأ 7)
+// 12. تجربة وإرسال إشعار فحص فوري لبوت التليجرام
 export async function testTelegramConnection() {
     const tokenInput = document.getElementById('telegram-bot-token');
     const chatInput = document.getElementById('telegram-chat-id');
     const stockChatInput = document.getElementById('telegram-stock-chat-id');
     const backupChatInput = document.getElementById('telegram-backup-chat-id');
+    const reportsChatInput = document.getElementById('telegram-reports-chat-id');
     const btn = document.getElementById('test-tg-btn');
 
     const token = tokenInput ? tokenInput.value.trim() : '';
     const chat = chatInput ? chatInput.value.trim() : '';
     const stockChat = stockChatInput ? stockChatInput.value.trim() : '';
     const backupChat = backupChatInput ? backupChatInput.value.trim() : '';
+    const reportsChat = reportsChatInput ? reportsChatInput.value.trim() : '';
 
     if (!token) {
         showToast('يرجى كتابة Bot Token الخاص بك أولاً للتجربة', 'warning');
         return;
     }
-    if (!chat && !stockChat && !backupChat) {
+    if (!chat && !stockChat && !backupChat && !reportsChat) {
         showToast('يرجى تحديد معرف محادثة واحد على الأقل للتجربة', 'warning');
         return;
     }
@@ -579,6 +635,7 @@ export async function testTelegramConnection() {
     if (chat) targetChats.push({ id: chat, name: 'مجموعة الطلبات' });
     if (stockChat && stockChat !== chat) targetChats.push({ id: stockChat, name: 'مجموعة المخزون' });
     if (backupChat && backupChat !== chat && backupChat !== stockChat) targetChats.push({ id: backupChat, name: 'مجموعة النسخ الاحتياطي' });
+    if (reportsChat && reportsChat !== chat && reportsChat !== stockChat && reportsChat !== backupChat) targetChats.push({ id: reportsChat, name: 'مجموعة التقارير' });
 
     for (const target of targetChats) {
         try {
@@ -614,5 +671,180 @@ export async function testTelegramConnection() {
         showToast(`تم الإرسال بنجاح لـ ${successCount} محادثة مع وجود خطأ: ${errorMsgs.join(' | ')}`, 'warning');
     } else {
         showToast(`فشل اختبار الاتصال ببوت التليجرام: ${errorMsgs.join(' | ')}`, 'error');
+    }
+}
+
+// 13. إرسال تقرير اليوم فورياً إلى جروب التليجرام
+export async function sendDailyReportToTelegramNow() {
+    const btn = document.getElementById('send-daily-tg-report-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال تقرير اليوم...`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: 'daily'
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل توليد التقرير');
+        }
+
+        showToast('تم إرسال تقرير اليوم بنجاح إلى جروب التليجرام 📊🚀', 'success');
+        await fetchNotifications();
+    } catch (e) {
+        console.error('Error sending daily Telegram report:', e);
+        showToast(`تعذر إرسال تقرير اليوم: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-chart-bar text-base"></i> إرسال تقرير اليوم الآن`;
+        }
+    }
+}
+
+// 14. إرسال تقرير الأسبوع فورياً إلى جروب التليجرام
+export async function sendWeeklyReportToTelegramNow() {
+    const btn = document.getElementById('send-weekly-tg-report-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال تقرير الأسبوع...`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: 'weekly'
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل توليد التقرير الأسبوعي');
+        }
+
+        showToast('تم إرسال تقرير الأسبوع بنجاح إلى جروب التليجرام 📅🚀', 'success');
+        await fetchNotifications();
+    } catch (e) {
+        console.error('Error sending weekly Telegram report:', e);
+        showToast(`تعذر إرسال تقرير الأسبوع: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-calendar-check text-base"></i> إرسال تقرير الأسبوع الآن`;
+        }
+    }
+}
+
+// 15. إرسال النسخة الاحتياطية فورياً إلى جروب النسخ الاحتياطي في تليجرام
+export async function sendBackupToTelegramNow() {
+    const btn = document.getElementById('send-backup-tg-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال النسخة...`;
+    }
+
+    try {
+        const { executeCloudAutoBackup } = await import('./backup_restore.js');
+        await executeCloudAutoBackup(true);
+        showToast('تم إنشاء ملف النسخة الاحتياطية وإرساله مباشرة لتليجرام 🛡️🚀', 'success');
+        await fetchNotifications();
+    } catch (e) {
+        console.error('Error sending Telegram backup:', e);
+        showToast(`تعذر إرسال النسخة: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-shield-check text-base"></i> إرسال النسخة الآن`;
+        }
+    }
+}
+
+// دالة مساعدة للتحقق من تسليم التقرير لجروب التقارير مع معالجة معرفات السوبر جروب (-100)
+async function deliverTelegramReportClientSide(rpcData) {
+    if (!rpcData || !rpcData.formatted_message) return;
+
+    const { data: settings } = await supabase
+        .from('home_settings')
+        .select('*')
+        .in('setting_key', ['telegram_bot_token', 'telegram_reports_chat_id', 'telegram_chat_id']);
+
+    const botToken = settings?.find(s => s.setting_key === 'telegram_bot_token')?.setting_value;
+    let reportsChatId = settings?.find(s => s.setting_key === 'telegram_reports_chat_id')?.setting_value || rpcData.chat_id || '-1004352609361';
+
+    if (!botToken || !reportsChatId) return;
+
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: reportsChatId,
+                text: rpcData.formatted_message,
+                parse_mode: 'HTML'
+            })
+        });
+
+        const resData = await res.json();
+        if (!res.ok || !resData.ok) {
+            // 1. معالجة ترقية المجموعة إلى Supergroup والحصول على المعرف الجديد مباشرة من تليجرام
+            const newMigratedId = resData.parameters?.migrate_to_chat_id;
+            if (newMigratedId || resData.description?.includes('upgraded to a supergroup chat')) {
+                const targetNewId = String(newMigratedId || ('-100' + reportsChatId.replace(/^-/, '')));
+                const retryRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: targetNewId,
+                        text: rpcData.formatted_message,
+                        parse_mode: 'HTML'
+                    })
+                });
+                const retryData = await retryRes.json();
+                if (retryRes.ok && retryData.ok) {
+                    await supabase.from('home_settings').upsert({
+                        setting_key: 'telegram_reports_chat_id',
+                        setting_value: targetNewId
+                    }, { onConflict: 'setting_key' });
+                    
+                    const reportsChatInput = document.getElementById('telegram-reports-chat-id');
+                    if (reportsChatInput) reportsChatInput.value = targetNewId;
+                    return;
+                }
+            }
+
+            // 2. إذا كان الخطأ chat not found ولم يكن المعرف يبدأ بـ -100
+            if (resData.description?.includes('chat not found') && !reportsChatId.startsWith('-100')) {
+                const supergroupId = '-100' + reportsChatId.replace(/^-/, '');
+                const retryRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: supergroupId,
+                        text: rpcData.formatted_message,
+                        parse_mode: 'HTML'
+                    })
+                });
+                const retryData = await retryRes.json();
+                if (retryRes.ok && retryData.ok) {
+                    await supabase.from('home_settings').upsert({
+                        setting_key: 'telegram_reports_chat_id',
+                        setting_value: supergroupId
+                    }, { onConflict: 'setting_key' });
+                    
+                    const reportsChatInput = document.getElementById('telegram-reports-chat-id');
+                    if (reportsChatInput) reportsChatInput.value = supergroupId;
+                    return;
+                }
+            }
+
+            if (resData.description?.includes('bot is not a member') || resData.description?.includes('Forbidden')) {
+                throw new Error('البوت ليس عضواً في جروب التقارير! يرجى إضافة البوت للجروب ورفعه مشرفاً أولاً.');
+            }
+            throw new Error(`خطأ من تليجرام: ${resData.description || 'فشل الإرسال'}`);
+        }
+    } catch (err) {
+        console.warn('Client-side telegram delivery check:', err);
+        throw err;
     }
 }

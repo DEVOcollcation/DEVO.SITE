@@ -152,6 +152,40 @@ function setupEventListeners() {
         });
     }
 
+    // Telegram Reports Button Trigger & Modal
+    const tgBtn = document.getElementById('rep-telegram-btn');
+    const tgModal = document.getElementById('rep-telegram-modal');
+    const tgModalClose = document.getElementById('rep-telegram-modal-close');
+    const tgSendDailyBtn = document.getElementById('rep-tg-send-daily');
+    const tgSendWeeklyBtn = document.getElementById('rep-tg-send-weekly');
+    const tgSendCurrentBtn = document.getElementById('rep-tg-send-current');
+
+    if (tgBtn && tgModal) {
+        tgBtn.addEventListener('click', () => {
+            tgModal.classList.remove('hidden');
+            tgModal.classList.add('flex');
+        });
+    }
+
+    if (tgModalClose && tgModal) {
+        tgModalClose.addEventListener('click', () => {
+            tgModal.classList.add('hidden');
+            tgModal.classList.remove('flex');
+        });
+    }
+
+    if (tgSendDailyBtn) {
+        tgSendDailyBtn.addEventListener('click', () => sendTelegramReport('daily'));
+    }
+
+    if (tgSendWeeklyBtn) {
+        tgSendWeeklyBtn.addEventListener('click', () => sendTelegramReport('weekly'));
+    }
+
+    if (tgSendCurrentBtn) {
+        tgSendCurrentBtn.addEventListener('click', () => sendTelegramCurrentReport());
+    }
+
     // --- Tab 1: Sales & Orders Event Listeners ---
     setupFilterListeners('rep-sales-period', 'rep-sales-custom-date', 'rep-sales-from', 'rep-sales-to', 'rep-sales-search', [
         'rep-sales-status',
@@ -1864,5 +1898,219 @@ function getStatusText(status) {
         case 'completed': return 'مكتمل';
         case 'cancelled': return 'ملغي';
         default: return status || '-';
+    }
+}
+
+// ==========================================
+// 📱 Telegram Reports Dispatcher Logic
+// ==========================================
+export async function sendTelegramReport(reportType = 'daily') {
+    const modal = document.getElementById('rep-telegram-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    const reportBtn = document.getElementById('rep-telegram-btn');
+    if (reportBtn) {
+        reportBtn.disabled = true;
+        reportBtn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i><span>جاري الإرسال...</span>`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: reportType
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل إرسال التقرير');
+        }
+
+        const typeLabel = reportType === 'weekly' ? 'الأسبوع الشامل' : 'اليوم';
+        showToast(`تم إرسال تقرير ${typeLabel} بنجاح إلى جروب التليجرام 📊🚀`, 'success');
+    } catch (err) {
+        console.error('Error sending telegram report:', err);
+        showToast(`فشل إرسال التقرير لتليجرام: ${err.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (reportBtn) {
+            reportBtn.disabled = false;
+            reportBtn.innerHTML = `<i class="ph ph-telegram-logo text-base"></i><span>إرسال لتليجرام</span>`;
+        }
+    }
+}
+
+export async function sendTelegramCurrentReport() {
+    const modal = document.getElementById('rep-telegram-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    const reportBtn = document.getElementById('rep-telegram-btn');
+    if (reportBtn) {
+        reportBtn.disabled = true;
+        reportBtn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i><span>جاري الإرسال...</span>`;
+    }
+
+    try {
+        // Fetch bot settings
+        const { data: settingsData } = await supabase
+            .from('home_settings')
+            .select('*')
+            .in('setting_key', ['telegram_bot_token', 'telegram_reports_chat_id', 'telegram_chat_id', 'telegram_enabled', 'telegram_reports_enabled']);
+
+        const settings = {};
+        if (settingsData) {
+            settingsData.forEach(s => settings[s.setting_key] = s.setting_value);
+        }
+
+        const botToken = settings['telegram_bot_token'];
+        const chatId = settings['telegram_reports_chat_id'] || settings['telegram_chat_id'] || '-1004352609361';
+
+        if (!botToken) {
+            throw new Error('يرجى ضبط Bot Token في إعدادات الإشعارات أولاً');
+        }
+
+        let reportTitle = '';
+        let detailsText = '';
+        
+        const now = new Date();
+        const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+        const dayName = days[now.getDay()];
+        const dateStr = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+        const timeStr = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+        if (currentTab === 'sales') {
+            const periodText = getSelectedOptionText('rep-sales-period') || 'مخصص';
+            let totalSales = 0;
+            let totalDeposits = 0;
+            let totalSeries = 0;
+            let totalPieces = 0;
+
+            filteredSalesData.forEach(o => {
+                totalSales += parseFloat(o.total_price) || 0;
+                totalDeposits += parseFloat(o.deposit) || 0;
+                if (o.order_items) {
+                    o.order_items.forEach(item => {
+                        const qty = item.quantity || 0;
+                        totalSeries += qty;
+                        const classSizes = item.models?.classes?.class_sizes || [];
+                        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+                        totalPieces += qty * sizesCount;
+                    });
+                }
+            });
+
+            reportTitle = '📑 <b>تقرير المبيعات والأوردرات (المفلتر)</b>';
+            detailsText = 
+                `📌 <b>الفترة:</b> ${periodText}\n\n` +
+                `💰 <b><u>المؤشرات المالية والكميات:</u></b>\n` +
+                `🧾 <b>عدد الفواتير:</b> ${filteredSalesData.length} فاتورة\n` +
+                `💵 <b>إجمالي المبيعات:</b> <b>${totalSales.toLocaleString('ar-EG')} ج.م</b>\n` +
+                `📥 <b>العرابين المقبوضة:</b> <b>${totalDeposits.toLocaleString('ar-EG')} ج.م</b>\n` +
+                `⏳ <b>المتبقي للتحصيل:</b> <b>${(totalSales - totalDeposits).toLocaleString('ar-EG')} ج.م</b>\n` +
+                `📦 <b>إجمالي السريات:</b> ${totalSeries} سيري\n` +
+                `👕 <b>إجمالي القطع:</b> ${totalPieces} قطعة\n`;
+        } else if (currentTab === 'deposits') {
+            const periodText = getSelectedOptionText('rep-dep-period') || 'مخصص';
+            let totalDep = 0;
+            let totalOrderVal = 0;
+
+            filteredDepositsData.forEach(o => {
+                totalDep += parseFloat(o.deposit) || 0;
+                totalOrderVal += parseFloat(o.total_price) || 0;
+            });
+
+            reportTitle = '💰 <b>تقرير حركة العرابين المقبوضة (المفلتر)</b>';
+            detailsText = 
+                `📌 <b>الفترة:</b> ${periodText}\n\n` +
+                `🧾 <b>عدد الفواتير:</b> ${filteredDepositsData.length}\n` +
+                `📥 <b>إجمالي العرابين:</b> <b>${totalDep.toLocaleString('ar-EG')} ج.م</b>\n` +
+                `💵 <b>قيمة الفواتير الإجمالية:</b> <b>${totalOrderVal.toLocaleString('ar-EG')} ج.م</b>\n` +
+                `⏳ <b>المتبقي بعد العرابين:</b> <b>${(totalOrderVal - totalDep).toLocaleString('ar-EG')} ج.م</b>\n`;
+        } else if (currentTab === 'inventory') {
+            let totalAvailableSeries = 0;
+            let zeroStockCount = 0;
+            let availableColorsCount = 0;
+
+            filteredInventoryData.forEach(inv => {
+                const s = inv.available_series || 0;
+                totalAvailableSeries += s;
+                if (s === 0) zeroStockCount++;
+                else availableColorsCount++;
+            });
+
+            reportTitle = '📦 <b>تقرير المخزون والرصيد الحالي (المفلتر)</b>';
+            detailsText = 
+                `🏷️ <b>عدد عناصر الألوان:</b> ${filteredInventoryData.length}\n` +
+                `✅ <b>إجمالي السريات بالمخزن:</b> <b>${totalAvailableSeries} سيري</b>\n` +
+                `🟢 <b>ألوان متوفرة:</b> ${availableColorsCount}\n` +
+                `🔴 <b>ألوان نفدت:</b> ${zeroStockCount}\n`;
+        } else if (currentTab === 'models') {
+            reportTitle = '🔥 <b>تقرير حركة مبيعات الموديلات (المفلتر)</b>';
+            const top5 = filteredModelsData.slice(0, 5);
+            let top5Text = '';
+            top5.forEach((m, idx) => {
+                const icon = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][idx] || '▫️';
+                top5Text += 
+                    `${icon} <b>${m.name}</b>\n` +
+                    (m.factory_code ? `   • كود: <code>${m.factory_code}</code>\n` : '') +
+                    `   • الكمية: <b>${m.totalPiecesSold || 0} قطعة</b> (${m.totalSeriesSold || 0} سيري)\n` +
+                    `   • الإجمالي: <b>${(m.totalSales || 0).toLocaleString('ar-EG')} ج.م</b>\n\n`;
+            });
+
+            detailsText = 
+                `🏷️ <b>إجمالي الموديلات المفلترة:</b> ${filteredModelsData.length}\n\n` +
+                `🔥 <b><u>أفضل الموديلات المعروضة:</u></b>\n\n${top5Text || 'لا توجد موديلات'}`;
+        } else if (currentTab === 'staff') {
+            reportTitle = '👥 <b>تقرير أداء وحسابات الموظفين (المفلتر)</b>';
+            let staffListText = '';
+            filteredStaffData.slice(0, 5).forEach((u, idx) => {
+                staffListText += `👤 <b>${u.full_name || u.username}:</b> ${u.ordersCount || 0} فواتير • <b>${(u.totalSales || 0).toLocaleString('ar-EG')} ج.م</b>\n`;
+            });
+
+            detailsText = 
+                `👥 <b>عدد الموظفين:</b> ${filteredStaffData.length}\n\n` +
+                `🏆 <b><u>أداء الموظفين:</u></b>\n${staffListText || 'لا توجد بيانات'}`;
+        }
+
+        const fullMessage = 
+            `${reportTitle}\n` +
+            `━━━━━━━━━━━━\n` +
+            `🗓️ <b>اليوم:</b> ${dayName}\n` +
+            `📅 <b>التاريخ:</b> ${dateStr}\n` +
+            `⏰ <b>الوقت:</b> ${timeStr}\n` +
+            `🏭 <b>المصنع:</b> DEVO Factory System\n` +
+            `━━━━━━━━━━━━\n\n` +
+            `${detailsText}\n` +
+            `━━━━━━━━━━━━\n` +
+            `🤖 <i>تم إرسال هذا التقرير من شاشة التقارير بلوحة الأدمن</i>`;
+
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: fullMessage,
+                parse_mode: 'HTML'
+            })
+        });
+
+        const resData = await res.json();
+        if (!res.ok || !resData.ok) {
+            throw new Error(resData.description || 'فشل الإرسال عبر تليجرام');
+        }
+
+        showToast('تم إرسال التقرير المفلتر بنجاح إلى جروب التليجرام 📑🚀', 'success');
+    } catch (err) {
+        console.error('Error sending current filtered report to telegram:', err);
+        showToast(`تعذر إرسال التقرير: ${err.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (reportBtn) {
+            reportBtn.disabled = false;
+            reportBtn.innerHTML = `<i class="ph ph-telegram-logo text-base"></i><span>إرسال لتليجرام</span>`;
+        }
     }
 }

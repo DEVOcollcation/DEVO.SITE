@@ -1135,7 +1135,7 @@ async function fetchAllTableRecords(tableName, onProgress = null) {
 // ============================================================
 // ☁️ تنفيذ وإنشاء النسخة السحابية المجدولة وتنبيه التليجرام
 // ============================================================
-async function executeCloudAutoBackup(isManualClick = false) {
+export async function executeCloudAutoBackup(isManualClick = false) {
     const preset = EXPORT_PRESETS.full_system;
     
     const backupPayload = await generateBackupPayload(preset);
@@ -1266,7 +1266,7 @@ async function sendTelegramBackupNotification(meta, fileSize, publicUrl = '', fi
         if (!tokenRow?.setting_value) return;
 
         // الأولوية لجروب النسخ الاحتياطي المستقل، وإذا لم يتوفر يُستخدم الجروب المعين أو الجروب الافتراضي
-        const targetChatId = backupChatRow?.setting_value?.trim() || '-5367921849' || defaultChatRow?.setting_value?.trim();
+        const targetChatId = backupChatRow?.setting_value?.trim() || '-1004363122042' || defaultChatRow?.setting_value?.trim();
 
         if (!targetChatId) return;
 
@@ -1277,7 +1277,7 @@ async function sendTelegramBackupNotification(meta, fileSize, publicUrl = '', fi
         const formattedDate = new Date().toLocaleString('ar-EG');
 
         const captionText = 
-`🛡️ <b>تأكيد النسخ الاحتياطي للنظام</b>
+`🛡️ <b>النسخ الاحتياطي للنظام</b>
 
 📅 <b>التاريخ والوقت:</b> ${formattedDate}
 📦 <b>نوع النسخة:</b> ${meta.preset_name || 'كاملة'}
@@ -1300,9 +1300,35 @@ ${publicUrl ? `\n🔗 <a href="${publicUrl}">اضغط هنا لتنزيل الن
                     body: formData
                 });
 
-                if (docRes.ok) {
+                const docData = await docRes.json();
+                if (docRes.ok && docData.ok) {
                     console.log('Telegram backup document sent successfully via sendDocument! 🚀');
                     return;
+                }
+
+                // معالجة ترقية الجروب إلى Supergroup (-100...)
+                const newMigratedId = docData.parameters?.migrate_to_chat_id;
+                if (newMigratedId || docData.description?.includes('upgraded to a supergroup chat') || (docData.description?.includes('chat not found') && !chatId.startsWith('-100'))) {
+                    const targetNewId = String(newMigratedId || ('-100' + chatId.replace(/^-/, '')));
+                    const retryFormData = new FormData();
+                    retryFormData.append('chat_id', targetNewId);
+                    retryFormData.append('caption', captionText);
+                    retryFormData.append('parse_mode', 'HTML');
+                    retryFormData.append('document', fileBlob, filename);
+
+                    const retryRes = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+                        method: 'POST',
+                        body: retryFormData
+                    });
+                    const retryData = await retryRes.json();
+                    if (retryRes.ok && retryData.ok) {
+                        await supabase.from('home_settings').upsert({
+                            setting_key: 'telegram_backup_chat_id',
+                            setting_value: targetNewId
+                        }, { onConflict: 'setting_key' });
+                        console.log('Telegram backup document sent to supergroup and ID updated! 🚀');
+                        return;
+                    }
                 }
             } catch (docErr) {
                 console.warn('sendDocument failed, falling back to sendMessage:', docErr);
@@ -1310,7 +1336,7 @@ ${publicUrl ? `\n🔗 <a href="${publicUrl}">اضغط هنا لتنزيل الن
         }
 
         // 2. المحاولة الثانية: إرسال الرسالة النصية التفاعلية الهيكلية
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        const msgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1320,8 +1346,27 @@ ${publicUrl ? `\n🔗 <a href="${publicUrl}">اضغط هنا لتنزيل الن
                 disable_web_page_preview: false
             })
         });
-
-        console.log('Telegram backup notification message sent successfully! 🚀');
+        const msgData = await msgRes.json();
+        if (!msgRes.ok || !msgData.ok) {
+            const newMigratedId = msgData.parameters?.migrate_to_chat_id;
+            if (newMigratedId || msgData.description?.includes('upgraded to a supergroup chat') || (msgData.description?.includes('chat not found') && !chatId.startsWith('-100'))) {
+                const targetNewId = String(newMigratedId || ('-100' + chatId.replace(/^-/, '')));
+                await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: targetNewId,
+                        text: captionText,
+                        parse_mode: 'HTML',
+                        disable_web_page_preview: false
+                    })
+                });
+                await supabase.from('home_settings').upsert({
+                    setting_key: 'telegram_backup_chat_id',
+                    setting_value: targetNewId
+                }, { onConflict: 'setting_key' });
+            }
+        }
 
     } catch (e) {
         console.error('Error sending Telegram notification:', e);
@@ -1447,21 +1492,38 @@ async function restoreDirectFromCloud(filename) {
 
         let jsonContent = null;
 
-        // المحاولة الأولى: عبر Supabase Client Storage Download SDK
+        // المحاولة الأولى: من سجل النسخ السحابية المباشر (سريع وفوري)
         try {
-            const { data, error } = await supabase.storage
-                .from(STORAGE_BUCKET_NAME)
-                .download(filename);
+            const { data: logItem } = await supabase
+                .from('system_backups_log')
+                .select('*')
+                .eq('filename', filename)
+                .maybeSingle();
 
-            if (!error && data) {
-                const text = await data.text();
-                jsonContent = JSON.parse(text);
+            if (logItem?.metadata?.backup_payload) {
+                jsonContent = logItem.metadata.backup_payload;
             }
-        } catch (downloadErr) {
-            console.warn('Storage download SDK notice, trying HTTP public URL fetch:', downloadErr);
+        } catch (dbErr) {
+            console.warn('DB log backup check notice:', dbErr);
         }
 
-        // المحاولة الثانية (Fallback): عبر Fetch المباشر للرابط العام
+        // المحاولة الثانية: عبر Supabase Client Storage Download SDK
+        if (!jsonContent) {
+            try {
+                const { data, error } = await supabase.storage
+                    .from(STORAGE_BUCKET_NAME)
+                    .download(filename);
+
+                if (!error && data) {
+                    const text = await data.text();
+                    jsonContent = JSON.parse(text);
+                }
+            } catch (downloadErr) {
+                console.warn('Storage download SDK notice, trying HTTP public URL fetch:', downloadErr);
+            }
+        }
+
+        // المحاولة الثالثة (Fallback): عبر Fetch المباشر للرابط العام
         if (!jsonContent) {
             const { data: urlData } = supabase.storage
                 .from(STORAGE_BUCKET_NAME)
@@ -1498,6 +1560,27 @@ async function restoreDirectFromCloud(filename) {
 // تنزيل ملف نسخة سحابية
 async function downloadCloudBackup(filename) {
     try {
+        // فحص وجود البيانات المباشرة في السجل
+        const { data: logItem } = await supabase
+            .from('system_backups_log')
+            .select('*')
+            .eq('filename', filename)
+            .maybeSingle();
+
+        if (logItem?.metadata?.backup_payload) {
+            const blob = new Blob([JSON.stringify(logItem.metadata.backup_payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('تم تنزيل النسخة الاحتياطية بنجاح 📥', 'success');
+            return;
+        }
+
         const { data: urlData } = supabase.storage
             .from(STORAGE_BUCKET_NAME)
             .getPublicUrl(filename);
