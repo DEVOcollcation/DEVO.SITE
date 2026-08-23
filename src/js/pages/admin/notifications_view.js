@@ -440,7 +440,7 @@ async function loadTelegramSettings() {
         const { data, error } = await supabase
             .from('home_settings')
             .select('*')
-            .in('setting_key', ['telegram_enabled', 'telegram_stock_enabled', 'web_notifications_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_stock_chat_id']);
+            .in('setting_key', ['telegram_enabled', 'telegram_stock_enabled', 'web_notifications_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_stock_chat_id', 'telegram_backup_chat_id']);
             
         if (error) throw error;
         
@@ -455,6 +455,7 @@ async function loadTelegramSettings() {
         const tokenInput = document.getElementById('telegram-bot-token');
         const chatInput = document.getElementById('telegram-chat-id');
         const stockChatInput = document.getElementById('telegram-stock-chat-id');
+        const backupChatInput = document.getElementById('telegram-backup-chat-id');
         
         if (enabledInput) enabledInput.checked = settings['telegram_enabled'] === 'true';
         if (stockEnabledInput) stockEnabledInput.checked = settings['telegram_stock_enabled'] !== 'false';
@@ -462,6 +463,7 @@ async function loadTelegramSettings() {
         if (tokenInput) tokenInput.value = settings['telegram_bot_token'] || '';
         if (chatInput) chatInput.value = settings['telegram_chat_id'] || '';
         if (stockChatInput) stockChatInput.value = settings['telegram_stock_chat_id'] || '';
+        if (backupChatInput) backupChatInput.value = settings['telegram_backup_chat_id'] || '-5367921849';
     } catch (e) {
         console.error('Error loading Telegram settings:', e);
     }
@@ -475,16 +477,18 @@ export async function saveTelegramSettings() {
     const tokenInput = document.getElementById('telegram-bot-token');
     const chatInput = document.getElementById('telegram-chat-id');
     const stockChatInput = document.getElementById('telegram-stock-chat-id');
+    const backupChatInput = document.getElementById('telegram-backup-chat-id');
     const btn = document.getElementById('save-tg-btn');
     
-    if (!enabledInput || !tokenInput || !chatInput || !stockChatInput) return;
+    if (!enabledInput || !tokenInput || !chatInput) return;
     
     const enabled = enabledInput.checked ? 'true' : 'false';
     const stockEnabled = stockEnabledInput ? (stockEnabledInput.checked ? 'true' : 'false') : 'true';
     const webNotifications = webNotificationsInput ? (webNotificationsInput.checked ? 'true' : 'false') : 'true';
     const token = tokenInput.value.trim();
     const chat = chatInput.value.trim();
-    const stockChat = stockChatInput.value.trim();
+    const stockChat = stockChatInput ? stockChatInput.value.trim() : '';
+    const backupChat = backupChatInput ? backupChatInput.value.trim() : '-5367921849';
     
     if (enabled === 'true' && (!token || !chat)) {
         showToast('يرجى إدخال التوكن ومعرّف المحادثة لتفعيل التنبيهات', 'warning');
@@ -503,7 +507,8 @@ export async function saveTelegramSettings() {
             { setting_key: 'web_notifications_enabled', setting_value: webNotifications },
             { setting_key: 'telegram_bot_token', setting_value: token },
             { setting_key: 'telegram_chat_id', setting_value: chat },
-            { setting_key: 'telegram_stock_chat_id', setting_value: stockChat }
+            { setting_key: 'telegram_stock_chat_id', setting_value: stockChat },
+            { setting_key: 'telegram_backup_chat_id', setting_value: backupChat }
         ];
         
         const { error } = await supabase
@@ -545,18 +550,20 @@ export async function testTelegramConnection() {
     const tokenInput = document.getElementById('telegram-bot-token');
     const chatInput = document.getElementById('telegram-chat-id');
     const stockChatInput = document.getElementById('telegram-stock-chat-id');
+    const backupChatInput = document.getElementById('telegram-backup-chat-id');
     const btn = document.getElementById('test-tg-btn');
 
     const token = tokenInput ? tokenInput.value.trim() : '';
     const chat = chatInput ? chatInput.value.trim() : '';
     const stockChat = stockChatInput ? stockChatInput.value.trim() : '';
+    const backupChat = backupChatInput ? backupChatInput.value.trim() : '';
 
     if (!token) {
         showToast('يرجى كتابة Bot Token الخاص بك أولاً للتجربة', 'warning');
         return;
     }
-    if (!chat && !stockChat) {
-        showToast('يرجى تحديد معرف محادثة (Orders Chat ID أو Stock Chat ID) للتجربة', 'warning');
+    if (!chat && !stockChat && !backupChat) {
+        showToast('يرجى تحديد معرف محادثة واحد على الأقل للتجربة', 'warning');
         return;
     }
 
@@ -571,6 +578,7 @@ export async function testTelegramConnection() {
     const targetChats = [];
     if (chat) targetChats.push({ id: chat, name: 'مجموعة الطلبات' });
     if (stockChat && stockChat !== chat) targetChats.push({ id: stockChat, name: 'مجموعة المخزون' });
+    if (backupChat && backupChat !== chat && backupChat !== stockChat) targetChats.push({ id: backupChat, name: 'مجموعة النسخ الاحتياطي' });
 
     for (const target of targetChats) {
         try {

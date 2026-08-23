@@ -188,10 +188,16 @@
         </div>
 
         <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1" id="sidebar-nav">
-            <a href="#" data-target="view-dashboard" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="الإحصائيات الرئيسية">
-                <i class="ph ph-squares-four text-xl shrink-0"></i>
-                <span class="sidebar-label whitespace-nowrap transition-all duration-300">الإحصائيات الرئيسية</span>
-                <span class="sidebar-tooltip">الإحصائيات الرئيسية</span>
+            <a href="#" data-target="view-dashboard" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="الرئيسية">
+                <i class="ph ph-house-line text-xl shrink-0"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">الرئيسية</span>
+                <span class="sidebar-tooltip">الرئيسية</span>
+            </a>
+            <a href="#" data-target="view-stock-alerts" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تنبيهات المخزون">
+                <i class="ph ph-warning-circle text-xl shrink-0 text-devo-error"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">تنبيهات المخزون</span>
+                <span id="sidebar-stock-alert-badge" class="hidden bg-devo-error/20 text-devo-error border border-devo-error/40 text-[10px] font-bold px-1.5 py-0.5 rounded-full mr-auto">0</span>
+                <span class="sidebar-tooltip">تنبيهات المخزون</span>
             </a>
             <a href="#" data-target="view-admin-orders" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة الأوردرات">
                 <i class="ph ph-receipt text-xl shrink-0"></i>
@@ -368,131 +374,206 @@
         <div class="flex-1 overflow-y-auto p-8 relative" id="main-content">
             
 <div id="view-dashboard" class="view-section hidden h-full">
-    <div class="animate-fade-in space-y-6 pb-20">
+    <div class="animate-fade-in relative w-full h-full min-h-[calc(100vh-140px)] flex flex-col justify-center">
         
-        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-devo-dark border border-devo-gray p-4 md:p-5 rounded-xl shadow-sm">
-            <h2 class="text-xl md:text-2xl font-black text-white flex items-center gap-2">
-                <i class="ph-fill ph-chart-pie-slice text-devo-orange"></i> الإحصائيات الرئيسية
-            </h2>
-            
-            <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-                <div class="flex gap-1 bg-devo-black p-1 rounded-lg border border-devo-gray">
-                    <button onclick="setDashDatePreset('today')" class="px-3 py-1.5 text-xs font-bold text-white hover:bg-devo-gray rounded transition-colors">اليوم</button>
-                    <button onclick="setDashDatePreset('month')" class="px-3 py-1.5 text-xs font-bold text-white hover:bg-devo-gray rounded transition-colors">هذا الشهر</button>
-                    <button onclick="setDashDatePreset('all')" class="px-3 py-1.5 text-xs font-bold text-white hover:bg-devo-gray rounded transition-colors">الكل</button>
-                </div>
-                <div class="flex items-center gap-2 bg-devo-black border border-devo-gray rounded-lg px-2 py-1 flex-1 lg:flex-none">
-                    <span class="text-xs text-devo-muted">من:</span>
-                    <input type="date" id="dash-date-from" class="bg-transparent text-devo-muted outline-none text-xs w-full cursor-pointer">
-                    <span class="text-xs text-devo-muted border-r border-devo-gray pr-2">إلى:</span>
-                    <input type="date" id="dash-date-to" class="bg-transparent text-devo-muted outline-none text-xs w-full cursor-pointer">
-                </div>
-            </div>
-        </div>
+        <!-- 🌟 Hero Banner: Full-Screen Luxury Welcome, DEVO Branding & Live Clock 🌟 -->
+        <div class="relative overflow-hidden bg-gradient-to-br from-devo-dark via-devo-black to-devo-dark border border-devo-gray rounded-3xl p-8 sm:p-14 lg:p-20 shadow-2xl w-full h-full flex flex-col justify-center">
+            <!-- Ambient Glow Elements -->
+            <div class="absolute -top-40 -right-40 w-[30rem] h-[30rem] bg-devo-orange/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-40 -left-40 w-[30rem] h-[30rem] bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none"></div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -bottom-4 text-devo-muted opacity-10"><i class="ph-fill ph-t-shirt text-8xl"></i></div>
-                <div class="relative z-10">
-                    <h3 class="text-devo-muted text-sm font-bold mb-1">إجمالي الموديلات (النشطة)</h3>
-                    <p class="text-3xl font-black text-white" id="dash-stat-total-models">0</p>
-                </div>
-            </div>
-            
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -bottom-4 text-devo-muted opacity-10"><i class="ph-fill ph-money text-8xl"></i></div>
-                <div class="relative z-10">
-                    <h3 class="text-devo-muted text-sm font-bold mb-1">إجمالي المبيعات</h3>
-                    <p class="text-3xl font-black text-devo-success"><span id="dash-stat-total-sales">0</span> <span class="text-sm font-normal">ج.م</span></p>
-                </div>
-            </div>
+            <div class="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-16 w-full max-w-7xl mx-auto">
+                <!-- Left: Branding & Greeting -->
+                <div class="text-center lg:text-right space-y-6 flex-1">
+                    <div class="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-devo-orange/10 border border-devo-orange/30 text-devo-orange text-sm font-bold shadow-sm">
+                        <span class="w-2.5 h-2.5 rounded-full bg-devo-orange animate-ping"></span>
+                        <span id="dash-time-greeting">مرحباً بك</span>
+                    </div>
 
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -bottom-4 text-devo-muted opacity-10"><i class="ph-fill ph-vault text-8xl"></i></div>
-                <div class="relative z-10">
-                    <h3 class="text-devo-muted text-sm font-bold mb-1">إجمالي قيمة المخزون</h3>
-                    <p class="text-3xl font-black text-devo-orange"><span id="dash-stat-stock-value">0</span> <span class="text-sm font-normal">ج.م</span></p>
-                </div>
-            </div>
+                    <h1 class="text-6xl sm:text-7xl lg:text-8xl font-black tracking-widest text-white font-sans">
+                        D<span class="text-devo-orange drop-shadow-[0_0_45px_rgba(249,115,22,0.75)]">E</span>VO
+                    </h1>
 
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -bottom-4 text-devo-muted opacity-10"><i class="ph-fill ph-shopping-bag text-8xl"></i></div>
-                <div class="relative z-10">
-                    <h3 class="text-devo-muted text-sm font-bold mb-1">إجمالي الأوردرات</h3>
-                    <p class="text-3xl font-black text-white" id="dash-stat-orders-count">0</p>
-                </div>
-            </div>
-
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -bottom-4 text-devo-muted opacity-10"><i class="ph-fill ph-trend-up text-8xl"></i></div>
-                <div class="relative z-10">
-                    <h3 class="text-devo-muted text-sm font-bold mb-1">المبيعات</h3>
-                    <p class="text-3xl font-black text-blue-400">
-                        <span id="dash-stat-sold-series">0</span> <span class="text-sm font-normal">سيريه</span>
-                        <span class="text-sm font-normal text-devo-muted block mt-1" id="dash-stat-sold-pieces"></span>
+                    <p class="text-base sm:text-lg md:text-xl text-devo-muted max-w-2xl leading-relaxed">
+                        أهلاً بك <span id="dash-welcome-user" class="text-white font-bold">المسؤول</span> في لوحة تحكم وإدارة عمليات نظام DEVO المتكامل.
                     </p>
+
+                    <div class="flex items-center justify-center lg:justify-start gap-6 pt-3 text-sm text-devo-muted">
+                        <span class="flex items-center gap-2 text-devo-success font-semibold">
+                            <span class="w-2.5 h-2.5 rounded-full bg-devo-success shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                            النظام متصل سحابياً
+                        </span>
+                        <span class="text-devo-gray">|</span>
+                        <span class="flex items-center gap-2">
+                            <i class="ph ph-shield-check text-devo-orange text-lg"></i>
+                            جلسة آمنة ومحمية
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Right: Luxury Digital Clock Widget -->
+                <div class="shrink-0 w-full lg:w-auto flex justify-center">
+                    <div class="bg-devo-black/85 backdrop-blur-md border border-devo-gray/80 rounded-3xl p-8 sm:p-10 text-center shadow-2xl relative overflow-hidden min-w-[320px] sm:min-w-[400px]">
+                        <div class="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-transparent via-devo-orange to-transparent"></div>
+                        
+                        <!-- Digital Clock Display (Enforced LTR) -->
+                        <div dir="ltr" class="flex items-center justify-center gap-3 select-none">
+                            <!-- Hours Box -->
+                            <div class="bg-devo-dark/90 border border-devo-gray/60 px-5 py-4 rounded-2xl shadow-inner text-center min-w-[80px]">
+                                <span id="dash-clock-hours" class="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white block">12</span>
+                                <span class="text-[11px] text-devo-muted font-sans font-bold uppercase tracking-wider block mt-1">ساعة</span>
+                            </div>
+
+                            <!-- Glowing Colon -->
+                            <span class="text-3xl sm:text-4xl font-bold text-devo-orange animate-pulse px-0.5">:</span>
+
+                            <!-- Minutes Box -->
+                            <div class="bg-devo-dark/90 border border-devo-gray/60 px-5 py-4 rounded-2xl shadow-inner text-center min-w-[80px]">
+                                <span id="dash-clock-minutes" class="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white block">00</span>
+                                <span class="text-[11px] text-devo-muted font-sans font-bold uppercase tracking-wider block mt-1">دقيقة</span>
+                            </div>
+
+                            <!-- Glowing Colon -->
+                            <span class="text-3xl sm:text-4xl font-bold text-devo-orange animate-pulse px-0.5">:</span>
+
+                            <!-- Seconds & AM/PM Column -->
+                            <div class="flex flex-col gap-1.5 justify-center">
+                                <!-- Seconds Box -->
+                                <div class="bg-devo-orange/15 border border-devo-orange/30 px-3 py-1.5 rounded-xl text-center min-w-[52px]">
+                                    <span id="dash-clock-seconds" class="text-lg sm:text-xl font-bold font-mono text-devo-orange">00</span>
+                                </div>
+                                <!-- AM/PM Badge -->
+                                <div class="bg-devo-gray/80 border border-devo-gray px-2.5 py-1 rounded-lg text-center">
+                                    <span id="dash-clock-ampm" class="text-xs font-bold text-white">م</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Date & Hijri Display -->
+                        <div class="mt-6 pt-5 border-t border-devo-gray/60 space-y-1.5">
+                            <div id="dash-full-date" class="text-base font-bold text-white flex items-center justify-center gap-2">
+                                <i class="ph ph-calendar-blank text-devo-orange text-lg"></i>
+                                <span>الأحد، 23 أغسطس 2026</span>
+                            </div>
+                            <div id="dash-hijri-date" class="text-sm text-devo-muted font-serif">...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ===== صفحة تنبيهات المخزون المستقلة ===== -->
+<div id="view-stock-alerts" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-10 space-y-5">
+        <!-- Title Header & Quick Actions -->
+        <div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+            <div>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i class="ph-fill ph-warning-circle text-devo-error text-2xl"></i> تنبيهات المخزون
+                </h2>
+                <p class="text-xs text-devo-muted mt-1">متابعة فورية للموديلات والألوان التي قاربت على النفاد (أقل من 5 سيريه) أو نفذت تماماً لإعادة التوريد سريعاً</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <button id="sa-refresh-btn" class="bg-devo-gray hover:bg-devo-black text-white px-3.5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 border border-devo-gray text-xs cursor-pointer" title="تحديث البيانات">
+                    <i class="ph ph-arrows-clockwise text-base"></i>
+                    <span class="hidden sm:inline">تحديث</span>
+                </button>
+                <button id="sa-print-btn" class="bg-devo-gray hover:bg-white hover:text-black text-white px-3.5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 border border-devo-gray text-xs cursor-pointer" title="طباعة تقرير النواقص">
+                    <i class="ph ph-printer text-base"></i>
+                    <span class="hidden sm:inline">طباعة التقرير</span>
+                </button>
+                <button onclick="goToAddBatchForModel()" class="bg-devo-orange hover:bg-devo-orange-hover text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 text-xs cursor-pointer">
+                    <i class="ph ph-truck text-base"></i>
+                    <span>إضافة شحنة / رصيد</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 4 Summary Stat Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex items-center justify-between shadow-sm">
+                <div>
+                    <span class="text-xs text-devo-muted block mb-1">إجمالي التنبيهات</span>
+                    <span class="text-2xl font-black text-white" id="sa-stat-total-alerts">0</span>
+                    <span class="text-[10px] text-devo-muted block mt-0.5">لون وموديل بحاجة لمتابعة</span>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-devo-gray/50 flex items-center justify-center text-devo-orange text-2xl shrink-0">
+                    <i class="ph ph-bell-ringing"></i>
                 </div>
             </div>
 
-            <div class="bg-devo-dark border border-devo-gray p-5 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -bottom-4 text-devo-muted opacity-10"><i class="ph-fill ph-package text-8xl"></i></div>
-                <div class="relative z-10">
-                    <h3 class="text-devo-muted text-sm font-bold mb-1">المتبقي في المخزن</h3>
-                    <p class="text-3xl font-black text-purple-400">
-                        <span id="dash-stat-remaining-series">0</span> <span class="text-sm font-normal">سيريه</span>
-                        <span class="text-sm font-normal text-devo-muted block mt-1" id="dash-stat-remaining-pieces"></span>
-                    </p>
+            <div class="bg-devo-dark border border-devo-error/30 p-4 rounded-xl flex items-center justify-between shadow-sm">
+                <div>
+                    <span class="text-xs text-devo-error block mb-1">نفذت الكمية تماماً</span>
+                    <span class="text-2xl font-black text-devo-error" id="sa-stat-out-of-stock">0</span>
+                    <span class="text-[10px] text-devo-muted block mt-0.5">رصيد 0 سيريه</span>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-devo-error/10 border border-devo-error/20 flex items-center justify-center text-devo-error text-2xl shrink-0">
+                    <i class="ph ph-x-circle"></i>
                 </div>
             </div>
 
-        </div>
+            <div class="bg-devo-dark border border-amber-500/30 p-4 rounded-xl flex items-center justify-between shadow-sm">
+                <div>
+                    <span class="text-xs text-amber-400 block mb-1">كميات حرجة</span>
+                    <span class="text-2xl font-black text-amber-400" id="sa-stat-critical-stock">0</span>
+                    <span class="text-[10px] text-devo-muted block mt-0.5">من 1 إلى 4 سيريه</span>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-2xl shrink-0">
+                    <i class="ph ph-warning"></i>
+                </div>
+            </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div class="bg-devo-black border border-devo-gray/50 p-3 rounded-lg text-center flex flex-col justify-center items-center">
-                <span class="text-xl font-bold text-white mb-1" id="dash-stat-created">0</span>
-                <span class="text-[10px] text-devo-muted bg-devo-gray/20 px-2 py-1 rounded w-full">أوردرات مُنشأة</span>
-            </div>
-            <div class="bg-devo-black border border-devo-orange/20 p-3 rounded-lg text-center flex flex-col justify-center items-center">
-                <span class="text-xl font-bold text-devo-orange mb-1" id="dash-stat-in_progress">0</span>
-                <span class="text-[10px] text-devo-orange bg-devo-orange/10 px-2 py-1 rounded w-full">جاري العمل</span>
-            </div>
-            <div class="bg-devo-black border border-blue-500/20 p-3 rounded-lg text-center flex flex-col justify-center items-center">
-                <span class="text-xl font-bold text-blue-400 mb-1" id="dash-stat-registered">0</span>
-                <span class="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-1 rounded w-full">تم التسجيل</span>
-            </div>
-            <div class="bg-devo-black border border-purple-500/20 p-3 rounded-lg text-center flex flex-col justify-center items-center">
-                <span class="text-xl font-bold text-purple-400 mb-1" id="dash-stat-preparing">0</span>
-                <span class="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-1 rounded w-full">جاري التجهيز</span>
-            </div>
-            <div class="bg-devo-black border border-green-500/20 p-3 rounded-lg text-center flex flex-col justify-center items-center">
-                <span class="text-xl font-bold text-green-400 mb-1" id="dash-stat-shipped">0</span>
-                <span class="text-[10px] text-green-400 bg-green-500/10 px-2 py-1 rounded w-full">تم الشحن</span>
-            </div>
-            <div class="bg-devo-black border border-devo-success/30 p-3 rounded-lg text-center flex flex-col justify-center items-center shadow-[0_0_10px_rgba(34,197,94,0.1)]">
-                <span class="text-xl font-bold text-devo-success mb-1" id="dash-stat-delivered">0</span>
-                <span class="text-[10px] text-devo-success bg-devo-success/10 px-2 py-1 rounded w-full">تم التسليم</span>
+            <div class="bg-devo-dark border border-blue-500/30 p-4 rounded-xl flex items-center justify-between shadow-sm">
+                <div>
+                    <span class="text-xs text-blue-400 block mb-1">الموديلات المتأثرة</span>
+                    <span class="text-2xl font-black text-blue-400" id="sa-stat-affected-models">0</span>
+                    <span class="text-[10px] text-devo-muted block mt-0.5">موديل فريد به نواقص</span>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-2xl shrink-0">
+                    <i class="ph ph-t-shirt"></i>
+                </div>
             </div>
         </div>
 
+        <!-- Filter & Search Bar -->
+        <div class="bg-devo-dark border border-devo-gray p-3 rounded-xl flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-sm">
+            <div class="relative flex-1">
+                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                <input type="text" id="sa-search" placeholder="بحث باسم الموديل، كود المصنع، كود النظام، أو اللون..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-10 pl-4 py-2.5 text-xs text-white placeholder-devo-muted outline-none focus:border-devo-orange transition-colors">
+            </div>
+            <div class="flex items-center gap-2">
+                <select id="sa-status-filter" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-devo-orange transition-colors cursor-pointer">
+                    <option value="all">كل التنبيهات (أقل من 5)</option>
+                    <option value="out_of_stock">نفذت الكمية فقط (0 سيريه)</option>
+                    <option value="critical">كمية حرجة فقط (1 إلى 4 سيريه)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Main Stock Alerts Table -->
         <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm">
-            <div class="p-4 bg-devo-black border-b border-devo-gray flex justify-between items-center">
-                <h3 class="font-bold text-white flex items-center gap-2">
-                    <i class="ph-fill ph-warning-circle text-devo-error text-lg"></i> تنبيهات المخزون الحرج (أقل من 5)
-                </h3>
-            </div>
-            <div class="overflow-x-auto max-h-80 custom-scrollbar">
+            <div class="overflow-x-auto max-h-[calc(100vh-340px)] custom-scrollbar">
                 <table class="w-full text-right text-sm">
                     <thead class="bg-devo-black/90 sticky top-0 backdrop-blur-sm z-10 border-b border-devo-gray text-devo-muted text-xs">
                         <tr>
                             <th class="p-3">الموديل والكود</th>
+                            <th class="p-3">التصنيف والفئة</th>
                             <th class="p-3">اللون</th>
                             <th class="p-3 text-center">المتاح (سيريه)</th>
                             <th class="p-3 text-center">الحالة</th>
+                            <th class="p-3 text-center">إجراءات سريعة</th>
                         </tr>
                     </thead>
-                    <tbody id="dash-low-stock-tbody" class="divide-y divide-devo-gray">
-                        </tbody>
+                    <tbody id="sa-table-body" class="divide-y divide-devo-gray">
+                        <tr>
+                            <td colspan="6" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -3136,6 +3217,12 @@
                     <div class="flex flex-col gap-1">
                         <label class="text-[11px] font-bold text-devo-muted">معرّف مجموعة المخزون (Stock Chat ID)</label>
                         <input type="text" id="telegram-stock-chat-id" placeholder="مثال: -100123456789" 
+                            class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-bold text-devo-muted">معرّف مجموعة النسخ الاحتياطي (Backup Chat ID)</label>
+                        <input type="text" id="telegram-backup-chat-id" placeholder="مثال: -5367921849" 
                             class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none">
                     </div>
                     

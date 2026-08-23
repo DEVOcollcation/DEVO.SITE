@@ -186,6 +186,10 @@ async function loadViewLogic(targetId) {
             const { initDashboard } = await import('./dashboard.js');
             await initDashboard();
             break;
+        case 'view-stock-alerts':
+            const { initStockAlertsView } = await import('./stock_alerts.js');
+            await initStockAlertsView();
+            break;
         case 'view-users':
             await initUsersView();
             break;
@@ -335,6 +339,13 @@ export async function refreshAllSystemData(options = {}) {
                     const dashMod = await import('./dashboard.js').catch(() => null);
                     if (dashMod && typeof dashMod.fetchDashboardData === 'function') {
                         await dashMod.fetchDashboardData();
+                    }
+                    break;
+                }
+                case 'view-stock-alerts': {
+                    const saMod = await import('./stock_alerts.js').catch(() => null);
+                    if (saMod && typeof saMod.fetchStockAlertsData === 'function') {
+                        await saMod.fetchStockAlertsData();
                     }
                     break;
                 }

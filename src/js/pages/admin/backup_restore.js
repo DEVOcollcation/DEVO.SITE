@@ -1255,17 +1255,23 @@ async function sendTelegramBackupNotification(meta, fileSize, publicUrl = '', fi
         const { data: settings } = await supabase
             .from('home_settings')
             .select('*')
-            .in('setting_key', ['telegram_bot_token', 'telegram_chat_id']);
+            .in('setting_key', ['telegram_bot_token', 'telegram_backup_chat_id', 'telegram_chat_id']);
 
         if (!settings || settings.length === 0) return;
 
         const tokenRow = settings.find(s => s.setting_key === 'telegram_bot_token');
-        const chatIdRow = settings.find(s => s.setting_key === 'telegram_chat_id');
+        const backupChatRow = settings.find(s => s.setting_key === 'telegram_backup_chat_id');
+        const defaultChatRow = settings.find(s => s.setting_key === 'telegram_chat_id');
 
-        if (!tokenRow?.setting_value || !chatIdRow?.setting_value) return;
+        if (!tokenRow?.setting_value) return;
+
+        // الأولوية لجروب النسخ الاحتياطي المستقل، وإذا لم يتوفر يُستخدم الجروب المعين أو الجروب الافتراضي
+        const targetChatId = backupChatRow?.setting_value?.trim() || '-5367921849' || defaultChatRow?.setting_value?.trim();
+
+        if (!targetChatId) return;
 
         const botToken = tokenRow.setting_value.trim();
-        const chatId = chatIdRow.setting_value.trim();
+        const chatId = targetChatId;
 
         const formattedSize = (fileSize / 1024).toFixed(1) + ' KB';
         const formattedDate = new Date().toLocaleString('ar-EG');
