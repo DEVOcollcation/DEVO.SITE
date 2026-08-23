@@ -477,10 +477,38 @@ window.reprintOrder = async (id) => {
 };
 
 window.toggleArchive = async (id, archiveStatus) => {
-    const { error } = await supabase.from('orders').update({ is_archived: archiveStatus }).eq('id', id);
-    if (!error) {
-        showToast(archiveStatus ? 'تم نقل الأوردر للأرشيف' : 'تم استعادة الأوردر', 'success');
-        fetchMyOrders();
+    const o = allOrders.find(x => x.id === id);
+    if (!o) return;
+
+    const previousStatus = o.is_archived;
+    // Optimistic update
+    o.is_archived = archiveStatus;
+    renderOrders();
+
+    let updateError = null;
+    try {
+        // محاولة تنفيذ الدالة السحابية المركزية
+        const { error: rpcError } = await supabase.rpc('toggle_order_archive', {
+            p_order_id: id,
+            p_archive_status: archiveStatus
+        });
+
+        if (rpcError) {
+            console.warn('Worker RPC toggle_order_archive fallback to direct update:', rpcError);
+            const { error: directError } = await supabase.from('orders').update({ is_archived: archiveStatus }).eq('id', id);
+            if (directError) updateError = directError;
+        }
+    } catch (err) {
+        updateError = err;
+    }
+
+    if (updateError) {
+        console.error('Error toggling worker order archive:', updateError);
+        o.is_archived = previousStatus;
+        renderOrders();
+        showToast('فشل تعديل حالة الأرشفة: ' + (updateError.message || updateError), 'error');
+    } else {
+        showToast(archiveStatus ? 'تم نقل الأوردر للأرشيف' : 'تم استعادة الأوردر من الأرشيف', 'success');
     }
 };
 

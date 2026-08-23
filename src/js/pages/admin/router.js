@@ -110,6 +110,18 @@ function switchView(targetId, titleElement) {
         pageTitle.textContent = titleElement.querySelector('span').textContent;
     }
 
+    // 4.1 إظهار تبويبات الأوردرات في الهيدر العلوي فقط عند فتح صفحة إدارة الأوردرات
+    const aoHeaderTabs = document.getElementById('ao-header-tabs');
+    if (aoHeaderTabs) {
+        if (targetId === 'view-admin-orders') {
+            aoHeaderTabs.classList.remove('hidden');
+            aoHeaderTabs.classList.add('flex');
+        } else {
+            aoHeaderTabs.classList.add('hidden');
+            aoHeaderTabs.classList.remove('flex');
+        }
+    }
+
     // 5. Initialize View Logic (Lazy Loading)
     loadViewLogic(targetId);
 }

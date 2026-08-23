@@ -286,7 +286,23 @@
     <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
         
         <header class="h-20 bg-devo-black/80 backdrop-blur-md border-b border-devo-gray flex items-center justify-between px-8 z-[80]">
-            <h2 class="text-xl font-bold text-white" id="page-title">جاري التحميل...</h2>
+            <div class="flex items-center gap-4">
+                <h2 class="text-xl font-bold text-white" id="page-title">جاري التحميل...</h2>
+
+                <!-- تبويبات الأوردرات النشطة والأرشيف بالهيدر العلوي -->
+                <div id="ao-header-tabs" class="hidden items-center gap-1 bg-devo-dark p-1 rounded-xl border border-devo-gray shadow-sm">
+                    <button id="ao-tab-active" onclick="switchAdminOrdersTab('active')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer">
+                        <i class="ph ph-list-dashes text-sm"></i>
+                        <span>الأوردرات النشطة</span>
+                        <span id="ao-badge-active" class="bg-black/30 text-white text-[10px] px-1.5 py-0.5 rounded-full mr-1">0</span>
+                    </button>
+                    <button id="ao-tab-archived" onclick="switchAdminOrdersTab('archived')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-archive text-sm"></i>
+                        <span>الأرشيف</span>
+                        <span id="ao-badge-archived" class="bg-devo-gray/40 text-devo-muted text-[10px] px-1.5 py-0.5 rounded-full mr-1">0</span>
+                    </button>
+                </div>
+            </div>
             
             <div class="flex items-center gap-4">
                 <!-- أزرار التنقل السريع للمدير -->
@@ -597,19 +613,6 @@
 <div id="view-admin-orders" class="view-section hidden h-full">
     <div class="animate-fade-in relative pb-10 space-y-4">
         
-        <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
-            <div>
-                <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                    <i class="ph ph-receipt text-devo-orange"></i> لوحة إدارة الأوردرات
-                </h2>
-            </div>
-            <button onclick="refreshAllSystemData()" class="bg-devo-gray hover:bg-devo-black text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray text-sm" title="تحديث أحدث البيانات من قاعدة البيانات">
-                <i class="ph ph-arrows-clockwise text-xl refresh-icon-spin"></i>
-                <span>تحديث البيانات</span>
-            </button>
-
-        </div>
-
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div class="bg-devo-dark border border-devo-gray py-3 px-4 rounded-xl shadow-sm text-center">
                 <span class="block text-devo-muted text-[10px] font-bold mb-1">إجمالي الأوردرات</span>
