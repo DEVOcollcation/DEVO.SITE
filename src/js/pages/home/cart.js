@@ -461,41 +461,6 @@ window.confirmRemoveModelFromCart = async (modelId) => {
     }
 };
 
-// 🌟 دالة إفراغ السلة بالكامل وإلغاء وضع التعديل 🌟
-window.clearEntireCart = async () => {
-    if (cartItems.length === 0 && !editingOrderId) {
-        return showToast('السلة فارغة بالفعل', 'info');
-    }
-
-    const confirmed = await confirmDialog({ 
-        title: 'إفراغ السلة', 
-        message: 'هل أنت متأكد من رغبتك في إفراغ السلة بالكامل وإلغاء أي تعديلات جارية؟', 
-        isDestructive: true 
-    });
-    
-    if (confirmed) {
-        if (editingOrderId) {
-            const finalEditingOrderId = editingOrderId;
-            await supabase.rpc('release_order_lock', { p_order_id: finalEditingOrderId });
-
-            const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
-            await logOrderAction(finalEditingOrderId, 'cart_edit_cancel', `تم إلغاء تعديل الأوردر وإفراغ السلة بواسطة (${userName})`);
-        }
-
-        cartItems = [];
-        editingOrderId = null;
-        localStorage.removeItem('devo_cart');
-        localStorage.removeItem('devo_edit_order_data');
-        
-        const form = document.getElementById('checkout-form');
-        if (form) form.reset();
-        
-        updateFloatingCart();
-        loadAndRenderCart();
-        showToast('تم إفراغ السلة وإلغاء وضع التعديل بنجاح', 'success');
-    }
-};
-
 function updateFilterButtonsUI() {
     const filters = {
         all: {
@@ -641,13 +606,19 @@ async function handleCheckout(e) {
         // 3) قفل صفوف المخزون أثناء الخصم (FOR UPDATE) لمنع بيع نفس القطعة لعميلين في نفس اللحظة.
         // 4) عدم حدوث حالة "أوردر بلا أصناف" لو فشلت خطوة في النص، لأن كل حاجة بقت جوه معاملة واحدة.
 
+        const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+
         if (editingOrderId) {
-            const { data: checkOrder } = await supabase.from('orders').select('is_locked, assigned_admin_name').eq('id', editingOrderId).single();
-            if (checkOrder && checkOrder.is_locked) {
-                const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || '';
-                // السماح بالحفظ فقط إذا كان حائز القفل هو نفس المستخدم الحالي
-                if (checkOrder.assigned_admin_name !== myName) {
-                    showToast('عفواً، لقد قامت الإدارة أو مستخدم آخر بقفل هذا الأوردر ولا يمكن تعديله الآن!', 'error');
+            const { data: checkOrder } = await supabase.from('orders').select('status, is_locked, assigned_admin_name').eq('id', editingOrderId).single();
+            if (checkOrder) {
+                if (checkOrder.status === 'registered') {
+                    showToast('عفواً، تم تسجيل هذا الأوردر ولا يمكن تعديله أو حفظ أي تعديلات عليه نهائياً!', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = `حفظ التعديلات وإصدار الفاتورة`;
+                    return;
+                }
+                if (checkOrder.is_locked && checkOrder.assigned_admin_name && checkOrder.assigned_admin_name !== myName) {
+                    showToast(`عفواً، هذا الأوردر مقفول حالياً بواسطة (${checkOrder.assigned_admin_name}) ولا يمكن تعديله الآن!`, 'error');
                     btn.disabled = false;
                     btn.innerHTML = `حفظ التعديلات وإصدار الفاتورة`;
                     return;

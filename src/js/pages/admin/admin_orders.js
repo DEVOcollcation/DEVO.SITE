@@ -191,11 +191,16 @@ function generateOrderRowHTML(o) {
     const isOwnerOrAdmin = currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin';
 
     // الحماية والتأكد من إمكانية التعديل
+    const isRegistered = o.status === 'registered';
     const isEditable = o.status === 'created' && !o.is_locked;
+    const editLockTitle = isRegistered
+        ? 'تم تسجيل هذا الأوردر ولا يمكن تعديله نهائياً'
+        : (o.is_locked ? 'الأوردر مقفل أو قيد التعديل حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله');
+
     const editBtnHtml = isOwnerOrAdmin
         ? (isEditable 
             ? `<button onclick="openEditOrderChoices('${o.id}')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple text-lg"></i></button>`
-            : `<button disabled class="p-1.5 bg-devo-gray/30 text-devo-muted rounded cursor-not-allowed opacity-50" title="${o.is_locked ? 'الأوردر مقفل أو قيد التعديل حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله'}"><i class="ph ph-lock text-lg text-devo-muted"></i></button>`)
+            : `<button disabled class="p-1.5 bg-devo-gray/30 text-devo-muted rounded cursor-not-allowed opacity-50" title="${editLockTitle}"><i class="ph ph-lock text-lg text-devo-muted"></i></button>`)
         : '';
 
     const lockIcon = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="${o.is_locked ? 'text-devo-error' : 'text-devo-success'} p-1 hover:bg-white/10 rounded transition-colors" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-lg"></i></button>`;
@@ -880,6 +885,11 @@ window.openEditOrderChoices = async (orderId) => {
     const o = freshOrder || allAdminOrders.find(x => x.id === orderId);
     if (!o) return;
 
+    if (o.status === 'registered') {
+        currentEditingOrderId = null;
+        return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
+    }
+
     // إعادة تعيين خطوات المودال
     document.getElementById('eoc-step-select').classList.remove('hidden');
     document.getElementById('eoc-step-assign').classList.add('hidden');
@@ -950,8 +960,12 @@ window.triggerLocalEdit = async () => {
     const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
     if (!o) return;
 
+    if (o.status === 'registered') {
+        return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
+    }
+
     if (o.is_locked && o.assigned_admin_name && o.assigned_admin_name !== currentUserProfile?.full_name && currentUserProfile?.role !== 'owner') {
-        return showToast('هذا الأوردر مغلق بواسطة إداري آخر!', 'error');
+        return showToast(`هذا الأوردر مقفول حالياً بواسطة (${o.assigned_admin_name})!`, 'error');
     }
 
     // قفل الأوردر بقاعدة البيانات فوراً لمنع التعديل المتزامن وتغيير الحالة إلى جاري التعديل
@@ -1362,8 +1376,12 @@ window.triggerCartEdit = async () => {
     const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
     if (!o) return;
 
+    if (o.status === 'registered') {
+        return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
+    }
+
     if (o.is_locked && o.assigned_admin_name && o.assigned_admin_name !== currentUserProfile?.full_name && currentUserProfile?.role !== 'owner') {
-        return showToast('هذا الأوردر مغلق بواسطة إداري آخر!', 'error');
+        return showToast(`هذا الأوردر مقفول حالياً بواسطة (${o.assigned_admin_name})!`, 'error');
     }
 
     // قفل الأوردر بقاعدة البيانات لمنع التعديل المتزامن وتغيير الحالة إلى جاري التعديل

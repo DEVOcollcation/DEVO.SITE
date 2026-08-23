@@ -225,14 +225,21 @@ function renderOrders() {
         const dateStr = new Date(o.created_at).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
         
         const lockIcon = o.is_locked ? `<i class="ph ph-lock text-devo-error" title="مقفل بواسطة الإدارة"></i>` : '';
-        const isEditable = o.status === 'created' && !o.is_locked;
+        const isRegistered = o.status === 'registered';
+        const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+        const isEditingByMe = o.status === 'editing' && o.assigned_admin_name === myName;
+        const isEditable = (o.status === 'created' || isEditingByMe) && (!o.is_locked || isEditingByMe);
+        const lockTitle = isRegistered 
+            ? 'تم تسجيل هذا الأوردر ولا يمكن تعديله نهائياً' 
+            : (o.is_locked ? `الأوردر قيد التعديل بواسطة (${o.assigned_admin_name || 'مستخدم آخر'})` : 'يجب أن يكون الأوردر بحالة تم إنشاء الأوردر لتعديله');
+
         let actionButtons = `
             <div class="flex items-center justify-center gap-2">
                 <button onclick="viewOrderDetails('${o.id}')" class="p-2 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded text-white transition-colors" title="عرض"><i class="ph ph-eye"></i></button>
                 <button onclick="reprintOrder('${o.id}')" class="p-2 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="طباعة"><i class="ph ph-printer"></i></button>
                 ${isEditable 
                     ? `<button onclick="confirmEditOrder('${o.id}')" class="p-2 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple"></i></button>` 
-                    : `<button disabled class="p-2 bg-devo-gray/20 text-devo-muted rounded cursor-not-allowed" title="${o.is_locked ? 'هذا الأوردر قيد العمل من قبل الإدارة حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله'}"><i class="ph ph-lock text-devo-muted"></i></button>`
+                    : `<button disabled class="p-2 bg-devo-gray/20 text-devo-muted rounded cursor-not-allowed" title="${lockTitle}"><i class="ph ph-lock text-devo-muted"></i></button>`
                 }
                 <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="p-2 bg-devo-black border border-devo-gray hover:border-devo-orange rounded text-devo-muted hover:text-white transition-colors" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'}"></i></button>
             </div>
@@ -244,7 +251,7 @@ function renderOrders() {
                 <button onclick="reprintOrder('${o.id}')" class="h-9 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="طباعة"><i class="ph ph-printer text-sm"></i> <span>طباعة</span></button>
                 ${isEditable 
                     ? `<button onclick="confirmEditOrder('${o.id}')" class="h-9 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="تعديل"><i class="ph ph-pencil-simple text-sm"></i> <span>تعديل</span></button>` 
-                    : `<button disabled class="h-9 bg-devo-gray/20 text-devo-muted rounded-lg text-xs font-medium flex items-center justify-center gap-1 opacity-50 cursor-not-allowed" title="${o.is_locked ? 'الأوردر قيد العمل من الإدارة' : 'لا يمكن التعديل'}"><i class="ph ph-lock text-sm"></i> <span>مقفل</span></button>`
+                    : `<button disabled class="h-9 bg-devo-gray/20 text-devo-muted rounded-lg text-xs font-medium flex items-center justify-center gap-1 opacity-50 cursor-not-allowed" title="${lockTitle}"><i class="ph ph-lock text-sm"></i> <span>مقفل</span></button>`
                 }
                 <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="h-9 bg-devo-black border border-devo-gray text-devo-muted hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'} text-sm"></i> <span>${o.is_archived ? 'استعادة' : 'أرشيف'}</span></button>
             </div>
@@ -493,8 +500,13 @@ window.confirmEditOrder = (id) => {
     orderToEdit = allOrders.find(x => x.id === id);
     if (!orderToEdit) return;
 
-    if (orderToEdit.is_locked) {
-        return showToast('هذا الأوردر قيد العمل من قبل الإدارة، لا يمكن تعديله!', 'error');
+    if (orderToEdit.status === 'registered') {
+        return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة تم التسجيل!', 'error');
+    }
+
+    const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+    if (orderToEdit.is_locked && orderToEdit.assigned_admin_name && orderToEdit.assigned_admin_name !== myName) {
+        return showToast(`هذا الأوردر مقفول حالياً للتعديل بواسطة (${orderToEdit.assigned_admin_name})!`, 'error');
     }
 
     const modal = document.getElementById('edit-warning-modal');
