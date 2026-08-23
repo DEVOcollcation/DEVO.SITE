@@ -83,7 +83,7 @@ const views = document.querySelectorAll('.view-section');
 const navLinks = document.querySelectorAll('.nav-link');
 const pageTitle = document.getElementById('page-title');
 
-function switchView(targetId, titleElement) {
+function switchView(targetId, titleElement, subTabParam = null) {
     // 1. Hide all views
     views.forEach(view => {
         view.classList.add('hidden');
@@ -96,18 +96,42 @@ function switchView(targetId, titleElement) {
         link.classList.add('text-devo-muted');
     });
 
+    // 2.1 التعامل مع القائمة الجانبية للتقارير (تمدد أو طي تلقائي عند الخروج)
+    const reportsSubmenu = document.getElementById('sidebar-reports-submenu');
+    const reportsChevron = document.getElementById('reports-chevron');
+    const reportsToggle = document.getElementById('sidebar-reports-toggle');
+
+    if (targetId === 'view-reports') {
+        if (reportsSubmenu) reportsSubmenu.classList.remove('hidden');
+        if (reportsChevron) reportsChevron.classList.add('rotate-180');
+        if (reportsToggle) {
+            reportsToggle.classList.remove('text-devo-muted');
+            reportsToggle.classList.add('text-white');
+        }
+    } else {
+        // الخروج خارج التقارير: طي القائمة الفرعية تلقائياً
+        if (reportsSubmenu) reportsSubmenu.classList.add('hidden');
+        if (reportsChevron) reportsChevron.classList.remove('rotate-180');
+        if (reportsToggle) {
+            reportsToggle.classList.remove('text-white', 'bg-devo-orange/10', 'text-devo-orange');
+            reportsToggle.classList.add('text-devo-muted');
+        }
+    }
+
     // 3. Show the target view
     const targetView = document.getElementById(targetId);
     if (targetView) {
         targetView.classList.remove('hidden');
-        // targetView.classList.add('animate-fade-in'); 
     }
 
     // 4. Highlight active link and update Topbar title
     if (titleElement) {
         titleElement.classList.remove('text-devo-muted');
         titleElement.classList.add('bg-devo-orange/10', 'text-devo-orange');
-        pageTitle.textContent = titleElement.querySelector('span').textContent;
+        const spanText = titleElement.querySelector('span')?.textContent;
+        if (spanText && pageTitle) {
+            pageTitle.textContent = spanText;
+        }
     }
 
     // 4.1 إظهار تبويبات الأوردرات في الهيدر العلوي فقط عند فتح صفحة إدارة الأوردرات
@@ -123,11 +147,12 @@ function switchView(targetId, titleElement) {
     }
 
     // 5. Initialize View Logic (Lazy Loading)
-    loadViewLogic(targetId);
+    const targetSubTab = subTabParam || titleElement?.getAttribute('data-report-tab') || null;
+    loadViewLogic(targetId, targetSubTab);
 }
 
 // Map views to their specific JS initialization functions
-async function loadViewLogic(targetId) {
+async function loadViewLogic(targetId, subTab = null) {
     
     if (targetId === 'view-users' && currentUserContext?.role !== 'owner') {
         showToast('عفواً، هذه الصفحة مخصصة لمالك النظام فقط 🛑', 'error');
@@ -216,10 +241,18 @@ async function loadViewLogic(targetId) {
             const { initAdminOrdersView } = await import('./admin_orders.js?v=8.0');
             await initAdminOrdersView();
             break;
-        case 'view-deposit-reports':
-            const { initDepositReportsView } = await import('./deposit_reports.js');
-            await initDepositReportsView();
+        case 'view-reports': {
+            const { initReportsView, switchReportTab } = await import('./reports.js');
+            await initReportsView(subTab);
+            if (subTab) switchReportTab(subTab);
             break;
+        }
+        case 'view-deposit-reports': {
+            const { initReportsView, switchReportTab } = await import('./reports.js');
+            await initReportsView('deposits');
+            switchReportTab('deposits');
+            break;
+        }
         case 'view-import-stock':
             const { initImportStockView } = await import('./import_stock.js');
             await initImportStockView();
@@ -263,14 +296,37 @@ async function initRouter() {
     // تهيئة نظام الإشعارات اللحظية للأدمن
     initNotifications();
 
-    // Attach click events to Sidebar Links
-    navLinks.forEach(link => {
+    // Attach click events to Sidebar Links (including report sublinks)
+    const currentNavLinks = document.querySelectorAll('.nav-link');
+    currentNavLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const targetId = link.getAttribute('data-target');
-            switchView(targetId, link);
+            const subTab = link.getAttribute('data-report-tab');
+            switchView(targetId, link, subTab);
         });
     });
+
+    // معالجة زر فتح وإغلاق قائمة التقارير الجانبية
+    const reportsToggle = document.getElementById('sidebar-reports-toggle');
+    if (reportsToggle) {
+        reportsToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            const reportsSubmenu = document.getElementById('sidebar-reports-submenu');
+            const reportsChevron = document.getElementById('reports-chevron');
+            const isHidden = reportsSubmenu?.classList.contains('hidden');
+
+            if (isHidden) {
+                reportsSubmenu.classList.remove('hidden');
+                reportsChevron?.classList.add('rotate-180');
+                const firstSublink = document.querySelector('.report-sublink[data-report-tab="sales"]');
+                switchView('view-reports', firstSublink || reportsToggle, 'sales');
+            } else {
+                reportsSubmenu.classList.add('hidden');
+                reportsChevron?.classList.remove('rotate-180');
+            }
+        });
+    }
 
     document.getElementById('logout-btn').addEventListener('click', () => {
         logoutUser(); 
@@ -407,6 +463,14 @@ export async function refreshAllSystemData(options = {}) {
                     const usersMod = await import('./users.js').catch(() => null);
                     if (usersMod && typeof usersMod.loadUsers === 'function') {
                         await usersMod.loadUsers();
+                    }
+                    break;
+                }
+                case 'view-reports':
+                case 'view-deposit-reports': {
+                    const repMod = await import('./reports.js').catch(() => null);
+                    if (repMod && typeof repMod.fetchReportsData === 'function') {
+                        await repMod.fetchReportsData(true);
                     }
                     break;
                 }

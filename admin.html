@@ -204,11 +204,6 @@
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الأوردرات</span>
                 <span class="sidebar-tooltip">إدارة الأوردرات</span>
             </a>
-            <a href="#" data-target="view-deposit-reports" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تقارير العربون">
-                <i class="ph ph-hand-coins text-xl shrink-0"></i>
-                <span class="sidebar-label whitespace-nowrap transition-all duration-300">تقارير العربون</span>
-                <span class="sidebar-tooltip">تقارير العربون</span>
-            </a>
             <a href="#" data-target="view-add-batch" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="فواتير الدخل (شحن دفعات رصيد)">
                 <i class="ph ph-truck text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">اضافة رصيد</span>
@@ -256,6 +251,41 @@
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة المظاهر (Themes)</span>
                 <span class="sidebar-tooltip">إدارة المظاهر</span>
             </a>
+
+            <!-- قسم التقارير المتقدم المنسدل والقابل للطي -->
+            <div id="sidebar-reports-group" class="space-y-1">
+                <button id="sidebar-reports-toggle" type="button" class="w-full sidebar-item group flex items-center justify-between px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative cursor-pointer" title="التقارير">
+                    <div class="flex items-center gap-3">
+                        <i class="ph ph-chart-polar text-xl shrink-0 text-devo-orange"></i>
+                        <span class="sidebar-label whitespace-nowrap transition-all duration-300">التقارير</span>
+                    </div>
+                    <i id="reports-chevron" class="ph ph-caret-down text-xs transition-transform duration-300 sidebar-label"></i>
+                    <span class="sidebar-tooltip">التقارير</span>
+                </button>
+                <div id="sidebar-reports-submenu" class="hidden pr-5 space-y-1 transition-all duration-300">
+                    <a href="#" data-target="view-reports" data-report-tab="sales" class="nav-link report-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="المبيعات والأوردرات">
+                        <i class="ph ph-shopping-bag-open text-base shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">المبيعات والأوردرات</span>
+                    </a>
+                    <a href="#" data-target="view-reports" data-report-tab="deposits" class="nav-link report-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تقارير العربون">
+                        <i class="ph ph-hand-coins text-base shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">تقارير العربون</span>
+                    </a>
+                    <a href="#" data-target="view-reports" data-report-tab="inventory" class="nav-link report-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="المخزن والرصيد">
+                        <i class="ph ph-warehouse text-base shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">المخزن والرصيد</span>
+                    </a>
+                    <a href="#" data-target="view-reports" data-report-tab="models" class="nav-link report-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="حركة الموديلات">
+                        <i class="ph ph-t-shirt text-base shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">حركة الموديلات</span>
+                    </a>
+                    <a href="#" data-target="view-reports" data-report-tab="staff" class="nav-link report-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="الحسابات والعمال">
+                        <i class="ph ph-users-three text-base shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">الحسابات والعمال</span>
+                    </a>
+                </div>
+            </div>
+
             <a href="#" data-target="view-users" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة الحسابات">
                 <i class="ph ph-users text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الحسابات</span>
@@ -580,112 +610,501 @@
 
     </div>
 </div>
-<div id="view-deposit-reports" class="view-section hidden h-full">
-    <div class="animate-fade-in relative pb-10 space-y-5">
-        <!-- Title Header & Quick Actions -->
-        <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
+<div id="view-reports" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-12 space-y-5">
+        <!-- Top Header & Primary Controls -->
+        <div class="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center bg-devo-dark border border-devo-gray p-4 rounded-2xl shadow-sm">
             <div>
-                <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                    <i class="ph ph-hand-coins text-devo-orange"></i> تقارير العربون
+                <h2 class="text-xl font-black text-white flex items-center gap-2.5">
+                    <i class="ph ph-chart-polar text-2xl text-devo-orange"></i>
+                    <span>مركز التقارير الشامل</span>
                 </h2>
-                <p class="text-xs text-devo-muted mt-1">عرض وتفاصيل مبالغ العربون المدفوعة وإمكانية تصفيتها وطباعتها بسهولة</p>
+                <p class="text-xs text-devo-muted mt-1">تقارير وإحصائيات متقدمة ودقيقة للأوردرات، العربون، المخزن، الموديلات، وحسابات العمال</p>
             </div>
-            <div class="flex items-center gap-2">
-                <button id="dr-refresh-btn" class="bg-devo-gray hover:bg-devo-black text-white px-3.5 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 border border-devo-gray text-xs cursor-pointer" title="تحديث البيانات">
+
+            <!-- Quick Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
+                <button id="rep-refresh-btn" type="button" class="bg-devo-gray hover:bg-devo-grayHover text-white px-3.5 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 border border-devo-gray text-xs cursor-pointer" title="تحديث البيانات">
                     <i class="ph ph-arrows-clockwise text-base"></i>
-                    <span class="hidden sm:inline">تحديث</span>
+                    <span>تحديث البيانات</span>
                 </button>
-                <button id="dr-print-btn" class="bg-devo-orange hover:bg-devo-orange-hover text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 text-xs cursor-pointer">
+
+                <!-- Print Trigger -->
+                <button id="rep-print-btn" type="button" class="bg-devo-orange hover:bg-devo-orange-hover text-white px-4 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 text-xs cursor-pointer">
                     <i class="ph ph-printer text-base"></i>
                     <span>طباعة التقرير (المفلتر)</span>
                 </button>
             </div>
         </div>
 
-        <!-- Stat Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div class="bg-devo-dark border border-devo-gray py-4 px-5 rounded-xl shadow-sm flex items-center justify-between">
-                <div>
-                    <span class="block text-devo-muted text-xs font-bold mb-1">عدد عمليات العربون</span>
-                    <span class="text-2xl text-white font-black" id="dr-stat-count">0</span>
+        <!-- Sub-Tabs Navigation Pills -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-devo-gray">
+            <button type="button" data-report-tab="sales" class="reports-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-white bg-devo-orange border border-devo-orange shadow-md shadow-devo-orange/20">
+                <i class="ph ph-shopping-bag-open text-base"></i>
+                <span>المبيعات والأوردرات</span>
+            </button>
+            <button type="button" data-report-tab="deposits" class="reports-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-devo-muted bg-devo-dark border border-devo-gray hover:text-white">
+                <i class="ph ph-hand-coins text-base"></i>
+                <span>تقارير العربون</span>
+            </button>
+            <button type="button" data-report-tab="inventory" class="reports-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-devo-muted bg-devo-dark border border-devo-gray hover:text-white">
+                <i class="ph ph-warehouse text-base"></i>
+                <span>المخزن والرصيد</span>
+            </button>
+            <button type="button" data-report-tab="models" class="reports-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-devo-muted bg-devo-dark border border-devo-gray hover:text-white">
+                <i class="ph ph-t-shirt text-base"></i>
+                <span>حركة الموديلات</span>
+            </button>
+            <button type="button" data-report-tab="staff" class="reports-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-devo-muted bg-devo-dark border border-devo-gray hover:text-white">
+                <i class="ph ph-users-three text-base"></i>
+                <span>الحسابات والعمال</span>
+            </button>
+        </div>
+
+        <!-- ================= PANEL 1: Sales & Orders ================= -->
+        <div id="reports-panel-sales" class="reports-tab-panel space-y-4">
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">إجمالي المبيعات</span>
+                    <span id="rep-sales-stat-total" class="text-xl font-black text-white mt-1">0 ج.م</span>
                 </div>
-                <div class="w-10 h-10 rounded-lg bg-devo-gray/50 flex items-center justify-center text-devo-orange">
-                    <i class="ph ph-receipt text-2xl"></i>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">عدد الأوردرات</span>
+                    <span id="rep-sales-stat-count" class="text-xl font-black text-devo-orange mt-1">0</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">إجمالي الكمية المباعة</span>
+                    <span id="rep-sales-stat-items" class="text-sm font-black text-white mt-1">0 سيري</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">متوسط الأوردر</span>
+                    <span id="rep-sales-stat-avg" class="text-xl font-black text-devo-info mt-1">0 ج.م</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-success/30 p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-success font-bold">المتبقي للتحصيل</span>
+                    <span id="rep-sales-stat-remaining" class="text-xl font-black text-devo-success mt-1">0 ج.م</span>
                 </div>
             </div>
-            <div class="bg-devo-dark border border-devo-success/30 py-4 px-5 rounded-xl shadow-sm flex items-center justify-between">
-                <div>
-                    <span class="block text-devo-success text-xs font-bold mb-1">إجمالي مبالغ العربون (المفلترة)</span>
-                    <span class="text-2xl text-devo-success font-black" id="dr-stat-sum">0 ج.م</span>
+
+            <!-- Filter Bar -->
+            <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:flex flex-1 gap-2">
+                    <div class="relative min-w-[180px] flex-1">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="rep-sales-search" placeholder="بحث برقم الأوردر، العميل، الهاتف، الموظف..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+                    </div>
+                    <select id="rep-sales-period" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="today" selected>اليوم</option>
+                        <option value="yesterday">أمس</option>
+                        <option value="week">آخر 7 أيام</option>
+                        <option value="month">هذا الشهر</option>
+                        <option value="last_month">الشهر السابق</option>
+                        <option value="all">كافة الفترات</option>
+                        <option value="custom">تاريخ مخصص...</option>
+                    </select>
+                    <select id="rep-sales-status" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الحالات</option>
+                        <option value="pending">قيد الانتظار</option>
+                        <option value="confirmed">مؤكد</option>
+                        <option value="prepared">تم التجهيز</option>
+                        <option value="completed">مكتمل</option>
+                        <option value="cancelled">ملغي</option>
+                    </select>
+                    <select id="rep-sales-worker" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الموظفين</option>
+                    </select>
+                    <select id="rep-sales-archive" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="active" selected>الأوردرات النشطة</option>
+                        <option value="archived">المؤرشفة فقط</option>
+                        <option value="all">الكل (نشط ومؤرشف)</option>
+                    </select>
                 </div>
-                <div class="w-10 h-10 rounded-lg bg-devo-success/10 flex items-center justify-center text-devo-success">
-                    <i class="ph ph-currency-circle-dollar text-2xl"></i>
+                <div id="rep-sales-custom-date" class="hidden items-center gap-2 bg-devo-black border border-devo-gray rounded-lg p-1">
+                    <span class="text-[11px] text-devo-muted font-bold px-1">من:</span>
+                    <input type="date" id="rep-sales-from" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                    <span class="text-[11px] text-devo-muted font-bold px-1 border-r border-devo-gray">إلى:</span>
+                    <input type="date" id="rep-sales-to" class="bg-transparent text-white text-xs outline-none cursor-pointer">
                 </div>
             </div>
-            <div class="bg-devo-dark border border-devo-info/30 py-4 px-5 rounded-xl shadow-sm flex items-center justify-between">
-                <div>
-                    <span class="block text-devo-info text-xs font-bold mb-1">متوسط قيم العربون</span>
-                    <span class="text-2xl text-devo-info font-black" id="dr-stat-avg">0 ج.م</span>
-                </div>
-                <div class="w-10 h-10 rounded-lg bg-devo-info/10 flex items-center justify-center text-devo-info">
-                    <i class="ph ph-chart-line-up text-2xl"></i>
+
+            <!-- Table -->
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto min-h-[380px]">
+                    <table class="w-full text-right text-xs whitespace-nowrap">
+                        <thead class="bg-devo-black border-b border-devo-gray text-devo-muted font-bold">
+                            <tr>
+                                <th class="p-3 text-center">#</th>
+                                <th class="p-3">رقم الأوردر</th>
+                                <th class="p-3">التاريخ والوقت</th>
+                                <th class="p-3">العميل والهاتف</th>
+                                <th class="p-3">الموظف</th>
+                                <th class="p-3 text-center">الحالة</th>
+                                <th class="p-3 text-center">الكمية</th>
+                                <th class="p-3">إجمالي الأوردر</th>
+                                <th class="p-3">العربون المحصل</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-sales-table-body" class="divide-y divide-devo-gray/40"></tbody>
+                        <tfoot id="rep-sales-table-foot"></tfoot>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- Filters & Search Toolbar -->
-        <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-            <div class="flex flex-1 flex-col sm:flex-row gap-2">
-                <!-- Text Search -->
-                <div class="relative flex-1 min-w-[220px]">
-                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
-                    <input type="text" id="dr-search-input" autocomplete="off" placeholder="ابحث برقم الأوردر، العميل، الهاتف، العامل، المستلم..." 
-                        class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2.5 text-white focus:border-devo-orange outline-none transition-all text-xs">
+        <!-- ================= PANEL 2: Deposits ================= -->
+        <div id="reports-panel-deposits" class="reports-tab-panel hidden space-y-4">
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-devo-muted font-bold block">عدد عمليات العربون</span>
+                        <span id="rep-dep-stat-count" class="text-2xl font-black text-white mt-1 block">0</span>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-devo-gray/50 flex items-center justify-center text-devo-orange">
+                        <i class="ph ph-receipt text-2xl"></i>
+                    </div>
                 </div>
+                <div class="bg-devo-dark border border-devo-success/30 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-devo-success font-bold block">إجمالي مبالغ العربون</span>
+                        <span id="rep-dep-stat-sum" class="text-2xl font-black text-devo-success mt-1 block">0 ج.م</span>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-devo-success/10 flex items-center justify-center text-devo-success">
+                        <i class="ph ph-currency-circle-dollar text-2xl"></i>
+                    </div>
+                </div>
+                <div class="bg-devo-dark border border-devo-info/30 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-devo-info font-bold block">متوسط مبلغ العربون</span>
+                        <span id="rep-dep-stat-avg" class="text-2xl font-black text-devo-info mt-1 block">0 ج.م</span>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-devo-info/10 flex items-center justify-center text-devo-info">
+                        <i class="ph ph-chart-line-up text-2xl"></i>
+                    </div>
+                </div>
+            </div>
 
-                <!-- Date Period Select -->
-                <div class="min-w-[150px]">
-                    <select id="dr-period-select" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white outline-none focus:border-devo-orange cursor-pointer text-xs font-bold">
-                        <option value="today" selected>اليوم (Default)</option>
+            <!-- Filter Bar -->
+            <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+                <div class="flex flex-1 flex-col sm:flex-row gap-2">
+                    <div class="relative min-w-[200px] flex-1">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="rep-dep-search" placeholder="ابحث برقم الأوردر، العميل، الهاتف، المستلم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+                    </div>
+                    <select id="rep-dep-period" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="today" selected>اليوم</option>
+                        <option value="yesterday">أمس</option>
                         <option value="week">هذا الأسبوع</option>
-                        <option value="custom">من تاريخ - إلى تاريخ</option>
+                        <option value="month">هذا الشهر</option>
+                        <option value="all">كافة الفترات</option>
+                        <option value="custom">تاريخ مخصص...</option>
+                    </select>
+                    <select id="rep-dep-receiver" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة مستلمي العربون</option>
+                    </select>
+                    <select id="rep-dep-worker" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الموظفين</option>
+                    </select>
+                </div>
+                <div id="rep-dep-custom-date" class="hidden items-center gap-2 bg-devo-black border border-devo-gray rounded-lg p-1">
+                    <span class="text-[11px] text-devo-muted font-bold px-1">من:</span>
+                    <input type="date" id="rep-dep-from" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                    <span class="text-[11px] text-devo-muted font-bold px-1 border-r border-devo-gray">إلى:</span>
+                    <input type="date" id="rep-dep-to" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto min-h-[380px]">
+                    <table class="w-full text-right text-xs whitespace-nowrap">
+                        <thead class="bg-devo-black border-b border-devo-gray text-devo-muted font-bold">
+                            <tr>
+                                <th class="p-3 text-center">#</th>
+                                <th class="p-3">رقم الأوردر</th>
+                                <th class="p-3">التاريخ والوقت</th>
+                                <th class="p-3">العميل والهاتف</th>
+                                <th class="p-3">أنشأ الأوردر (الموظف)</th>
+                                <th class="p-3">مستلم العربون</th>
+                                <th class="p-3">قيمة العربون</th>
+                                <th class="p-3">إجمالي الفاتورة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-dep-table-body" class="divide-y divide-devo-gray/40"></tbody>
+                        <tfoot id="rep-dep-table-foot"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PANEL 3: Inventory & Stock ================= -->
+        <div id="reports-panel-inventory" class="reports-tab-panel hidden space-y-4">
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">عدد الموديلات</span>
+                    <span id="rep-inv-stat-models" class="text-xl font-black text-white mt-1">0</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">إجمالي السيريهات</span>
+                    <span id="rep-inv-stat-series" class="text-xl font-black text-devo-orange mt-1">0 سيري</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">إجمالي القطع التقديرية</span>
+                    <span id="rep-inv-stat-pieces" class="text-xl font-black text-white mt-1">0 قطعة</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-success/30 p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-success font-bold">القيمة المالية للمخزون</span>
+                    <span id="rep-inv-stat-value" class="text-xl font-black text-devo-success mt-1">0 ج.م</span>
+                </div>
+                <div class="bg-devo-dark border border-amber-500/30 p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-amber-400 font-bold">تنبيهات انخفاض المخزون</span>
+                    <span id="rep-inv-stat-alerts" class="text-sm font-black text-amber-400 mt-1">0</span>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 flex-1 gap-2">
+                    <div class="relative min-w-[200px] sm:col-span-2">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="rep-inv-search" placeholder="بحث باسم الموديل، كود المصنع، كود السيستم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+                    </div>
+                    <select id="rep-inv-category" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الأقسام</option>
+                    </select>
+                    <select id="rep-inv-class" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الفئات</option>
+                    </select>
+                    <select id="rep-inv-status" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة حالات الرصيد</option>
+                        <option value="in_stock">متوفر (&gt; 5 سيري)</option>
+                        <option value="low_stock">منخفض (1-5 سيري)</option>
+                        <option value="out_of_stock">نافد الرصيد (0)</option>
+                    </select>
+                    <select id="rep-inv-color" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الألوان</option>
                     </select>
                 </div>
             </div>
 
-            <!-- Custom Date Range (Shown when 'custom' is selected) -->
-            <div id="dr-custom-date-container" class="hidden flex-wrap items-center gap-2 bg-devo-black border border-devo-gray rounded-lg p-1.5">
-                <div class="flex items-center gap-1 px-2">
-                    <span class="text-xs text-devo-muted font-bold">من:</span>
-                    <input type="date" id="dr-date-from" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer">
-                </div>
-                <div class="flex items-center gap-1 border-r border-devo-gray pr-2 px-2">
-                    <span class="text-xs text-devo-muted font-bold">إلى:</span>
-                    <input type="date" id="dr-date-to" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer">
+            <!-- Table -->
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto min-h-[380px]">
+                    <table class="w-full text-right text-xs whitespace-nowrap">
+                        <thead class="bg-devo-black border-b border-devo-gray text-devo-muted font-bold">
+                            <tr>
+                                <th class="p-3 text-center">#</th>
+                                <th class="p-3">الموديل والأكواد</th>
+                                <th class="p-3">القسم / الفئة</th>
+                                <th class="p-3">توزيع الألوان والرصيد المتاح</th>
+                                <th class="p-3 text-center">إجمالي الرصيد بالمخزن</th>
+                                <th class="p-3">سعر السيرية</th>
+                                <th class="p-3">القيمة الإجمالية للرصيد</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-inv-table-body" class="divide-y divide-devo-gray/40"></tbody>
+                        <tfoot id="rep-inv-table-foot"></tfoot>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- Data Table Card -->
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
-            <div class="overflow-x-auto min-h-[400px]">
-                <table class="w-full text-right text-sm whitespace-nowrap">
-                    <thead class="bg-devo-black border-b border-devo-gray text-devo-muted font-bold">
-                        <tr>
-                            <th class="p-3"># الأوردر</th>
-                            <th class="p-3">التاريخ والوقت</th>
-                            <th class="p-3">اسم العميل</th>
-                            <th class="p-3">رقم العميل</th>
-                            <th class="p-3">أنشأ الأوردر (العامل)</th>
-                            <th class="p-3">مستلم العربون</th>
-                            <th class="p-3">قيمة العربون</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dr-table-body" class="divide-y divide-devo-gray/40">
-                    </tbody>
-                    <tfoot id="dr-table-footer">
-                    </tfoot>
-                </table>
+        <!-- ================= PANEL 4: Models Performance ================= -->
+        <div id="reports-panel-models" class="reports-tab-panel hidden space-y-4">
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">الأكثر مبيعاً في الفترة</span>
+                    <span id="rep-models-stat-top" class="text-base font-black text-devo-orange mt-1 truncate">جاري الحساب...</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">إجمالي السيريهات المباعة</span>
+                    <span id="rep-models-stat-sold" class="text-xl font-black text-white mt-1">0 سيري</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-success/30 p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-success font-bold">إجمالي إيرادات الموديلات</span>
+                    <span id="rep-models-stat-rev" class="text-xl font-black text-devo-success mt-1">0 ج.م</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">الموديلات المحققة للمبيعات</span>
+                    <span id="rep-models-stat-active" class="text-xl font-black text-devo-info mt-1">0 موديل</span>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 flex-1 gap-2">
+                    <div class="relative min-w-[200px] sm:col-span-2">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="rep-models-search" placeholder="بحث باسم الموديل أو الكود..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+                    </div>
+                    <select id="rep-models-period" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="month" selected>هذا الشهر</option>
+                        <option value="today">اليوم</option>
+                        <option value="week">آخر 7 أيام</option>
+                        <option value="last_month">الشهر السابق</option>
+                        <option value="all">كافة الفترات</option>
+                        <option value="custom">تاريخ مخصص...</option>
+                    </select>
+                    <select id="rep-models-category" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الأقسام</option>
+                    </select>
+                    <select id="rep-models-sort" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="sales_qty_desc" selected>الأكثر مبيعاً (كمية)</option>
+                        <option value="revenue_desc">الأعلى إيراداً (ج.م)</option>
+                        <option value="sales_qty_asc">الأقل مبيعاً</option>
+                        <option value="stock_desc">الأعلى رصيداً حالياً</option>
+                    </select>
+                </div>
+                <div id="rep-models-custom-date" class="hidden items-center gap-2 bg-devo-black border border-devo-gray rounded-lg p-1">
+                    <span class="text-[11px] text-devo-muted font-bold px-1">من:</span>
+                    <input type="date" id="rep-models-from" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                    <span class="text-[11px] text-devo-muted font-bold px-1 border-r border-devo-gray">إلى:</span>
+                    <input type="date" id="rep-models-to" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto min-h-[380px]">
+                    <table class="w-full text-right text-xs whitespace-nowrap">
+                        <thead class="bg-devo-black border-b border-devo-gray text-devo-muted font-bold">
+                            <tr>
+                                <th class="p-3 text-center">#</th>
+                                <th class="p-3">الموديل والأكواد</th>
+                                <th class="p-3">القسم</th>
+                                <th class="p-3">سعر السيرية</th>
+                                <th class="p-3 text-center">الكميات المباعة في الفترة</th>
+                                <th class="p-3">الإيرادات المحققة</th>
+                                <th class="p-3 text-center">الرصيد المتبقي بالمخزن</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-models-table-body" class="divide-y divide-devo-gray/40"></tbody>
+                        <tfoot id="rep-models-table-foot"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PANEL 5: Staff Performance ================= -->
+        <div id="reports-panel-staff" class="reports-tab-panel hidden space-y-4">
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">فريق العمل النشط</span>
+                    <span id="rep-staff-stat-count" class="text-xl font-black text-white mt-1">0 موظف</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-muted font-bold">الموظف الأعلى مبيعاً</span>
+                    <span id="rep-staff-stat-top" class="text-sm font-black text-devo-orange mt-1 truncate">جاري الحساب...</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-success/30 p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-success font-bold">إجمالي مبيعات الفريق</span>
+                    <span id="rep-staff-stat-sales" class="text-xl font-black text-devo-success mt-1">0 ج.م</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-info/30 p-4 rounded-xl flex flex-col justify-between">
+                    <span class="text-xs text-devo-info font-bold">إجمالي العربون المحصل</span>
+                    <span id="rep-staff-stat-deposits" class="text-xl font-black text-devo-info mt-1">0 ج.م</span>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 flex-1 gap-2">
+                    <div class="relative min-w-[200px]">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted"></i>
+                        <input type="text" id="rep-staff-search" placeholder="بحث باسم الموظف أو اسم المستخدم..." class="w-full bg-devo-black border border-devo-gray rounded-lg pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange">
+                    </div>
+                    <select id="rep-staff-period" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="month" selected>هذا الشهر</option>
+                        <option value="today">اليوم</option>
+                        <option value="week">آخر 7 أيام</option>
+                        <option value="last_month">الشهر السابق</option>
+                        <option value="all">كافة الفترات</option>
+                        <option value="custom">تاريخ مخصص...</option>
+                    </select>
+                    <select id="rep-staff-role" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الأدوار / الصلاحيات</option>
+                        <option value="owner">المالك</option>
+                        <option value="admin">مدير</option>
+                        <option value="staff">بائع / موظف</option>
+                    </select>
+                    <select id="rep-staff-status" class="bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange">
+                        <option value="all">كافة الحالات</option>
+                        <option value="active" selected>الحسابات النشطة فقط</option>
+                        <option value="inactive">المعطلة</option>
+                    </select>
+                </div>
+                <div id="rep-staff-custom-date" class="hidden items-center gap-2 bg-devo-black border border-devo-gray rounded-lg p-1">
+                    <span class="text-[11px] text-devo-muted font-bold px-1">من:</span>
+                    <input type="date" id="rep-staff-from" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                    <span class="text-[11px] text-devo-muted font-bold px-1 border-r border-devo-gray">إلى:</span>
+                    <input type="date" id="rep-staff-to" class="bg-transparent text-white text-xs outline-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto min-h-[380px]">
+                    <table class="w-full text-right text-xs whitespace-nowrap">
+                        <thead class="bg-devo-black border-b border-devo-gray text-devo-muted font-bold">
+                            <tr>
+                                <th class="p-3 text-center">#</th>
+                                <th class="p-3">اسم الموظف / المستخدم</th>
+                                <th class="p-3">الصلاحية</th>
+                                <th class="p-3 text-center">الحالة</th>
+                                <th class="p-3 text-center">عدد الفواتير المنشأة</th>
+                                <th class="p-3">إجمالي المبيعات المحققة</th>
+                                <th class="p-3">العربون المحصل</th>
+                                <th class="p-3">متوسط قيمة الفاتورة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-staff-table-body" class="divide-y divide-devo-gray/40"></tbody>
+                        <tfoot id="rep-staff-table-foot"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PRINT CHOICE MODAL ================= -->
+        <div id="rep-print-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[300] hidden items-center justify-center p-4">
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative animate-fade-in">
+                <div class="flex items-center justify-between border-b border-devo-gray pb-3">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-printer text-devo-orange text-xl"></i>
+                        <span>خيارات طباعة التقرير</span>
+                    </h3>
+                    <button id="rep-print-modal-close" type="button" class="w-8 h-8 rounded-lg bg-devo-gray hover:bg-devo-grayHover text-white flex items-center justify-center text-base cursor-pointer">
+                        <i class="ph ph-x"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-devo-muted leading-relaxed">
+                    اختر صيغة وشكل الطباعة المناسبة للبيانات المفلترة الحالية:
+                </p>
+                <div class="space-y-3">
+                    <button id="rep-print-with-cards" type="button" class="w-full bg-devo-orange hover:bg-devo-orange-hover text-white p-3.5 rounded-xl font-bold transition-all flex items-center justify-between text-xs cursor-pointer shadow-lg shadow-devo-orange/20">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ph ph-cards text-lg"></i>
+                            <div class="text-right">
+                                <div class="font-black">طباعة مع كروت الإحصائيات</div>
+                                <div class="text-[10px] text-white/80 font-normal">تضمين ملخص الإحصائيات والأرقام في أعلى الصفحة</div>
+                            </div>
+                        </div>
+                        <i class="ph ph-arrow-left text-base"></i>
+                    </button>
+                    <button id="rep-print-without-cards" type="button" class="w-full bg-devo-gray hover:bg-devo-grayHover text-white p-3.5 rounded-xl font-bold transition-all flex items-center justify-between text-xs cursor-pointer border border-devo-grayHover">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ph ph-table text-lg text-devo-muted"></i>
+                            <div class="text-right">
+                                <div class="font-black">طباعة الجدول والبيانات فقط</div>
+                                <div class="text-[10px] text-devo-muted font-normal">طباعة سريعة ومختصرة للجدول بدون كروت الإحصائيات</div>
+                            </div>
+                        </div>
+                        <i class="ph ph-arrow-left text-base"></i>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
