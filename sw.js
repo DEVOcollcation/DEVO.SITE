@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'devo-static-v7';
-const IMAGE_CACHE = 'devo-images-v1';
+const STATIC_CACHE = 'devo-static-v8';
+const IMAGE_CACHE = 'devo-images-v2';
 
 const staticAssets = [
   './',
@@ -44,10 +44,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // 1. كاش الصور الديناميكي (Supabase Storage + صور الأصول)
+  // 1. كاش الصور الديناميكي الشامل (Google Drive + Supabase Storage + صور الأصول)
   const isImageRequest = 
-    url.hostname.includes('supabase.co') && url.pathname.includes('/storage/v1/object/') ||
-    /\.(png|jpg|jpeg|webp|svg|gif|ico)$/i.test(url.pathname);
+    event.request.destination === 'image' ||
+    url.hostname.includes('drive.google.com') ||
+    url.hostname.includes('googleusercontent.com') ||
+    url.hostname.includes('supabase.co') ||
+    url.pathname.includes('/storage/v1/object/') ||
+    url.pathname.includes('/thumbnail') ||
+    /\.(png|jpg|jpeg|webp|svg|gif|ico)(\?.*)?$/i.test(url.pathname);
 
   if (isImageRequest) {
     event.respondWith(
@@ -59,12 +64,12 @@ self.addEventListener('fetch', (event) => {
 
         try {
           const networkResponse = await fetch(event.request);
-          if (networkResponse && networkResponse.status === 200) {
+          if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
             cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
         } catch (err) {
-          return new Response('Image unavailable offline', { status: 404 });
+          return cachedResponse || new Response('Image unavailable offline', { status: 404 });
         }
       })
     );

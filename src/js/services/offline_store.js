@@ -255,7 +255,7 @@ export async function getCachedImageObjectUrl(rawUrl) {
 }
 
 /**
- * Fetch and store image blob in IndexedDB
+ * Fetch and store image in Cache API or IndexedDB without CORS errors
  */
 export async function cacheImageBlob(rawUrl, modelId = null) {
     const resolvedUrl = resolveImageUrl(rawUrl);
@@ -268,10 +268,35 @@ export async function cacheImageBlob(rawUrl, modelId = null) {
         return memoryObjectUrls.get(resolvedUrl).objectUrl;
     }
 
+    const isDriveUrl = resolvedUrl.includes('drive.google.com') || resolvedUrl.includes('googleusercontent.com');
+
+    // 1. For Google Drive / opaque cross-origin URLs: cache via Cache Storage API with mode 'no-cors'
+    if (isDriveUrl) {
+        if ('caches' in window) {
+            try {
+                const cache = await caches.open('devo-images-v2');
+                const cachedMatch = await cache.match(resolvedUrl);
+                if (!cachedMatch) {
+                    const response = await fetch(resolvedUrl, { mode: 'no-cors', cache: 'force-cache' });
+                    if (response) {
+                        await cache.put(resolvedUrl, response);
+                    }
+                }
+            } catch (err) {
+                // Pre-warm via browser image cache if Cache API fails
+                try {
+                    const preloadImg = new Image();
+                    preloadImg.src = resolvedUrl;
+                } catch (e) {}
+            }
+        }
+        return resolvedUrl;
+    }
+
+    // 2. For CORS-enabled URLs (Supabase Storage, same-origin, etc.): cache as binary Blobs in IndexedDB
     const db = await openDevoDB();
 
     try {
-        // Fetch image as blob
         const response = await fetch(resolvedUrl, {
             mode: 'cors',
             cache: 'force-cache'
@@ -299,9 +324,17 @@ export async function cacheImageBlob(rawUrl, modelId = null) {
             });
         }
 
+        // Also put in Cache API
+        if ('caches' in window) {
+            try {
+                const cache = await caches.open('devo-images-v2');
+                cache.put(resolvedUrl, new Response(blob));
+            } catch (e) {}
+        }
+
         return objectUrl;
     } catch (e) {
-        // In case of CORS restriction or network offline, return fallback URL
+        // Fallback gracefully without console error
         return resolvedUrl;
     }
 }
@@ -320,13 +353,13 @@ export async function bindImageToCache(imgEl, rawUrl, modelId = null) {
         return;
     }
 
-    // 2. Set resolved network URL first so it loads without delay
+    // 2. Set resolved network URL first so it loads immediately
     imgEl.src = resolvedUrl;
 
     // 3. Cache in background for future instant offline loads
     cacheImageBlob(resolvedUrl, modelId).then(blobUrl => {
-        if (blobUrl && blobUrl !== resolvedUrl && imgEl.isConnected) {
-            // Swap smoothly without disrupting view
+        if (blobUrl && blobUrl !== resolvedUrl && imgEl.isConnected && blobUrl.startsWith('blob:')) {
+            // Swap smoothly to local Blob Object URL
             imgEl.src = blobUrl;
         }
     }).catch(() => {});
