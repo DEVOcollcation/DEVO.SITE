@@ -7,6 +7,7 @@ import { initBarcode } from './barcode.js';
 import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNetworkStatusMonitor } from '../../components/network_banner.js';
+import { validateAndSyncSession, setupUserRealtimeSync } from '../../services/auth.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // مراقبة وإظهار بنر الاتصال بالإنترنت عند الانقطاع
@@ -29,15 +30,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     if (currentUser) {
         const role = currentUser.role;
-        const workerJob = currentUser.worker_job;
+        const isAuthorized = (role === 'owner' || role === 'admin' || role === 'worker');
         
-
-        
-        // التحقق من الصلاحيات الأخرى، إن كانت غير معروفة يتم تسجيل الخروج والتعامل كزائر
-        const isManager = (role === 'owner' || role === 'admin');
-        const isShowroomSeller = (role === 'worker' && (workerJob === 'showroom' || workerJob === 'both'));
-        
-        if (!isManager && !isShowroomSeller) {
+        if (!isAuthorized) {
             localStorage.removeItem('devo_session');
             currentUser = null;
         }
@@ -63,5 +58,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (localStorage.getItem('devo_edit_order_data')) {
             if (window.switchSiteView) window.switchSiteView('view-cart');
         }
+
+        // 🌟 فحص وتزامن الصلاحيات الحي من قاعدة البيانات في الخلفية 🌟
+        validateAndSyncSession().then(syncedUser => {
+            if (syncedUser && (syncedUser.role !== currentUser?.role || syncedUser.worker_job !== currentUser?.worker_job)) {
+                initNavbar(); // تحديث الهيدر والأزرار فورياً إذا تغيرت الصلاحية
+            }
+        });
+
+        // 🌟 الرادار اللحظي للصلاحيات (يحدث الواجهة في جزء من الثانية إذا عدلت الإدارة الصلاحيات) 🌟
+        setupUserRealtimeSync((updatedUser) => {
+            initNavbar(); // تحديث الهيدر وشارة المستخدم والزر الإداري فورياً
+        });
     }
 });

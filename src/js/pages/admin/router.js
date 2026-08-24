@@ -1,4 +1,4 @@
-import { requireAuth, logoutUser } from '../../services/auth.js';
+import { requireAuth, logoutUser, validateAndSyncSession, setupUserRealtimeSync } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
 import { initHomeSettingsView } from './home_settings.js';
 // استيراد صفحة المستخدمين (كما كانت في كودك)
@@ -10,8 +10,16 @@ import { initNetworkStatusMonitor } from '../../components/network_banner.js';
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
 
+const OWNER_ONLY_VIEWS = [
+    'view-users',
+    'view-home-settings',
+    'view-theme-manager',
+    'view-backup-restore',
+    'view-notification-settings',
+    'view-system-reset'
+];
+
 async function authenticateAdmin() {
-    // استخدام دالة الحماية الجديدة بدلاً من القديمة
     const user = requireAuth(['owner', 'admin']); 
     
     if (!user) {
@@ -20,15 +28,37 @@ async function authenticateAdmin() {
 
     currentUserContext = user;
     updateUserProfileUI(user);
+
+    // التحقق الحي المتزامن من قاعدة البيانات فور فتح الصفحة
+    validateAndSyncSession(['owner', 'admin']).then((syncedUser) => {
+        if (syncedUser) {
+            currentUserContext = syncedUser;
+            updateUserProfileUI(syncedUser);
+        }
+    });
+
+    // تفعيل الرادار اللحظي للصلاحيات (إذا قام المالك بتعديل صلاحيات هذا الحساب فوراً)
+    setupUserRealtimeSync((updatedUser) => {
+        currentUserContext = updatedUser;
+        updateUserProfileUI(updatedUser);
+        if (updatedUser.role !== 'owner' && OWNER_ONLY_VIEWS.includes(window.currentAdminView)) {
+            showToast('تم تحديث صلاحياتك بواسطة إدارة النظام', 'info');
+            const dashLink = document.querySelector('[data-target="view-dashboard"]');
+            switchView('view-dashboard', dashLink);
+        }
+    });
+
     return true;
 }
 
 function updateUserProfileUI(profile) {
+    if (!profile) return;
     document.getElementById('current-user-name').textContent = profile.full_name;
     document.getElementById('user-avatar').textContent = profile.full_name.charAt(0).toUpperCase();
     
-    const roleText = profile.role === 'owner' ? 'مالك النظام' : 'مدير نظام';
-    const roleColor = profile.role === 'owner' ? 'text-red-500' : 'text-devo-orange';
+    const isOwner = profile.role === 'owner';
+    const roleText = isOwner ? 'مالك النظام' : 'مشرف إدارة';
+    const roleColor = isOwner ? 'text-red-500' : 'text-devo-orange';
     
     const roleEl = document.getElementById('current-user-role');
     if (roleEl) {
@@ -36,45 +66,23 @@ function updateUserProfileUI(profile) {
         roleEl.className = `text-xs font-bold ${roleColor}`;
     }
 
-    // 🌟 السطر السحري لإخفاء/إظهار زر إدارة الحسابات بناءً على الصلاحية 🌟
+    // 🌟 حماية وتبديل قائمة إدارة الحسابات (للمالك فقط) 🌟
     const usersLink = document.querySelector('[data-target="view-users"]');
     if (usersLink) {
-        if (profile.role === 'owner') {
-            usersLink.classList.remove('hidden'); // إظهار للمالك
+        if (isOwner) {
+            usersLink.classList.remove('hidden');
         } else {
-            usersLink.classList.add('hidden'); // إخفاء للمدير
+            usersLink.classList.add('hidden');
         }
     }
 
-
-
-
-    // إخفاء/إظهار زر إدارة المظاهر وإعدادات الواجهة بناءً على صلاحية المالك فقط (إخفاء عن المدير)
-    const themeManagerLink = document.querySelector('[data-target="view-theme-manager"]');
-    if (themeManagerLink) {
-        if (profile.role === 'owner') {
-            themeManagerLink.classList.remove('hidden');
+    // 🌟 حماية وتبديل قائمة الإعدادات بالكامل (للمالك فقط) 🌟
+    const settingsGroup = document.getElementById('sidebar-settings-group');
+    if (settingsGroup) {
+        if (isOwner) {
+            settingsGroup.classList.remove('hidden');
         } else {
-            themeManagerLink.classList.add('hidden');
-        }
-    }
-
-    const homeSettingsLink = document.querySelector('[data-target="view-home-settings"]');
-    if (homeSettingsLink) {
-        if (profile.role === 'owner') {
-            homeSettingsLink.classList.remove('hidden');
-        } else {
-            homeSettingsLink.classList.add('hidden');
-        }
-    }
-
-    // إخفاء/إظهار رابط إعادة تهيئة النظام (الملك فقط)
-    const resetLink = document.querySelector('[data-target="view-system-reset"]');
-    if (resetLink) {
-        if (profile.role === 'owner') {
-            resetLink.classList.remove('hidden');
-        } else {
-            resetLink.classList.add('hidden');
+            settingsGroup.classList.add('hidden');
         }
     }
 }
@@ -84,6 +92,16 @@ const navLinks = document.querySelectorAll('.nav-link');
 const pageTitle = document.getElementById('page-title');
 
 function switchView(targetId, titleElement, subTabParam = null) {
+    // 🌟 فحص أمني: منع المشرف من الدخول لصفحات المالك حتى لو طلبها مباشرة 🌟
+    if (OWNER_ONLY_VIEWS.includes(targetId) && currentUserContext && currentUserContext.role !== 'owner') {
+        showToast('عفواً، هذه الصفحة مخصصة لمالك النظام فقط!', 'error');
+        const dashLink = document.querySelector('[data-target="view-dashboard"]');
+        switchView('view-dashboard', dashLink);
+        return;
+    }
+
+    window.currentAdminView = targetId;
+
     // 1. Hide all views
     views.forEach(view => {
         view.classList.add('hidden');

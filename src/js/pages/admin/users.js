@@ -84,10 +84,7 @@ function renderUsersGrid(users) {
         else {
             roleIcon = 'ph-hard-hat';
             roleColor = 'text-devo-success';
-            let jobText = 'عامل (مبيعات)';
-            if (u.worker_job === 'warehouse') jobText = 'عامل (مخزن)';
-            else if (u.worker_job === 'both') jobText = 'عامل (مبيعات + مخزن)';
-            roleName = jobText;
+            roleName = 'عامل (مبيعات)';
         }
 
         const isOwner = u.role === 'owner';
@@ -126,7 +123,7 @@ function renderUsersGrid(users) {
     }).join('');
 }
 
-// --- View User Details Logic (الكود الجديد) ---
+// --- View User Details Logic ---
 window.viewUserDetails = (id) => {
     const user = allUsers.find(u => u.id === id);
     if (!user) return;
@@ -134,7 +131,7 @@ window.viewUserDetails = (id) => {
     let roleName, roleColor;
     if (user.role === 'owner') { roleName = 'مالك (Owner)'; roleColor = 'text-devo-orange'; }
     else if (user.role === 'admin') { roleName = 'مشرف (Admin)'; roleColor = 'text-devo-info'; }
-    else { roleName = 'عامل (Worker)'; roleColor = 'text-devo-success'; }
+    else { roleName = 'عامل (مبيعات)'; roleColor = 'text-devo-success'; }
 
     const content = document.getElementById('user-details-content');
     
@@ -154,13 +151,6 @@ window.viewUserDetails = (id) => {
             <table class="w-full text-right text-sm">
                 <tbody class="divide-y divide-devo-gray">
                     <tr><td class="p-3 text-devo-muted w-1/3">الصلاحية</td><td class="p-3 font-bold ${roleColor}">${roleName}</td></tr>
-                    ${user.role === 'worker' ? `
-                    <tr>
-                        <td class="p-3 text-devo-muted">وظيفة العامل</td>
-                        <td class="p-3 text-white font-bold">
-                            ${user.worker_job === 'warehouse' ? 'عامل بالمخزن' : (user.worker_job === 'both' ? 'بائع بالمعرض وعامل بالمخزن معاً' : 'بائع بالمعرض')}
-                        </td>
-                    </tr>` : ''}
                     <tr><td class="p-3 text-devo-muted">حالة الحساب</td><td class="p-3 ${user.is_active ? 'text-devo-success' : 'text-devo-error'} font-bold">${user.is_active ? 'نشط' : 'معطل'}</td></tr>
                     <tr><td class="p-3 text-devo-muted">تاريخ الإنشاء</td><td class="p-3 text-white">${new Date(user.created_at).toLocaleDateString('ar-EG')}</td></tr>
                 </tbody>
@@ -221,33 +211,29 @@ window.openUserModal = (id = null) => {
 
         if(user.role === 'owner') {
             roleSelect.innerHTML = `<option value="owner">مالك (صلاحيات كاملة)</option>`;
+            roleSelect.disabled = true;
+            document.getElementById('u-status').disabled = true;
         } else {
+            roleSelect.disabled = false;
+            document.getElementById('u-status').disabled = false;
             roleSelect.innerHTML = `
-                <option value="worker_showroom">بائع بالمعرض (مبيعات فقط)</option>
-                <option value="worker_warehouse">عامل بالمخزن (مخازن فقط)</option>
-                <option value="worker_both">بائع بالمعرض وعامل بالمخزن معاً</option>
+                <option value="worker">عامل (مبيعات)</option>
                 <option value="admin">مشرف (إدارة جزئية)</option>
-                <option value="owner">مالك (صلاحيات كاملة)</option>
             `;
-            let roleVal = user.role;
-            if (user.role === 'worker') {
-                roleVal = `worker_${user.worker_job || 'showroom'}`;
-            }
-            roleSelect.value = roleVal;
+            roleSelect.value = user.role === 'admin' ? 'admin' : 'worker';
         }
 
     } else {
         title.innerHTML = `<i class="ph ph-user-plus text-devo-orange text-xl"></i> إضافة مستخدم جديد`;
         document.getElementById('u-status').checked = true;
+        document.getElementById('u-status').disabled = false;
+        roleSelect.disabled = false;
         
         roleSelect.innerHTML = `
-            <option value="worker_showroom">بائع بالمعرض (مبيعات فقط)</option>
-            <option value="worker_warehouse">عامل بالمخزن (مخازن فقط)</option>
-            <option value="worker_both">بائع بالمعرض وعامل بالمخزن معاً</option>
+            <option value="worker">عامل (مبيعات)</option>
             <option value="admin">مشرف (إدارة جزئية)</option>
-            <option value="owner">مالك (صلاحيات كاملة)</option>
         `;
-        roleSelect.value = 'worker_showroom';
+        roleSelect.value = 'worker';
 
         passInput.required = true;
         passReq.classList.remove('hidden');
@@ -274,13 +260,8 @@ async function handleSaveUser(e) {
     const password = document.getElementById('u-password').value;
 
     const selectedRole = document.getElementById('u-role').value;
-    let role = selectedRole;
-    let worker_job = null;
-
-    if (selectedRole.startsWith('worker_')) {
-        role = 'worker';
-        worker_job = selectedRole.replace('worker_', '');
-    }
+    const role = selectedRole === 'admin' ? 'admin' : (selectedRole === 'owner' ? 'owner' : 'worker');
+    const worker_job = role === 'worker' ? 'showroom' : null;
 
     const userData = {
         full_name: document.getElementById('u-name').value.trim(),

@@ -28,11 +28,11 @@ export async function initGallery() {
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
     
-    // الموظف المخول برؤية الأرصدة والطلب هو الأونر/الأدمن أو العامل بوظيفة مبيعات (showroom / both)
+    // الموظف المخول برؤية الأرصدة والطلب هو الأونر/الأدمن أو العامل
     isWorker = currentUser && (
         currentUser.role === 'admin' 
         || currentUser.role === 'owner' 
-        || (currentUser.role === 'worker' && (currentUser.worker_job === 'showroom' || currentUser.worker_job === 'both'))
+        || currentUser.role === 'worker'
     );
 
     if (isWorker) {

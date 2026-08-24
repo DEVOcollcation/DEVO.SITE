@@ -18,12 +18,48 @@
 <link rel="apple-touch-icon" href="./src/assets/icons/dv.png">
 
 <script>
-  // تسجيل الـ Service Worker
+  // تسجيل وإدارة تحديثات الـ Service Worker التلقائية الفورية
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('DEVO PWA Ready!', reg))
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+        .then(reg => {
+          console.log('DEVO PWA Ready!', reg);
+          
+          // فحص التحديثات فوراً عند الفتح
+          reg.update().catch(() => {});
+
+          // عند العثور على نسخة جديدة في الخلفية
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // إرسال أمر التفعيل الفوري للنسخة الجديدة
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            }
+          });
+        })
         .catch(err => console.log('PWA Error:', err));
+
+      // إعادة تحميل الصفحة بسلاسة فور تولي النسخة الجديدة التحكم لتطبيق أحدث كود تلقائياً
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
+      // فحص التحديثات عند العودة للتطبيق (Foreground / Visibility Change)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.serviceWorker.getRegistration().then(reg => {
+            if (reg) reg.update().catch(() => {});
+          });
+        }
+      });
     });
   }
 </script>

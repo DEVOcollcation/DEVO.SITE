@@ -1,4 +1,5 @@
-const STATIC_CACHE = 'devo-static-v8';
+const CACHE_VERSION = 'v10.0';
+const STATIC_CACHE = `devo-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = 'devo-images-v2';
 
 const staticAssets = [
@@ -13,7 +14,7 @@ const staticAssets = [
   './manifest-admin.json'
 ];
 
-// تثبيت وتجهيز السيرفس وركر
+// تثبيت وتجهيز السيرفس وركر فوراً
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -23,13 +24,14 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// تفعيل وتنظيف النسخ القديمة من الكاش
+// تفعيل وتنظيف النسخ القديمة من الكاش والاستحواذ على العملاء فوراً
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== STATIC_CACHE && key !== IMAGE_CACHE) {
+            console.log('[SW] Clearing old cache version:', key);
             return caches.delete(key);
           }
         })
@@ -38,7 +40,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// الاستجابة للطلبات بتكتيك كاش محسن (Cache-First للصور، Network-First للمستندات)
+// استقبال رسالة التخطي الفوري من الصفحة
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// الاستجابة للطلبات: Network-First للمستندات والسكريبتات (لضمان أحدث كود دائماً)، و Cache-First للصور
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -76,11 +85,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. كاش الملفات المحلية والنظام (App Shell)
+  // 2. كاش الملفات المحلية والنظام (App Shell & JavaScript Modules): استراتيجية Network-First
   if (url.origin === self.location.origin) {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const resClone = networkResponse.clone();
+            caches.open(STATIC_CACHE).then((cache) => cache.put(event.request, resClone));
+          }
           return networkResponse;
         })
         .catch(() => {

@@ -71,12 +71,7 @@ async function populateWorkerFilter() {
             const currentVal = select.value;
             let optionsHtml = '<option value="">كل الموظفين / البائعين</option>';
             users.forEach(u => {
-                let jobLabel = u.role === 'owner' ? 'مالك' : (u.role === 'admin' ? 'مشرف' : 'بائع');
-                if (u.role === 'worker') {
-                    if (u.worker_job === 'showroom') jobLabel = 'مبيعات المعرض';
-                    else if (u.worker_job === 'warehouse') jobLabel = 'أمين مخزن';
-                    else if (u.worker_job === 'both') jobLabel = 'مبيعات + مخزن';
-                }
+                let jobLabel = u.role === 'owner' ? 'مالك' : (u.role === 'admin' ? 'مشرف' : 'عامل مبيعات');
                 const name = u.full_name || u.username;
                 optionsHtml += `<option value="${u.id}">${name} (${jobLabel})</option>`;
             });
@@ -1106,12 +1101,7 @@ window.showAssignWorkerStep = async () => {
 
         if (users) {
             users.forEach(u => {
-                let jobLabel = u.role === 'owner' ? 'مالك' : (u.role === 'admin' ? 'مشرف' : '');
-                if (u.role === 'worker') {
-                    if (u.worker_job === 'showroom') jobLabel = 'مبيعات المعرض';
-                    else if (u.worker_job === 'warehouse') jobLabel = 'أمين مخزن';
-                    else jobLabel = 'مبيعات + مخزن';
-                }
+                let jobLabel = u.role === 'owner' ? 'مالك' : (u.role === 'admin' ? 'مشرف' : 'عامل مبيعات');
                 const option = document.createElement('option');
                 option.value = u.id;
                 option.textContent = `${u.full_name} (${jobLabel})`;

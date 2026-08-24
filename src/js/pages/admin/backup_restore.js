@@ -134,7 +134,7 @@ let computedDiffData = null; // تخزين نتائج الفروقات والم�
 // 🎯 تهيئة الواجهة
 // ============================================================
 export async function initBackupRestoreView() {
-    const user = requireAuth(['owner', 'admin']);
+    const user = requireAuth(['owner']);
     if (!user) {
         showToast('⛔ ليس لديك صلاحية للوصول لإدارة النسخ الاحتياطي', 'error');
         return;

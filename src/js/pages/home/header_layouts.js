@@ -83,21 +83,22 @@ function buildNavBtns(links) {
 
 function buildUserArea(user) {
     const hasAdminAccess = user && (user.role === 'owner' || user.role === 'admin');
-    const hasWarehouseAccess = user && (user.role === 'owner' || user.role === 'admin' || user.worker_job === 'warehouse' || user.worker_job === 'both');
     const isWorker = user && user.role === 'worker';
 
     if (user) {
-        let workerTitle = 'عامل مبيعات';
+        let roleBadge = 'إدارة';
         if (isWorker) {
-            if (user.worker_job === 'warehouse') workerTitle = 'عامل مخزن';
-            else if (user.worker_job === 'both') workerTitle = 'مبيعات + مخزن';
+            roleBadge = 'عامل مبيعات';
+        } else if (user.role === 'owner') {
+            roleBadge = 'مالك النظام';
         }
+
         return `
             ${hasAdminAccess ? `<a href="admin.html" class="p-2 rounded-lg bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white transition-all" title="لوحة الإدارة"><i class="ph ph-shield-check text-xl"></i></a>` : ''}
             <div class="flex items-center gap-2 border-r border-devo-gray pr-3">
                 <div class="text-right">
                     <p class="text-xs md:text-sm font-bold text-white leading-tight truncate max-w-[110px]" title="${user.full_name}">${user.full_name}</p>
-                    <p class="text-[10px] text-devo-orange leading-tight font-medium">${isWorker ? workerTitle : 'إدارة'}</p>
+                    <p class="text-[10px] text-devo-orange leading-tight font-medium">${roleBadge}</p>
                 </div>
                 <div class="w-9 h-9 rounded-xl bg-devo-dark border border-devo-gray flex items-center justify-center text-devo-muted hover:text-devo-error hover:border-devo-error/40 cursor-pointer transition-all shadow-sm" onclick="handleLogout()" title="تسجيل الخروج">
                     <i class="ph ph-sign-out text-lg"></i>
@@ -116,7 +117,6 @@ function buildUserArea(user) {
 
 function buildMobileMenu(user) {
     const hasAdminAccess = user && (user.role === 'owner' || user.role === 'admin');
-    const hasWarehouseAccess = user && (user.role === 'owner' || user.role === 'admin' || user.worker_job === 'warehouse' || user.worker_job === 'both');
 
     let links = '';
     if (user) {

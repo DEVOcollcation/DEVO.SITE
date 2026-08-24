@@ -8,7 +8,7 @@ let isInitialized = false;
 // 🎯 تهيئة واجهة إعدادات الإشعارات والتليجرام
 // ============================================================
 export async function initNotificationSettingsView() {
-    const user = requireAuth(['owner', 'admin']);
+    const user = requireAuth(['owner']);
     if (!user) {
         showToast('⛔ ليس لديك صلاحية للوصول لإعدادات الإشعارات', 'error');
         return;
