@@ -67,12 +67,12 @@ async function fetchFullWorkerOrderById(orderId) {
 
 // 🌟 الرادار اللحظي لمنع التعديل عند القفل والمزامنة اللحظية الشاملة 🌟
 function setupOrdersRealtime() {
-    const isManager = currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner');
+    if (!currentUser || !currentUser.id) return;
 
-    supabase.channel('worker_orders_sync')
+    supabase.channel(`worker_orders_sync_${currentUser.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
             if (!currentUser) return;
-            const isMine = isManager || payload.new.worker_id === currentUser.id || payload.new.assigned_worker_id === currentUser.id;
+            const isMine = payload.new.worker_id === currentUser.id || payload.new.assigned_worker_id === currentUser.id;
             if (!isMine) return;
 
             const newOrder = await fetchFullWorkerOrderById(payload.new.id);
@@ -83,7 +83,7 @@ function setupOrdersRealtime() {
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
             if (!currentUser) return;
-            const isMine = isManager || payload.new.worker_id === currentUser.id || payload.new.assigned_worker_id === currentUser.id;
+            const isMine = payload.new.worker_id === currentUser.id || payload.new.assigned_worker_id === currentUser.id;
             const existingIdx = allOrders.findIndex(o => o.id === payload.new.id);
 
             if (isMine) {
@@ -92,7 +92,7 @@ function setupOrdersRealtime() {
                     renderOrders();
                     
                     // تنبيه الموظف عند إسناد أوردر جديد له من قبل الإدارة
-                    if (existingIdx === -1 && !isManager) {
+                    if (existingIdx === -1) {
                         showToast(`تم إسناد أوردر رقم (#${updatedOrder.invoice_number}) لك من قبل الإدارة!`, 'info');
                     }
 
@@ -146,9 +146,14 @@ async function fetchMyOrders() {
     const tBody = document.getElementById('orders-table-body');
     if(tBody) tBody.innerHTML = `<tr><td colspan="6" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري التحميل...</td></tr>`;
 
-    const isManager = currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner');
+    if (!currentUser || !currentUser.id) {
+        if(tBody) tBody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-devo-muted">يرجى تسجيل الدخول لعرض الأوردرات</td></tr>`;
+        return;
+    }
 
-    let query = supabase
+    // 🌟 صفحة أوردراتي في الموقع الرئيسي تقتصر حصرياً على أوردرات صاحب الحساب نفسه 🌟
+    // تظهر فقط الأوردرات التي أنشأها المستخدم بنفسه (worker_id) أو المسندة إليه للتعديل (assigned_worker_id)
+    const { data, error } = await supabase
         .from('orders')
         .select(`
             *,
@@ -165,14 +170,8 @@ async function fetchMyOrders() {
                 colors (name)
             )
         `)
+        .or(`worker_id.eq.${currentUser.id},assigned_worker_id.eq.${currentUser.id}`)
         .order('created_at', { ascending: false });
-
-    // إذا لم يكن مديراً (أي عامل مبيعات عادي)، نقوم بفلترة أوردراته فقط
-    if (!isManager) {
-        query = query.or(`worker_id.eq.${currentUser.id},assigned_worker_id.eq.${currentUser.id}`);
-    }
-        
-    const { data, error } = await query;
         
     if (error) {
         showToast('حدث خطأ أثناء جلب الأوردرات', 'error');
