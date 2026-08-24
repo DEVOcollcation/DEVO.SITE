@@ -140,15 +140,17 @@ export async function initBackupRestoreView() {
         return;
     }
 
-    if (isInitialized) return;
+    if (isInitialized) {
+        await fetchCloudBackups();
+        return;
+    }
     isInitialized = true;
 
     renderBackupRestoreView();
     attachBackupRestoreEvents();
     
-    // تحميل وجدولة النسخ السحابية وحذف القديم
+    // جلب وعرض قائمة النسخ السحابية فقط بدون بدء أي نسخ تلقائي
     await fetchCloudBackups();
-    await checkAutoCloudBackupMidnight();
 }
 
 // ============================================================
@@ -161,213 +163,211 @@ function renderBackupRestoreView() {
     container.innerHTML = `
         <div class="animate-fade-in relative pb-16 space-y-6 max-w-6xl mx-auto">
 
-            <!-- Header -->
-            <div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-5 rounded-2xl shadow-sm">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-12 h-12 rounded-xl bg-devo-orange/10 border border-devo-orange/20 flex items-center justify-center text-devo-orange">
-                        <i class="ph ph-database text-2xl"></i>
+            <!-- 📑 تبويبات الصفحة: العمليات والسجل -->
+            <div class="flex items-center gap-2 border-b border-devo-gray pb-3 overflow-x-auto no-scrollbar">
+                <button id="tab-btn-backup-ops" type="button" class="backup-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer bg-devo-orange text-white shadow-md shadow-devo-orange/20">
+                    <i class="ph ph-arrows-clockwise text-base"></i>
+                    <span>عمليات النسخ والاستعادة</span>
+                </button>
+                <button id="tab-btn-backup-logs" type="button" class="backup-tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer bg-devo-dark border border-devo-gray text-devo-muted hover:text-white">
+                    <i class="ph ph-cloud-arrow-up text-base"></i>
+                    <span>سجل النسخ الاحتياطي السحابي</span>
+                    <span id="badge-cloud-backups-count" class="bg-devo-gray text-white text-[10px] px-2 py-0.5 rounded-full font-mono">${cloudBackupsList.length}</span>
+                </button>
+            </div>
+
+            <!-- ================= TAB 1: عمليات النسخ والاستعادة ================= -->
+            <div id="panel-backup-ops" class="space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    <!-- 📤 كارت تصدير النسخ الاحتياطية -->
+                    <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 flex flex-col justify-between shadow-md">
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between border-b border-devo-gray pb-4">
+                                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                    <i class="ph ph-export text-devo-orange text-xl"></i>
+                                    تصدير نسخة احتياطية محلية
+                                </h3>
+                                <span class="text-xs text-devo-muted bg-devo-black px-2.5 py-1 rounded-lg border border-devo-gray">تنسيق JSON</span>
+                            </div>
+
+                            <p class="text-xs text-devo-muted leading-relaxed">
+                                اختر درجة التفاصيل المطلوبة للنسخة الاحتياطية وتصديرها وتحميلها على جهازك الشخصي:
+                            </p>
+
+                            <!-- خيارات المستويات -->
+                            <div class="space-y-2.5 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
+                                ${Object.values(EXPORT_PRESETS).map(preset => `
+                                    <label class="export-preset-card flex items-start gap-3 p-3.5 rounded-xl border border-devo-gray bg-devo-black/40 hover:border-devo-orange/50 transition-all cursor-pointer ${preset.id === selectedExportPreset ? 'border-devo-orange bg-devo-orange/5 shadow-sm' : ''}">
+                                        <input type="radio" name="export-preset" value="${preset.id}" ${preset.id === selectedExportPreset ? 'checked' : ''} class="mt-1 accent-devo-orange">
+                                        <div class="flex-1 space-y-1">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-sm font-bold text-white flex items-center gap-2">
+                                                    <i class="ph ${preset.icon} text-devo-orange"></i>
+                                                    ${preset.label}
+                                                </span>
+                                                <span class="text-[10px] text-devo-muted bg-devo-gray/50 px-2 py-0.5 rounded font-mono">${preset.tables.length} جداول</span>
+                                            </div>
+                                            <p class="text-xs text-devo-muted">${preset.desc}</p>
+                                        </div>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <button
+                            id="btn-trigger-export"
+                            class="w-full py-3.5 px-4 bg-devo-orange hover:bg-devo-orange-hover text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-devo-orange/10 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+                        >
+                            <i class="ph ph-download-simple text-lg"></i>
+                            <span>تصدير وتحميل النسخة الآن</span>
+                        </button>
                     </div>
-                    <div>
-                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                            النسخ الاحتياطي واستعادة البيانات
-                        </h2>
-                        <p class="text-devo-muted text-xs mt-1">تصدير واستعادة دقيقة مع قراءة أسماء المقاسات والفئات وتأمين الروابط المباشرة للسحابة</p>
+
+                    <!-- 📥 كارت استعادة البيانات من ملف مع معاينة الفروقات -->
+                    <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 flex flex-col justify-between shadow-md">
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between border-b border-devo-gray pb-4">
+                                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                    <i class="ph ph-arrow-counter-clockwise text-devo-success text-xl"></i>
+                                    استعادة البيانات ومعاينة الفروقات
+                                </h3>
+                                <span class="text-xs text-devo-muted bg-devo-black px-2.5 py-1 rounded-lg border border-devo-gray">فحص واستعادة جزئية</span>
+                            </div>
+
+                            <p class="text-xs text-devo-muted leading-relaxed">
+                                قم بسحب وإسقاط ملف النسخة الاحتياطية (.json) لتقييم الفروقات وتحديد عناصر معينة للاستعادة:
+                            </p>
+
+                            <!-- منطقة رفع الملف Dropzone -->
+                            <div id="restore-dropzone" class="border-2 border-dashed border-devo-gray hover:border-devo-success/60 bg-devo-black/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 cursor-pointer transition-all duration-200 group relative">
+                                <input type="file" id="restore-file-input" accept=".json" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                                <div class="w-14 h-14 rounded-2xl bg-devo-gray/50 group-hover:bg-devo-success/10 group-hover:text-devo-success text-devo-muted flex items-center justify-center transition-all duration-200">
+                                    <i class="ph ph-file-arrow-down text-3xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-white group-hover:text-devo-success transition-colors">اضغط هنا لاختيار الملف أو اسحبه إلى هنا</p>
+                                    <p class="text-xs text-devo-muted mt-1">يدعم فقط ملفات النسخ الاحتياطي الخاصة بنظام DEVO (.json)</p>
+                                </div>
+                            </div>
+
+                            <!-- كارت معاينة ومعلومات الملف المرفوع (مخفي افتراضياً) -->
+                            <div id="file-inspection-card" class="hidden bg-devo-black/60 border border-devo-gray rounded-xl p-4 space-y-3 animate-fade-in">
+                                <div class="flex items-center justify-between border-b border-devo-gray/60 pb-2.5">
+                                    <div class="flex items-center gap-2 truncate max-w-[70%]">
+                                        <i class="ph ph-file-js text-devo-orange text-xl shrink-0"></i>
+                                        <span id="inspect-filename" class="text-xs font-bold text-white truncate">backup.json</span>
+                                    </div>
+                                    <span id="inspect-backup-type" class="text-[11px] font-bold text-devo-success bg-devo-success/10 border border-devo-success/20 px-2.5 py-0.5 rounded-lg">نوع النسخة: كاملة</span>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <div>
+                                        <span class="text-devo-muted">تاريخ النسخة:</span>
+                                        <p id="inspect-date" class="text-white font-mono font-medium mt-0.5">-</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-devo-muted">إجمالي السجلات:</span>
+                                        <p id="inspect-total-records" class="text-devo-orange font-bold font-mono mt-0.5">0 سجل</p>
+                                    </div>
+                                </div>
+
+                                <!-- زر معاينة الفروقات المتقدمة -->
+                                <div class="pt-1">
+                                    <button
+                                        id="btn-open-diff-modal"
+                                        class="w-full py-2.5 px-3 bg-devo-orange/15 hover:bg-devo-orange text-devo-orange hover:text-white border border-devo-orange/30 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                    >
+                                        <i class="ph ph-git-diff text-base"></i>
+                                        <span>🔍 معاينة الفروقات وتحديد عناصر مخصصة للاستعادة</span>
+                                    </button>
+                                </div>
+
+                                <!-- اختيار طريقة الاستعادة -->
+                                <div class="border-t border-devo-gray/60 pt-3 space-y-2">
+                                    <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                        <i class="ph ph-sliders text-devo-orange"></i> طريقة معالجة البيانات:
+                                    </span>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                        <label class="flex items-center gap-2 p-2 rounded-lg border border-devo-gray bg-devo-dark hover:border-devo-success/50 cursor-pointer">
+                                            <input type="radio" name="restore-mode" value="upsert" checked class="accent-devo-success">
+                                            <div>
+                                                <p class="text-white font-bold">دمج وتحديث (آمن)</p>
+                                                <p class="text-[10px] text-devo-muted">إضافة الجديد وتحديث الموجود</p>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 p-2 rounded-lg border border-devo-gray bg-devo-dark hover:border-devo-error/50 cursor-pointer">
+                                            <input type="radio" name="restore-mode" value="replace" class="accent-devo-error">
+                                            <div>
+                                                <p class="text-devo-error font-bold">إعادة استبدال كاملة</p>
+                                                <p class="text-[10px] text-devo-muted">حذف الجداول المعنية واستبدالها</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <button
+                            id="btn-trigger-restore"
+                            disabled
+                            class="w-full py-3.5 px-4 bg-devo-gray text-devo-muted rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-not-allowed opacity-60"
+                        >
+                            <i class="ph ph-play-circle text-lg"></i>
+                            <span>بدء عملية استعادة كافة البيانات</span>
+                        </button>
                     </div>
-                </div>
-                <div class="flex items-center gap-2 text-xs text-devo-success bg-devo-success/10 border border-devo-success/20 px-3.5 py-2 rounded-xl font-bold">
-                    <i class="ph ph-shield-check text-base"></i>
-                    النظام جاهز ومحمي بالكامل
+
                 </div>
             </div>
 
-            <!-- Grid: 2 Columns for Export & Restore -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                <!-- 📤 كارت تصدير النسخ الاحتياطية -->
-                <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 flex flex-col justify-between shadow-md">
-                    <div class="space-y-4">
-                        <div class="flex items-center justify-between border-b border-devo-gray pb-4">
+            <!-- ================= TAB 2: سجل النسخ الاحتياطية السحابية ================= -->
+            <div id="panel-backup-logs" class="hidden space-y-6">
+                <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 shadow-md">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-devo-gray pb-4">
+                        <div>
                             <h3 class="text-base font-bold text-white flex items-center gap-2">
-                                <i class="ph ph-export text-devo-orange text-xl"></i>
-                                تصدير نسخة احتياطية محلية
+                                <i class="ph ph-cloud-arrow-up text-devo-orange text-xl"></i>
+                                النسخ الاحتياطية السحابية والتنبيهات المجدولة
                             </h3>
-                            <span class="text-xs text-devo-muted bg-devo-black px-2.5 py-1 rounded-lg border border-devo-gray">تنسيق JSON</span>
+                            <p class="text-xs text-devo-muted mt-1">يتم التخزين تلقائياً في السحابة مع الاحتفاظ التلقائي بأحدث 30 يوماً والتنبيه على Telegram</p>
                         </div>
 
-                        <p class="text-xs text-devo-muted leading-relaxed">
-                            اختر درجة التفاصيل المطلوبة للنسخة الاحتياطية وتصديرها وتحميلها على جهازك الشخصي:
-                        </p>
-
-                        <!-- خيارات المستويات -->
-                        <div class="space-y-2.5 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
-                            ${Object.values(EXPORT_PRESETS).map(preset => `
-                                <label class="export-preset-card flex items-start gap-3 p-3.5 rounded-xl border border-devo-gray bg-devo-black/40 hover:border-devo-orange/50 transition-all cursor-pointer ${preset.id === selectedExportPreset ? 'border-devo-orange bg-devo-orange/5 shadow-sm' : ''}">
-                                    <input type="radio" name="export-preset" value="${preset.id}" ${preset.id === selectedExportPreset ? 'checked' : ''} class="mt-1 accent-devo-orange">
-                                    <div class="flex-1 space-y-1">
-                                        <div class="flex items-center justify-between">
-                                            <span class="text-sm font-bold text-white flex items-center gap-2">
-                                                <i class="ph ${preset.icon} text-devo-orange"></i>
-                                                ${preset.label}
-                                            </span>
-                                            <span class="text-[10px] text-devo-muted bg-devo-gray/50 px-2 py-0.5 rounded font-mono">${preset.tables.length} جداول</span>
-                                        </div>
-                                        <p class="text-xs text-devo-muted">${preset.desc}</p>
-                                    </div>
-                                </label>
-                            `).join('')}
-                        </div>
+                        <button
+                            id="btn-create-cloud-backup"
+                            class="px-4 py-2.5 bg-devo-orange/15 hover:bg-devo-orange text-devo-orange hover:text-white border border-devo-orange/30 hover:border-devo-orange rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                        >
+                            <i class="ph ph-cloud-plus text-base"></i>
+                            <span>إنشاء نسخة سحابية وتنبيه التليجرام الآن</span>
+                        </button>
                     </div>
 
-                    <button
-                        id="btn-trigger-export"
-                        class="w-full py-3.5 px-4 bg-devo-orange hover:bg-devo-orange-hover text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-devo-orange/10 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
-                    >
-                        <i class="ph ph-download-simple text-lg"></i>
-                        <span>تصدير وتحميل النسخة الآن</span>
-                    </button>
-                </div>
-
-                <!-- 📥 كارت استعادة البيانات من ملف مع معاينة الفروقات -->
-                <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 flex flex-col justify-between shadow-md">
-                    <div class="space-y-4">
-                        <div class="flex items-center justify-between border-b border-devo-gray pb-4">
-                            <h3 class="text-base font-bold text-white flex items-center gap-2">
-                                <i class="ph ph-arrow-counter-clockwise text-devo-success text-xl"></i>
-                                استعادة البيانات ومعاينة الفروقات
-                            </h3>
-                            <span class="text-xs text-devo-muted bg-devo-black px-2.5 py-1 rounded-lg border border-devo-gray">فحص واستعادة جزئية</span>
-                        </div>
-
-                        <p class="text-xs text-devo-muted leading-relaxed">
-                            قم بسحب وإسقاط ملف النسخة الاحتياطية (.json) لتقييم الفروقات وتحديد عناصر معينة للاستعادة:
-                        </p>
-
-                        <!-- منطقة رفع الملف Dropzone -->
-                        <div id="restore-dropzone" class="border-2 border-dashed border-devo-gray hover:border-devo-success/60 bg-devo-black/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 cursor-pointer transition-all duration-200 group relative">
-                            <input type="file" id="restore-file-input" accept=".json" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
-                            <div class="w-14 h-14 rounded-2xl bg-devo-gray/50 group-hover:bg-devo-success/10 group-hover:text-devo-success text-devo-muted flex items-center justify-center transition-all duration-200">
-                                <i class="ph ph-file-arrow-down text-3xl"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm font-bold text-white group-hover:text-devo-success transition-colors">اضغط هنا لاختيار الملف أو اسحبه إلى هنا</p>
-                                <p class="text-xs text-devo-muted mt-1">يدعم فقط ملفات النسخ الاحتياطي الخاصة بنظام DEVO (.json)</p>
-                            </div>
-                        </div>
-
-                        <!-- كارت معاينة ومعلومات الملف المرفوع (مخفي افتراضياً) -->
-                        <div id="file-inspection-card" class="hidden bg-devo-black/60 border border-devo-gray rounded-xl p-4 space-y-3 animate-fade-in">
-                            <div class="flex items-center justify-between border-b border-devo-gray/60 pb-2.5">
-                                <div class="flex items-center gap-2 truncate max-w-[70%]">
-                                    <i class="ph ph-file-js text-devo-orange text-xl shrink-0"></i>
-                                    <span id="inspect-filename" class="text-xs font-bold text-white truncate">backup.json</span>
-                                </div>
-                                <span id="inspect-backup-type" class="text-[11px] font-bold text-devo-success bg-devo-success/10 border border-devo-success/20 px-2.5 py-0.5 rounded-lg">نوع النسخة: كاملة</span>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-2 text-xs">
-                                <div>
-                                    <span class="text-devo-muted">تاريخ النسخة:</span>
-                                    <p id="inspect-date" class="text-white font-mono font-medium mt-0.5">-</p>
-                                </div>
-                                <div>
-                                    <span class="text-devo-muted">إجمالي السجلات:</span>
-                                    <p id="inspect-total-records" class="text-devo-orange font-bold font-mono mt-0.5">0 سجل</p>
-                                </div>
-                            </div>
-
-                            <!-- زر معاينة الفروقات المتقدمة -->
-                            <div class="pt-1">
-                                <button
-                                    id="btn-open-diff-modal"
-                                    class="w-full py-2.5 px-3 bg-devo-orange/15 hover:bg-devo-orange text-devo-orange hover:text-white border border-devo-orange/30 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                                >
-                                    <i class="ph ph-git-diff text-base"></i>
-                                    <span>🔍 معاينة الفروقات وتحديد عناصر مخصصة للاستعادة</span>
-                                </button>
-                            </div>
-
-                            <!-- اختيار طريقة الاستعادة -->
-                            <div class="border-t border-devo-gray/60 pt-3 space-y-2">
-                                <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                    <i class="ph ph-sliders text-devo-orange"></i> طريقة معالجة البيانات:
-                                </span>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                                    <label class="flex items-center gap-2 p-2 rounded-lg border border-devo-gray bg-devo-dark hover:border-devo-success/50 cursor-pointer">
-                                        <input type="radio" name="restore-mode" value="upsert" checked class="accent-devo-success">
-                                        <div>
-                                            <p class="text-white font-bold">دمج وتحديث (آمن)</p>
-                                            <p class="text-[10px] text-devo-muted">إضافة الجديد وتحديث الموجود</p>
+                    <!-- جدول النسخ السحابية المحفوظة -->
+                    <div class="overflow-x-auto max-h-[620px] overflow-y-auto custom-scrollbar rounded-xl border border-devo-gray/50">
+                        <table class="w-full text-right border-collapse text-xs relative">
+                            <thead class="sticky top-0 z-20 bg-devo-black border-b border-devo-gray shadow-sm">
+                                <tr class="bg-devo-black text-devo-muted">
+                                    <th class="p-3.5 font-bold whitespace-nowrap">اسم النسخة السحابية</th>
+                                    <th class="p-3.5 font-bold whitespace-nowrap">تاريخ الإنشاء</th>
+                                    <th class="p-3.5 font-bold whitespace-nowrap">نوع النسخة</th>
+                                    <th class="p-3.5 font-bold whitespace-nowrap">إجمالي السجلات</th>
+                                    <th class="p-3.5 font-bold whitespace-nowrap">الحجم</th>
+                                    <th class="p-3.5 font-bold text-center whitespace-nowrap">الإجراءات والتحكم</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cloud-backups-table-body" class="divide-y divide-devo-gray/40">
+                                <tr>
+                                    <td colspan="6" class="p-6 text-center text-devo-muted">
+                                        <div class="flex flex-col items-center gap-2">
+                                            <i class="ph ph-spinner animate-spin text-2xl text-devo-orange"></i>
+                                            <span>جاري تحميل قائمة النسخ السحابية المحفوظة...</span>
                                         </div>
-                                    </label>
-                                    <label class="flex items-center gap-2 p-2 rounded-lg border border-devo-gray bg-devo-dark hover:border-devo-error/50 cursor-pointer">
-                                        <input type="radio" name="restore-mode" value="replace" class="accent-devo-error">
-                                        <div>
-                                            <p class="text-devo-error font-bold">إعادة استبدال كاملة</p>
-                                            <p class="text-[10px] text-devo-muted">حذف الجداول المعنية واستبدالها</p>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
-
-                    <button
-                        id="btn-trigger-restore"
-                        disabled
-                        class="w-full py-3.5 px-4 bg-devo-gray text-devo-muted rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-not-allowed opacity-60"
-                    >
-                        <i class="ph ph-play-circle text-lg"></i>
-                        <span>بدء عملية استعادة كافة البيانات</span>
-                    </button>
-                </div>
-
-            </div>
-
-            <!-- ☁️ قسم النسخ الاحتياطية السحابية المجدولة والسجل -->
-            <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 shadow-md">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-devo-gray pb-4">
-                    <div>
-                        <h3 class="text-base font-bold text-white flex items-center gap-2">
-                            <i class="ph ph-cloud-arrow-up text-devo-orange text-xl"></i>
-                            النسخ الاحتياطية السحابية والتنبيهات المجدولة
-                        </h3>
-                        <p class="text-xs text-devo-muted mt-1">يتم التخزين تلقائياً في السحابة مع الاحتفاظ التلقائي بأحدث 30 يوماً والتنبيه على Telegram</p>
-                    </div>
-
-                    <button
-                        id="btn-create-cloud-backup"
-                        class="px-4 py-2.5 bg-devo-orange/15 hover:bg-devo-orange text-devo-orange hover:text-white border border-devo-orange/30 hover:border-devo-orange rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
-                    >
-                        <i class="ph ph-cloud-plus text-base"></i>
-                        <span>إنشاء نسخة سحابية وتنبيه التليجرام الآن</span>
-                    </button>
-                </div>
-
-                <!-- جدول النسخ السحابية المحفوظة -->
-                <div class="overflow-x-auto">
-                    <table class="w-full text-right border-collapse text-xs">
-                        <thead>
-                            <tr class="bg-devo-black/60 text-devo-muted border-b border-devo-gray">
-                                <th class="p-3 font-bold">اسم النسخة السحابية</th>
-                                <th class="p-3 font-bold">تاريخ الإنشاء</th>
-                                <th class="p-3 font-bold">نوع النسخة</th>
-                                <th class="p-3 font-bold">إجمالي السجلات</th>
-                                <th class="p-3 font-bold">الحجم</th>
-                                <th class="p-3 font-bold text-center">الإجراءات والتحكم</th>
-                            </tr>
-                        </thead>
-                        <tbody id="cloud-backups-table-body" class="divide-y divide-devo-gray/40">
-                            <tr>
-                                <td colspan="6" class="p-6 text-center text-devo-muted">
-                                    <div class="flex flex-col items-center gap-2">
-                                        <i class="ph ph-spinner animate-spin text-2xl text-devo-orange"></i>
-                                        <span>جاري تحميل قائمة النسخ السحابية المحفوظة...</span>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
                 </div>
             </div>
 
@@ -539,9 +539,42 @@ function renderBackupRestoreView() {
 }
 
 // ============================================================
+// 📑 التبديل بين تابات العمليات والسجل
+// ============================================================
+function switchBackupTab(tabName) {
+    const opsPanel = document.getElementById('panel-backup-ops');
+    const logsPanel = document.getElementById('panel-backup-logs');
+    const opsBtn = document.getElementById('tab-btn-backup-ops');
+    const logsBtn = document.getElementById('tab-btn-backup-logs');
+
+    if (tabName === 'ops') {
+        opsPanel?.classList.remove('hidden');
+        logsPanel?.classList.add('hidden');
+
+        opsBtn?.classList.remove('text-devo-muted', 'bg-devo-dark', 'border', 'border-devo-gray');
+        opsBtn?.classList.add('text-white', 'bg-devo-orange', 'shadow-md', 'shadow-devo-orange/20');
+
+        logsBtn?.classList.remove('text-white', 'bg-devo-orange', 'shadow-md', 'shadow-devo-orange/20');
+        logsBtn?.classList.add('text-devo-muted', 'bg-devo-dark', 'border', 'border-devo-gray');
+    } else {
+        opsPanel?.classList.add('hidden');
+        logsPanel?.classList.remove('hidden');
+
+        logsBtn?.classList.remove('text-devo-muted', 'bg-devo-dark', 'border', 'border-devo-gray');
+        logsBtn?.classList.add('text-white', 'bg-devo-orange', 'shadow-md', 'shadow-devo-orange/20');
+
+        opsBtn?.classList.remove('text-white', 'bg-devo-orange', 'shadow-md', 'shadow-devo-orange/20');
+        opsBtn?.classList.add('text-devo-muted', 'bg-devo-dark', 'border', 'border-devo-gray');
+    }
+}
+
+// ============================================================
 // 🎮 ربط الأحداث بالواجهة
 // ============================================================
 function attachBackupRestoreEvents() {
+    document.getElementById('tab-btn-backup-ops')?.addEventListener('click', () => switchBackupTab('ops'));
+    document.getElementById('tab-btn-backup-logs')?.addEventListener('click', () => switchBackupTab('logs'));
+
     document.querySelectorAll('input[name="export-preset"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             selectedExportPreset = e.target.value;
@@ -1419,6 +1452,10 @@ async function fetchCloudBackups() {
 
 function renderCloudBackupsTable() {
     const tableBody = document.getElementById('cloud-backups-table-body');
+    const badgeCount = document.getElementById('badge-cloud-backups-count');
+    if (badgeCount) {
+        badgeCount.textContent = cloudBackupsList.length;
+    }
     if (!tableBody) return;
 
     if (cloudBackupsList.length === 0) {

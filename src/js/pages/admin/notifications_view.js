@@ -5,11 +5,10 @@ import { confirmDialog } from '../../components/modal.js';
 let allNotifications = [];
 let activeFilter = 'all'; // 'all', 'unread', 'archived'
 
-// تهيئة صفحة إدارة الإشعارات
+// تهيئة صفحة الإشعارات
 export async function initNotificationsView() {
     setupWindowBindings();
     await fetchNotifications();
-    await loadTelegramSettings();
     
     // الاستماع لحدث تلقي إشعار جديد لتحديث القائمة تلقائياً
     window.addEventListener('devo:notifications-received', handleRealtimeRefresh);

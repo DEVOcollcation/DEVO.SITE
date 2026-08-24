@@ -29,10 +29,25 @@ export async function initAdminOrdersView() {
     const { session } = getCurrentSession();
     if(session) currentUserProfile = session.user;
 
-    ['ao-search', 'ao-status', 'ao-date-from', 'ao-date-to'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', applyAdminOrdersFilter);
+    const filterInputs = [
+        'ao-search-invoice',
+        'ao-search-customer',
+        'ao-search-phone',
+        'ao-filter-worker',
+        'ao-status',
+        'ao-date-from',
+        'ao-date-to'
+    ];
+
+    filterInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', applyAdminOrdersFilter);
+            el.addEventListener('change', applyAdminOrdersFilter);
+        }
     });
 
+    await populateWorkerFilter();
     await fetchAdminOrders();
     setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي 🌟
 
@@ -40,8 +55,39 @@ export async function initAdminOrdersView() {
 }
 
 // ==========================================
-// 🌟 1. استدعاء البيانات الأساسي 🌟
+// 🌟 1. استدعاء الموظفين والبيانات الأساسية 🌟
 // ==========================================
+async function populateWorkerFilter() {
+    const select = document.getElementById('ao-filter-worker');
+    if (!select) return;
+
+    try {
+        const { data: users, error } = await supabase
+            .from('system_users')
+            .select('id, full_name, username, role, worker_job')
+            .order('full_name', { ascending: true });
+
+        if (!error && users) {
+            const currentVal = select.value;
+            let optionsHtml = '<option value="">كل الموظفين / البائعين</option>';
+            users.forEach(u => {
+                let jobLabel = u.role === 'owner' ? 'مالك' : (u.role === 'admin' ? 'مشرف' : 'بائع');
+                if (u.role === 'worker') {
+                    if (u.worker_job === 'showroom') jobLabel = 'مبيعات المعرض';
+                    else if (u.worker_job === 'warehouse') jobLabel = 'أمين مخزن';
+                    else if (u.worker_job === 'both') jobLabel = 'مبيعات + مخزن';
+                }
+                const name = u.full_name || u.username;
+                optionsHtml += `<option value="${u.id}">${name} (${jobLabel})</option>`;
+            });
+            select.innerHTML = optionsHtml;
+            if (currentVal) select.value = currentVal;
+        }
+    } catch (e) {
+        console.error('Error populating worker filter:', e);
+    }
+}
+
 export async function fetchAdminOrders() {
     const tBody = document.getElementById('ao-table-body');
     if(tBody && allAdminOrders.length === 0) tBody.innerHTML = `<tr><td colspan="9" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></td></tr>`;
@@ -61,7 +107,6 @@ export async function fetchAdminOrders() {
         
     if (!error && data) {
         allAdminOrders = data;
-        updateAdminStats();
         applyAdminOrdersFilter();
     } else if (error) {
         showToast('حدث خطأ أثناء جلب الأوردرات', 'error');
@@ -110,7 +155,6 @@ function setupRealtimeAdminOrders() {
             const data = await fetchFullOrderById(payload.new.id);
             
             if (data) {
-                updateAdminStats();
                 applyAdminOrdersFilter();
                 
                 // تنبيه مرئي (وميض برتقالي) للصف الجديد
@@ -126,7 +170,6 @@ function setupRealtimeAdminOrders() {
             const updatedOrder = await fetchFullOrderById(payload.new.id) || payload.new;
             const index = allAdminOrders.findIndex(o => o.id === payload.new.id);
             if (index > -1) {
-                updateAdminStats();
                 applyAdminOrdersFilter(); // 🌟 إعادة تطبيق الفلترة لضمان المزامنة اللحظية بين التبويبات والأجهزة 🌟
                 
                 // 🌟 عمل وميض ملفت للانتباه للصف إذا كان ظاهراً بالجدول الحالي 🌟
@@ -139,7 +182,7 @@ function setupRealtimeAdminOrders() {
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
             allAdminOrders = allAdminOrders.filter(o => o.id !== payload.old.id);
-            updateAdminStats();
+            applyAdminOrdersFilter();
             
             // إزالة الصف من الشاشة بتأثير حركي
             const existingRow = document.getElementById(`admin-order-row-${payload.old.id}`);
@@ -194,6 +237,10 @@ function generateOrderRowHTML(o) {
 
     const lockIcon = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="${o.is_locked ? 'text-devo-error' : 'text-devo-success'} p-1 hover:bg-white/10 rounded transition-colors" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-lg"></i></button>`;
 
+    const archiveBadge = o.is_archived
+        ? `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold whitespace-nowrap" title="أوردر مؤرشف">أرشيف</span>`
+        : `<span class="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold whitespace-nowrap" title="أوردر نشط">نشط</span>`;
+
     const assignedHTML = o.assigned_admin_name 
         ? `<span class="bg-devo-info/20 text-devo-info px-2 py-1 rounded text-[10px] font-bold"><i class="ph ph-user-gear"></i> ${o.assigned_admin_name}</span>` 
         : `<span class="text-devo-muted text-[10px]">-</span>`;
@@ -206,7 +253,11 @@ function generateOrderRowHTML(o) {
 
     return `
         <tr id="admin-order-row-${o.id}" class="hover:bg-devo-black/40 transition-colors">
-            <td class="p-3 font-mono text-devo-orange font-bold text-xs flex items-center gap-1">${o.invoice_number} ${lockIcon}</td>
+            <td class="p-3 font-mono text-devo-orange font-bold text-xs flex items-center gap-1.5 flex-wrap">
+                <span>${o.invoice_number}</span>
+                ${archiveBadge}
+                ${lockIcon}
+            </td>
             <td class="p-3 text-devo-muted text-[10px]">${dateStr}</td>
             <td class="p-3 font-bold text-white text-xs">
                 ${o.customer_name} <br>
@@ -258,94 +309,134 @@ window.switchAdminOrdersTab = (tab) => {
     applyAdminOrdersFilter();
 };
 
-function updateAdminStats() {
-    let totalRev = 0, prog = 0, done = 0, totalSeries = 0;
-    let activeCount = 0, archivedCount = 0;
+function updateAdminStats(targetList = null, isFiltered = false) {
+    // 🌟 إذا كان هناك بحث/فلترة مفعلة، تعكس الإحصائيات نتائج البحث بدقة
+    // وإذا لم يكن هناك بحث، تعكس الإحصائيات إجمالي النشطة + الأرشيف معاً
+    const list = isFiltered && targetList ? targetList : allAdminOrders;
 
-    allAdminOrders.forEach(o => {
-        const isArchived = o.is_archived || false;
-        if (isArchived) {
-            archivedCount++;
-        } else {
-            activeCount++;
-            totalRev += o.total_price || 0;
-            totalSeries += o.total_series || 0;
-            if(['in_progress', 'registered', 'preparing'].includes(o.status)) prog++;
-            if(['shipped', 'delivered'].includes(o.status)) done++;
-        }
+    let totalCount = list.length;
+    let totalSeries = 0;
+    let totalRev = 0;
+
+    list.forEach(o => {
+        totalSeries += Number(o.total_series) || 0;
+        totalRev += Number(o.total_price) || 0;
     });
 
     const statTotalEl = document.getElementById('ao-stat-total');
-    if (statTotalEl) statTotalEl.textContent = activeCount;
+    if (statTotalEl) statTotalEl.textContent = totalCount.toLocaleString('ar-EG');
+
     const statSeriesEl = document.getElementById('ao-stat-series');
-    if (statSeriesEl) statSeriesEl.textContent = totalSeries;
+    if (statSeriesEl) statSeriesEl.textContent = totalSeries.toLocaleString('ar-EG');
+
     const statRevEl = document.getElementById('ao-stat-rev');
-    if (statRevEl) statRevEl.textContent = totalRev.toLocaleString();
-    const statProgEl = document.getElementById('ao-stat-prog');
-    if (statProgEl) statProgEl.textContent = prog;
-    const statDoneEl = document.getElementById('ao-stat-done');
-    if (statDoneEl) statDoneEl.textContent = done;
+    if (statRevEl) statRevEl.textContent = totalRev.toLocaleString('ar-EG');
+
+    // تحديث أرقام البادج الخاصة بالتبويبات العلوية
+    const activeCount = allAdminOrders.filter(o => !o.is_archived).length;
+    const archivedCount = allAdminOrders.filter(o => o.is_archived).length;
 
     const badgeActive = document.getElementById('ao-badge-active');
     if (badgeActive) badgeActive.textContent = activeCount;
+
     const badgeArchived = document.getElementById('ao-badge-archived');
     if (badgeArchived) badgeArchived.textContent = archivedCount;
 }
 
 window.applyAdminOrdersFilter = () => {
-    const term = document.getElementById('ao-search')?.value.toLowerCase() || '';
+    const invoiceTerm = document.getElementById('ao-search-invoice')?.value.trim().toLowerCase() || '';
+    const customerTerm = document.getElementById('ao-search-customer')?.value.trim().toLowerCase() || '';
+    const phoneTerm = document.getElementById('ao-search-phone')?.value.trim() || '';
+    const workerVal = document.getElementById('ao-filter-worker')?.value || '';
     const statusFilter = document.getElementById('ao-status')?.value || '';
     const dateFrom = document.getElementById('ao-date-from')?.value;
     const dateTo = document.getElementById('ao-date-to')?.value;
 
-    const filtered = allAdminOrders.filter(o => {
-        const isArchived = o.is_archived || false;
-        if (currentAdminTab === 'active' && isArchived) return false;
-        if (currentAdminTab === 'archived' && !isArchived) return false;
+    const hasAnyFilter = Boolean(invoiceTerm || customerTerm || phoneTerm || workerVal || statusFilter || dateFrom || dateTo);
 
-        if (term) {
-            const matchesMain = (o.invoice_number || '').toLowerCase().includes(term) 
-                             || (o.customer_name || '').toLowerCase().includes(term) 
-                             || (o.phone_1 || '').includes(term)
-                             || (o.phone_2 || '').includes(term)
-                             || (o.address || '').toLowerCase().includes(term)
-                             || (o.system_users?.full_name || '').toLowerCase().includes(term)
-                             || (o.assigned_admin_name || '').toLowerCase().includes(term);
-                             
-            const matchesItems = o.order_items && o.order_items.some(item => {
-                const modelName = (item.models?.name || '').toLowerCase();
-                const factoryCode = (item.models?.factory_code || '').toLowerCase();
-                const systemCode = (item.models?.system_code || '').toLowerCase();
-                const colorName = (item.colors?.name || '').toLowerCase();
-                return modelName.includes(term) || factoryCode.includes(term) || systemCode.includes(term) || colorName.includes(term);
-            });
-            
-            if (!matchesMain && !matchesItems) return false;
+    const filtered = allAdminOrders.filter(o => {
+        const isArchived = Boolean(o.is_archived);
+
+        // إذا لم يكن هناك أي شرط بحث/فلترة، نتبع التبويب الحالي (نشط أو أرشيف)
+        if (!hasAnyFilter) {
+            if (currentAdminTab === 'active' && isArchived) return false;
+            if (currentAdminTab === 'archived' && !isArchived) return false;
         }
-                 
+
+        // 1. البحث برقم الأوردر (Invoice / Order ID)
+        if (invoiceTerm) {
+            const inv = String(o.invoice_number || '').toLowerCase();
+            if (!inv.includes(invoiceTerm)) return false;
+        }
+
+        // 2. البحث باسم العميل / المحل (Customer Name)
+        if (customerTerm) {
+            const cust = String(o.customer_name || '').toLowerCase();
+            if (!cust.includes(customerTerm)) return false;
+        }
+
+        // 3. البحث برقم هاتف العميل (Phone 1 / Phone 2)
+        if (phoneTerm) {
+            const p1 = String(o.phone_1 || '');
+            const p2 = String(o.phone_2 || '');
+            if (!p1.includes(phoneTerm) && !p2.includes(phoneTerm)) return false;
+        }
+
+        // 4. سلكتور الموظف البائع (Salesperson / Worker)
+        if (workerVal) {
+            const matchesWorker = (o.worker_id && o.worker_id === workerVal) || 
+                                  (o.assigned_worker_id && o.assigned_worker_id === workerVal);
+            if (!matchesWorker) return false;
+        }
+
+        // 5. فلتر الحالة (Status)
         if (statusFilter && o.status !== statusFilter) return false;
 
+        // 6. فلتر التاريخ (Date Range)
         if (dateFrom || dateTo) {
             const oDate = new Date(o.created_at);
-            oDate.setHours(0,0,0,0);
+            oDate.setHours(0, 0, 0, 0);
             if (dateFrom && oDate < new Date(dateFrom)) return false;
             if (dateTo && oDate > new Date(dateTo)) return false;
         }
+
         return true;
     });
+
+    // تحديث الإحصائيات التفاعلية بناءً على النتائج المعروضة
+    updateAdminStats(filtered, hasAnyFilter);
 
     const tbody = document.getElementById('ao-table-body');
     if (!tbody) return;
 
     if (filtered.length === 0) {
-        const emptyMsg = currentAdminTab === 'archived' 
-            ? 'لا توجد أوردرات مؤرشفة تطابق بحثك.' 
-            : 'لا توجد أوردرات نشطة تطابق بحثك.';
+        const emptyMsg = hasAnyFilter
+            ? 'لا توجد أوردرات تطابق شروط البحث والفلترة.'
+            : (currentAdminTab === 'archived' ? 'لا توجد أوردرات مؤرشفة حالياً.' : 'لا توجد أوردرات نشطة حالياً.');
         tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">${emptyMsg}</td></tr>`;
         return;
     }
 
     tbody.innerHTML = filtered.map(o => generateOrderRowHTML(o)).join('');
+};
+
+window.resetAdminOrdersFilters = () => {
+    const filterInputIds = [
+        'ao-search-invoice',
+        'ao-search-customer',
+        'ao-search-phone',
+        'ao-filter-worker',
+        'ao-status',
+        'ao-date-from',
+        'ao-date-to'
+    ];
+
+    filterInputIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    applyAdminOrdersFilter();
 };
 
 window.toggleAdminOrderArchive = async (id, archiveStatus) => {
@@ -355,7 +446,6 @@ window.toggleAdminOrderArchive = async (id, archiveStatus) => {
     const previousStatus = o.is_archived;
     // Optimistic update
     o.is_archived = archiveStatus;
-    updateAdminStats();
     applyAdminOrdersFilter();
 
     let updateError = null;
@@ -383,7 +473,6 @@ window.toggleAdminOrderArchive = async (id, archiveStatus) => {
     if (updateError) {
         console.error('Error toggling admin order archive:', updateError);
         o.is_archived = previousStatus;
-        updateAdminStats();
         applyAdminOrdersFilter();
         showToast('فشل تعديل حالة الأرشفة في قاعدة البيانات: ' + (updateError.message || updateError), 'error');
     } else {

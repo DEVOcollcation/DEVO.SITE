@@ -1,6 +1,19 @@
 import { supabase } from '../../config/supabase.js';
 import { getCurrentSession } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
+import { 
+    getAllCachedModels, 
+    saveAllCachedModels, 
+    putCachedModel, 
+    deleteCachedModel, 
+    resolveImageUrl, 
+    getCachedImageObjectUrl, 
+    cacheImageBlob, 
+    bindImageToCache, 
+    pruneUnusedImages, 
+    preloadModelImages, 
+    removeImagesForModel 
+} from '../../services/offline_store.js';
 
 let allModels = [];
 let currentCategories = new Set();
@@ -24,7 +37,7 @@ export async function initGallery() {
 
     if (isWorker) {
         loadLocalCart();
-        document.getElementById('floating-cart-btn').classList.remove('hidden');
+        document.getElementById('floating-cart-btn')?.classList.remove('hidden');
     }
 
     document.getElementById('gal-search')?.addEventListener('input', applyGalleryFilters);
@@ -40,8 +53,6 @@ export async function initGallery() {
     if (modelFromUrl) {
         setTimeout(() => { window.openModelViewer(modelFromUrl, true); }, 500);
     }
-
-
 
     // إغلاق نافذة التفاصيل عند الضغط خارجها (خلفية المودال)
     const modelViewerModal = document.getElementById('model-viewer-modal');
@@ -59,18 +70,18 @@ export async function initGallery() {
 // ==========================================
 async function fetchGalleryModels() {
     const container = document.getElementById('gallery-grid');
-    if(!container) return;
+    if (!container) return;
     
-    // ⚡ 1. التحميل الفوري السريع من الـ LocalStorage إذا وجد (0ms Instant Load) ⚡
-    const cachedData = localStorage.getItem('devo_cached_gallery_models');
-    if (cachedData && allModels.length === 0) {
-        try {
-            allModels = JSON.parse(cachedData);
+    // ⚡ 1. التحميل الفوري السريع من IndexedDB في (0ms Instant Load) ⚡
+    try {
+        const cachedData = await getAllCachedModels();
+        if (cachedData && cachedData.length > 0 && allModels.length === 0) {
+            allModels = cachedData;
             populateCategoryFilter();
             applyGalleryFilters();
-        } catch (e) {
-            console.warn('تجاوز كاش المعرض التالف:', e);
         }
+    } catch (e) {
+        console.warn('تجاوز كاش IndexedDB:', e);
     }
 
     if (allModels.length === 0) {
@@ -78,32 +89,46 @@ async function fetchGalleryModels() {
     }
 
     // 🔄 2. التحديث الصامت في الخلفية من Supabase لتنقيح وحفظ البيانات الحديثة 🔄
-    const { data, error } = await supabase
-        .from('models')
-        .select(`
-            *,
-            categories(name),
-            classes(name, class_sizes(sizes(name))),
-            model_sizes(sizes(name)),
-            model_inventory(color_id, available_series, colors(name)),
-            model_images(image_url)
-        `)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-    if (error) return console.error(error);
-
-    allModels = data;
-
-    // حفظ أحدث نسخة من البيانات في الـ LocalStorage
     try {
-        localStorage.setItem('devo_cached_gallery_models', JSON.stringify(data));
-    } catch (e) {
-        console.warn('فشل حفظ كاش المعرض بالـ LocalStorage:', e);
+        const { data, error } = await supabase
+            .from('models')
+            .select(`
+                *,
+                categories(name),
+                classes(name, class_sizes(sizes(name))),
+                model_sizes(sizes(name)),
+                model_inventory(color_id, available_series, colors(name)),
+                model_images(image_url)
+            `)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('[Gallery] Supabase fetch error:', error);
+            return;
+        }
+
+        if (data) {
+            const previousModels = allModels;
+            allModels = data;
+
+            // حفظ أحدث نسخة في IndexedDB بالخلفية
+            saveAllCachedModels(data);
+
+            // تنظيف صور الموديلات المعطلة أو المحذوفة تلقائياً لتوفير المساحة
+            pruneUnusedImages(data);
+
+            // بدء التنزيل المسبق لصور الموديلات الجديدة غير المخزنة محلياً
+            preloadModelImages(data);
+
+            populateCategoryFilter();
+
+            // تطبيق التحديث الناعم Fine-Grained DOM Patching دون وميض
+            patchOrRenderGallery(previousModels, data);
+        }
+    } catch (err) {
+        console.warn('[Gallery] Network fetch failed, relying on offline cache:', err);
     }
-    
-    populateCategoryFilter();
-    applyGalleryFilters();
 }
 
 function populateCategoryFilter() {
@@ -111,7 +136,7 @@ function populateCategoryFilter() {
     if (!catSelect) return;
     const currentVal = catSelect.value;
     currentCategories = new Set();
-    allModels.forEach(m => { if(m.categories?.name) currentCategories.add(m.categories.name); });
+    allModels.forEach(m => { if (m.categories?.name) currentCategories.add(m.categories.name); });
     let catOptions = `<option value="">جميع التصنيفات</option>`;
     currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
     catSelect.innerHTML = catOptions;
@@ -125,11 +150,24 @@ function setupGalleryRealtime() {
     supabase.channel('public_gallery_sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, (payload) => {
             
-            // 🚨 حالة الحذف المباشر (DELETE) - تحدث فوراً ولا تحتاج انتظار 🚨
+            // 🚨 حالة الحذف المباشر (DELETE) 🚨
             if (payload.eventType === 'DELETE') {
-                allModels = allModels.filter(m => m.id !== payload.old.id);
-                applyGalleryFilters();
-                checkAndCloseModal(payload.old.id, 'تم حذف هذا الموديل من قبل الإدارة.');
+                const targetId = payload.old.id;
+                allModels = allModels.filter(m => m.id !== targetId);
+                deleteCachedModel(targetId);
+                
+                // أنيميشن ناعم لحذف الكارت إن وجد
+                const card = document.getElementById(`gallery-card-${targetId}`);
+                if (card) {
+                    card.style.transition = 'all 0.35s ease';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.92)';
+                    setTimeout(() => { applyGalleryFilters(); }, 350);
+                } else {
+                    applyGalleryFilters();
+                }
+
+                checkAndCloseModal(targetId, 'تم حذف هذا الموديل من قبل الإدارة.');
                 return;
             }
 
@@ -149,9 +187,12 @@ function setupGalleryRealtime() {
 
                 if (payload.eventType === 'INSERT') {
                     if (fullModel.is_active) {
-                        // تجنب التكرار إذا كان الموديل موجوداً بالفعل
                         if (!allModels.find(m => m.id === fullModel.id)) {
                             allModels.unshift(fullModel);
+                            putCachedModel(fullModel);
+                            if (fullModel.model_images?.[0]?.image_url) {
+                                cacheImageBlob(fullModel.model_images[0].image_url, fullModel.id);
+                            }
                             applyGalleryFilters();
                         }
                     }
@@ -159,13 +200,29 @@ function setupGalleryRealtime() {
                 else if (payload.eventType === 'UPDATE') {
                     if (!fullModel.is_active) {
                         allModels = allModels.filter(m => m.id !== fullModel.id);
-                        applyGalleryFilters();
+                        deleteCachedModel(fullModel.id);
+                        
+                        const card = document.getElementById(`gallery-card-${fullModel.id}`);
+                        if (card) {
+                            card.style.transition = 'all 0.35s ease';
+                            card.style.opacity = '0';
+                            card.style.transform = 'scale(0.92)';
+                            setTimeout(() => { applyGalleryFilters(); }, 350);
+                        } else {
+                            applyGalleryFilters();
+                        }
+
                         checkAndCloseModal(fullModel.id, 'تم تعطيل هذا الموديل ولم يعد متاحاً.');
                     } else {
                         const index = allModels.findIndex(m => m.id === fullModel.id);
+                        putCachedModel(fullModel);
+                        if (fullModel.model_images?.[0]?.image_url) {
+                            cacheImageBlob(fullModel.model_images[0].image_url, fullModel.id);
+                        }
+
                         if (index > -1) {
                             allModels[index] = fullModel;
-                            updateGalleryCardDOM(fullModel.id);
+                            patchGalleryCardDOM(fullModel);
                             updateModelViewerDOM(fullModel.id);
                         } else {
                             // كان معطلاً وأصبح نشطاً (إضافة جديدة للمعرض)
@@ -174,17 +231,18 @@ function setupGalleryRealtime() {
                         }
                     }
                 }
-            }, 800); // <-- زمن الانتظار الذكي
+            }, 800);
         })
         
-        // 🚨 حالة تعديل المخزون المباشر (سحب الكميات من السلة) 🚨
+        // 🚨 حالة تعديل المخزون المباشر 🚨
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
             const modelIndex = allModels.findIndex(m => m.id === payload.new.model_id);
             if (modelIndex > -1) {
-                const invIndex = allModels[modelIndex].model_inventory.findIndex(i => i.color_id === payload.new.color_id);
+                const invIndex = allModels[modelIndex].model_inventory?.findIndex(i => i.color_id === payload.new.color_id);
                 if (invIndex > -1) {
                     allModels[modelIndex].model_inventory[invIndex].available_series = payload.new.available_series;
-                    updateGalleryCardDOM(payload.new.model_id);
+                    putCachedModel(allModels[modelIndex]);
+                    patchGalleryCardDOM(allModels[modelIndex]);
                     updateModelViewerDOM(payload.new.model_id);
                 }
             }
@@ -201,66 +259,9 @@ function checkAndCloseModal(modelId, message) {
     }
 }
 
-// تحديث كارت الموديل في واجهة المعرض بصمت
-function updateGalleryCardDOM(id) {
-    const existingCard = document.getElementById(`gallery-card-${id}`);
-    if (existingCard) {
-        const model = allModels.find(m => m.id === id);
-        if (model) existingCard.outerHTML = generateGalleryCardHTML(model);
-    }
-}
-
-// 🌟 التحديث الشامل داخل نافذة التفاصيل 🌟
-function updateModelViewerDOM(id) {
-    const modal = document.getElementById('model-viewer-modal');
-    if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-current-model-id') === id) {
-        const model = allModels.find(m => m.id === id);
-        if (model) {
-            // تحديث الاسم
-            const nameEl = document.getElementById('viewer-name');
-            if (nameEl) nameEl.textContent = model.name;
-
-            // تحديث السعر
-            const priceEl = document.getElementById('viewer-price');
-            if (priceEl) priceEl.textContent = model.price;
-
-            // تحديث عدد المقاسات الكلي في العنوان
-            const classSizes = model.classes?.class_sizes || [];
-            const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
-            const sizesTitleEl = document.getElementById('viewer-sizes-title');
-            if (sizesTitleEl) sizesTitleEl.innerHTML = `<i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)`;
-
-            // تحديث بادجات (Tags) المقاسات
-            const sizesContainer = document.getElementById('viewer-sizes-container');
-            if (sizesContainer) {
-                const renderSizesTags = classSizes.length > 0 
-                    ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
-                    : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('');
-                sizesContainer.innerHTML = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
-            }
-
-            // تحديث الألوان والمخزون
-            const colorsContainer = document.getElementById('viewer-colors-container');
-            if (colorsContainer) {
-                colorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
-            }
-        }
-    }
-}
-
 // ==========================================
-// 🌟 3. الفلترة والرسم (Pagination) 🌟
+// 🌟 3. الفلترة والرسم الناعم (Fine-Grained DOM Patching) 🌟
 // ==========================================
-function resolveImageUrl(url) {
-    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.png';
-    try {
-        if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
-            const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-            if (idMatch && idMatch[1]) return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
-        }
-    } catch (e) {}
-    return url; 
-}
 
 window.toggleGalleryFilters = () => {
     const advFilters = document.getElementById('gallery-advanced-filters');
@@ -284,9 +285,12 @@ window.toggleGalleryFilters = () => {
 };
 
 window.clearGalleryFilters = () => {
-    document.getElementById('gal-search').value = '';
-    document.getElementById('gal-category').value = '';
-    document.getElementById('gal-sort').value = 'newest';
+    const searchEl = document.getElementById('gal-search');
+    const catEl = document.getElementById('gal-category');
+    const sortEl = document.getElementById('gal-sort');
+    if (searchEl) searchEl.value = '';
+    if (catEl) catEl.value = '';
+    if (sortEl) sortEl.value = 'newest';
     applyGalleryFilters();
 };
 
@@ -308,8 +312,62 @@ function applyGalleryFilters() {
     else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     currentFilteredModels = filtered;
-    currentPage = 1; 
     renderGalleryPage();
+}
+
+/**
+ * Smart Patch or Full Render
+ */
+function patchOrRenderGallery(prevModels, nextModels) {
+    if (!prevModels || prevModels.length === 0) {
+        applyGalleryFilters();
+        return;
+    }
+
+    const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
+    const cat = document.getElementById('gal-category')?.value || '';
+    const sort = document.getElementById('gal-sort')?.value || 'newest';
+
+    let filtered = nextModels.filter(m => {
+        let isMatch = true;
+        const searchStr = `${m.factory_code || ''} ${m.system_code || ''} ${m.name || ''}`.toLowerCase();
+        if (term && !searchStr.includes(term)) isMatch = false;
+        if (cat && m.categories?.name !== cat) isMatch = false;
+        return isMatch;
+    });
+
+    if (sort === 'price_asc') filtered.sort((a, b) => a.price - b.price);
+    else if (sort === 'price_desc') filtered.sort((a, b) => b.price - a.price);
+    else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    currentFilteredModels = filtered;
+
+    // Check if the current page cards can be patched in-place
+    const totalItems = currentFilteredModels.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageData = currentFilteredModels.slice(startIndex, endIndex);
+
+    const container = document.getElementById('gallery-grid');
+    if (!container) return;
+
+    const renderedCards = container.querySelectorAll('[id^="gallery-card-"]');
+    const canPatchInPlace = renderedCards.length === pageData.length && 
+        Array.from(renderedCards).every((card, idx) => card.id === `gallery-card-${pageData[idx].id}`);
+
+    if (canPatchInPlace) {
+        // Fine-Grained update without any layout jump or re-render!
+        pageData.forEach(model => {
+            patchGalleryCardDOM(model);
+        });
+        renderGalleryPaginationControls(totalPages);
+    } else {
+        // Render smoothly
+        renderGalleryPage();
+    }
 }
 
 function renderGalleryPage() {
@@ -336,45 +394,168 @@ function renderGalleryPage() {
     const pageData = currentFilteredModels.slice(startIndex, endIndex);
 
     container.innerHTML = pageData.map(m => generateGalleryCardHTML(m)).join('');
+    
+    // Bind images to local cache
+    pageData.forEach(m => {
+        const card = document.getElementById(`gallery-card-${m.id}`);
+        if (card) {
+            const rawUrl = m.model_images?.[0]?.image_url;
+            if (rawUrl) {
+                const mainImg = card.querySelector('.card-main-img');
+                const blurImg = card.querySelector('.card-blur-img');
+                if (mainImg) bindImageToCache(mainImg, rawUrl, m.id);
+                if (blurImg) bindImageToCache(blurImg, rawUrl, m.id);
+            }
+        }
+    });
+
     renderGalleryPaginationControls(totalPages);
+}
+
+/**
+ * Generate stock badge HTML
+ */
+function getStockBadgeHTML(totalSeries, isOut) {
+    if (isWorker) {
+        if (isOut) return `<span class="stock-badge bg-devo-error text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold flex items-center gap-1"><i class="ph ph-warning-circle"></i> نفذت</span>`;
+        else if (totalSeries <= 5) return `<span class="stock-badge bg-devo-orange text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold">متبقي ${totalSeries} سيريه</span>`;
+        else return `<span class="stock-badge bg-devo-success text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold">متبقي ${totalSeries} سيريه</span>`;
+    } else {
+        if (isOut) return `<span class="stock-badge bg-devo-black/80 backdrop-blur-sm text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold border border-devo-gray">نفذت الكمية</span>`;
+        else return `<span class="stock-badge bg-devo-success/20 text-devo-success backdrop-blur-sm border border-devo-success/50 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold">متوفر</span>`;
+    }
 }
 
 function generateGalleryCardHTML(m) {
     const totalSeries = m.model_inventory?.reduce((sum, inv) => sum + inv.available_series, 0) || 0;
     const isOut = totalSeries === 0;
-    const mainImg = resolveImageUrl(m.model_images?.[0]?.image_url);
-    
-    let stockBadge = '';
-    if (isWorker) {
-        if (isOut) stockBadge = `<span class="absolute top-2 right-2 bg-devo-error text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-30 font-bold flex items-center gap-1"><i class="ph ph-warning-circle"></i> نفذت</span>`;
-        else if (totalSeries <= 5) stockBadge = `<span class="absolute top-2 right-2 bg-devo-orange text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-30 font-bold">متبقي ${totalSeries} سيريه</span>`;
-        else stockBadge = `<span class="absolute top-2 right-2 bg-devo-success text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-30 font-bold">متبقي ${totalSeries} سيريه</span>`;
-    } else {
-        if (isOut) stockBadge = `<span class="absolute top-2 right-2 bg-devo-black/80 backdrop-blur-sm text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-30 font-bold border border-devo-gray">نفذت الكمية</span>`;
-        else stockBadge = `<span class="absolute top-2 right-2 bg-devo-success/20 text-devo-success backdrop-blur-sm border border-devo-success/50 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg z-30 font-bold">متوفر</span>`;
-    }
-
+    const rawImg = m.model_images?.[0]?.image_url;
+    const mainImg = resolveImageUrl(rawImg);
+    const stockBadge = getStockBadgeHTML(totalSeries, isOut);
     const cardStyle = isOut ? 'grayscale opacity-80' : 'card-hover cursor-pointer';
 
     return `
     <div id="gallery-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-xl sm:rounded-2xl overflow-hidden flex flex-col relative group transition-all duration-300 ${cardStyle}" onclick="openModelViewer('${m.id}')">
-        ${stockBadge}
+        <div class="card-stock-badge-container absolute top-2 right-2 z-30 transition-all duration-300">
+            ${stockBadge}
+        </div>
         <div class="h-44 sm:h-64 md:h-72 bg-devo-black relative overflow-hidden flex items-center justify-center p-3">
-            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
+            <img src="${mainImg}" class="card-blur-img absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none transition-opacity duration-300" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-500 group-hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">
+            <img src="${mainImg}" class="card-main-img relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-500 group-hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">
         </div>
         <div class="p-2.5 sm:p-4 flex flex-col flex-1 justify-between z-10 relative bg-devo-dark border-t border-devo-gray/30">
             <div>
-                <p class="text-devo-muted text-[9px] sm:text-[10px] font-mono tracking-wider mb-0.5">${m.factory_code || m.system_code}</p>
-                <h3 class="text-white font-bold text-xs sm:text-base md:text-lg mb-0.5 sm:mb-1 truncate" title="${m.name}">${m.name}</h3>
+                <p class="card-code-text text-devo-muted text-[9px] sm:text-[10px] font-mono tracking-wider mb-0.5">${m.factory_code || m.system_code || ''}</p>
+                <h3 class="card-name-text text-white font-bold text-xs sm:text-base md:text-lg mb-0.5 sm:mb-1 truncate" title="${m.name}">${m.name}</h3>
             </div>
             <div class="flex justify-between items-end mt-1 sm:mt-2">
-                <span class="text-devo-muted text-[10px] sm:text-xs flex items-center gap-1"><i class="ph ph-tag"></i> ${m.categories?.name || 'بدون تصنيف'}</span>
-                <p class="text-devo-orange font-black text-sm sm:text-lg md:text-xl">${m.price} <span class="text-[9px] sm:text-[10px] font-normal">ج.م</span></p>
+                <span class="card-cat-text text-devo-muted text-[10px] sm:text-xs flex items-center gap-1"><i class="ph ph-tag"></i> ${m.categories?.name || 'بدون تصنيف'}</span>
+                <p class="text-devo-orange font-black text-sm sm:text-lg md:text-xl"><span class="card-price-val">${m.price}</span> <span class="text-[9px] sm:text-[10px] font-normal">ج.م</span></p>
             </div>
         </div>
     </div>`;
+}
+
+/**
+ * Fine-Grained in-place DOM patch for a single gallery card
+ */
+function patchGalleryCardDOM(model) {
+    if (!model || !model.id) return;
+    const card = document.getElementById(`gallery-card-${model.id}`);
+    if (!card) return;
+
+    const totalSeries = model.model_inventory?.reduce((sum, inv) => sum + inv.available_series, 0) || 0;
+    const isOut = totalSeries === 0;
+
+    // 1. Update Card Stock Badge
+    const badgeContainer = card.querySelector('.card-stock-badge-container');
+    if (badgeContainer) {
+        badgeContainer.innerHTML = getStockBadgeHTML(totalSeries, isOut);
+    }
+
+    // 2. Update Card Greyscale / Hover Style
+    if (isOut) {
+        card.classList.add('grayscale', 'opacity-80');
+        card.classList.remove('card-hover', 'cursor-pointer');
+    } else {
+        card.classList.remove('grayscale', 'opacity-80');
+        card.classList.add('card-hover', 'cursor-pointer');
+    }
+
+    // 3. Update Price
+    const priceValEl = card.querySelector('.card-price-val');
+    if (priceValEl && priceValEl.textContent !== String(model.price)) {
+        priceValEl.textContent = model.price;
+        priceValEl.classList.add('text-devo-success', 'scale-110');
+        setTimeout(() => priceValEl.classList.remove('text-devo-success', 'scale-110'), 800);
+    }
+
+    // 4. Update Name & Code
+    const nameEl = card.querySelector('.card-name-text');
+    if (nameEl && nameEl.textContent !== model.name) {
+        nameEl.textContent = model.name;
+        nameEl.title = model.name;
+    }
+
+    const codeEl = card.querySelector('.card-code-text');
+    const newCode = model.factory_code || model.system_code || '';
+    if (codeEl && codeEl.textContent !== newCode) {
+        codeEl.textContent = newCode;
+    }
+
+    // 5. Update Category
+    const catEl = card.querySelector('.card-cat-text');
+    if (catEl) {
+        catEl.innerHTML = `<i class="ph ph-tag"></i> ${model.categories?.name || 'بدون تصنيف'}`;
+    }
+
+    // 6. Update Image if changed
+    const rawUrl = model.model_images?.[0]?.image_url;
+    if (rawUrl) {
+        const mainImg = card.querySelector('.card-main-img');
+        const blurImg = card.querySelector('.card-blur-img');
+        if (mainImg) bindImageToCache(mainImg, rawUrl, model.id);
+        if (blurImg) bindImageToCache(blurImg, rawUrl, model.id);
+    }
+}
+
+// 🌟 التحديث الشامل داخل نافذة التفاصيل 🌟
+function updateModelViewerDOM(id) {
+    const modal = document.getElementById('model-viewer-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-current-model-id') === id) {
+        const model = allModels.find(m => m.id === id);
+        if (model) {
+            // تحديث الاسم
+            const nameEl = document.getElementById('viewer-name');
+            if (nameEl) nameEl.textContent = model.name;
+
+            // تحديث السعر
+            const priceEl = document.getElementById('viewer-price');
+            if (priceEl) priceEl.textContent = model.price;
+
+            // تحديث عدد المقاسات الكلي في العنوان
+            const classSizes = model.classes?.class_sizes || [];
+            const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
+            const sizesTitleEl = document.getElementById('viewer-sizes-title');
+            if (sizesTitleEl) sizesTitleEl.innerHTML = `<i class="ph ph-ruler"></i> المقاسات داخل السيريه (${sizesCount} قطع)`;
+
+            // تحديث بادجات المقاسات
+            const sizesContainer = document.getElementById('viewer-sizes-container');
+            if (sizesContainer) {
+                const renderSizesTags = classSizes.length > 0 
+                    ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
+                    : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-xs px-3 py-1.5 rounded font-medium">${s.sizes?.name}</span>`).join('');
+                sizesContainer.innerHTML = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
+            }
+
+            // تحديث الألوان والمخزون
+            const colorsContainer = document.getElementById('viewer-colors-container');
+            if (colorsContainer) {
+                colorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
+            }
+        }
+    }
 }
 
 function renderGalleryPaginationControls(totalPages) {
@@ -423,7 +604,7 @@ window.openModelViewer = (id, skipHistory = false) => {
     if (modal) modal.setAttribute('data-current-model-id', id);
 
     const content = document.getElementById('model-viewer-content');
-    const imgs = model.model_images?.length > 0 ? model.model_images : [{image_url: null}];
+    const imgs = model.model_images?.length > 0 ? model.model_images : [{ image_url: null }];
     const mainImg = resolveImageUrl(imgs[0].image_url);
     
     let imagesGalleryHtml = `
@@ -432,7 +613,7 @@ window.openModelViewer = (id, skipHistory = false) => {
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
             <img src="${mainImg}" id="viewer-main-img" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-xl border border-devo-gray/50 shadow-lg" onerror="this.src='./src/assets/icons/devo.png'" decoding="async">
         </div>
-        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}</div>` : ''}
+        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="viewer-thumb-img w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}</div>` : ''}
     `;
 
     const renderSizesTags = classSizes.length > 0 
@@ -480,7 +661,7 @@ window.openModelViewer = (id, skipHistory = false) => {
                 <div class="flex flex-col">
                     <div class="mb-3 pb-3 border-b border-devo-gray flex justify-between items-center gap-2">
                         <div>
-                            <p class="text-devo-muted text-[10px] sm:text-xs font-mono mb-0.5">كود: ${model.factory_code || model.system_code}</p>
+                            <p class="text-devo-muted text-[10px] sm:text-xs font-mono mb-0.5">كود: ${model.factory_code || model.system_code || ''}</p>
                             <h2 id="viewer-name" class="text-lg sm:text-2xl font-black text-white leading-tight">${model.name}</h2>
                             <p class="text-xl sm:text-3xl text-devo-orange font-black mt-1"><span id="viewer-price">${model.price}</span> <span class="text-xs sm:text-base font-normal">ج.م</span></p>
                         </div>
@@ -505,6 +686,17 @@ window.openModelViewer = (id, skipHistory = false) => {
                 </div>
             </div>
         `;
+
+        // Bind main & thumbnail images in viewer to cache
+        if (imgs[0]?.image_url) {
+            bindImageToCache(document.getElementById('viewer-main-img'), imgs[0].image_url, model.id);
+            bindImageToCache(document.getElementById('viewer-blur-bg'), imgs[0].image_url, model.id);
+        }
+        content.querySelectorAll('.viewer-thumb-img').forEach((thumbEl, idx) => {
+            if (imgs[idx]?.image_url) {
+                bindImageToCache(thumbEl, imgs[idx].image_url, model.id);
+            }
+        });
     }
 
     if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.remove('opacity-0'), 10); }
@@ -820,8 +1012,8 @@ function updateFloatingCart() {
     const totalItems = localCart.reduce((sum, item) => sum + item.qty, 0);
     countEl.textContent = totalItems;
     if (totalItems > 0) {
-        countEl.parentElement.parentElement.classList.add('animate-bounce');
-        setTimeout(() => countEl.parentElement.parentElement.classList.remove('animate-bounce'), 1000);
+        countEl.parentElement?.parentElement?.classList.add('animate-bounce');
+        setTimeout(() => countEl.parentElement?.parentElement?.classList.remove('animate-bounce'), 1000);
     }
 }
 

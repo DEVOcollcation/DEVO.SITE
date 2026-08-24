@@ -56,19 +56,6 @@ function renderResetView() {
     container.innerHTML = `
         <div class="animate-fade-in relative pb-10 space-y-4 max-w-4xl mx-auto">
 
-            <!-- Header — مطابق لباقي الصفحات -->
-            <div class="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center bg-devo-dark border border-devo-gray p-4 rounded-xl shadow-sm">
-                <div>
-                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-warning-octagon text-devo-error"></i> إعادة تهيئة النظام
-                    </h2>
-                    <p class="text-devo-muted text-xs mt-0.5">منطقة الخطر — هذه الصفحة مرئية لمالك النظام فقط</p>
-                </div>
-                <span class="flex items-center gap-1.5 text-xs text-devo-error bg-devo-error/10 border border-devo-error/20 px-3 py-1.5 rounded-lg font-bold shrink-0">
-                    <i class="ph ph-lock-simple-open"></i> صلاحية: مالك النظام فقط
-                </span>
-            </div>
-
             <!-- تحذير رئيسي -->
             <div class="bg-devo-dark border border-devo-gray rounded-xl p-4 flex items-start gap-3">
                 <i class="ph ph-seal-warning text-xl text-devo-error shrink-0 mt-0.5"></i>

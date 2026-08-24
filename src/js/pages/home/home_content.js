@@ -1,4 +1,5 @@
 import { supabase } from '../../config/supabase.js';
+import { resolveImageUrl, bindImageToCache } from '../../services/offline_store.js';
 
 export async function initHomeContent() {
     await Promise.all([
@@ -7,17 +8,6 @@ export async function initHomeContent() {
     ]);
 }
 
-// دالة معالجة روابط درايف
-function resolveImageUrl(url) {
-    if (!url || url.trim() === "" || url === "null" || url === "undefined") return '';
-    try {
-        if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
-            const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-            if (idMatch && idMatch[1]) return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w2000`;
-        }
-    } catch (e) {}
-    return url; 
-}
 
 // جلب الإعدادات (نصوص، صور، سوشيال ميديا) مع الكاش الفوري
 async function loadHeroSettings() {
@@ -403,6 +393,17 @@ function renderPromoCardsUI(data, container) {
     }).join('');
 
     setTimeout(() => {
+        container.querySelectorAll('[id^="promo-card-"]').forEach(cardEl => {
+            const cardId = cardEl.id.replace('promo-card-', '');
+            const cardObj = data.find(c => String(c.id) === String(cardId));
+            if (cardObj && cardObj.image_url) {
+                const mainImg = cardEl.querySelector('.promo-main-img');
+                const blurImg = cardEl.querySelector('.promo-blur-bg');
+                if (mainImg) bindImageToCache(mainImg, cardObj.image_url);
+                if (blurImg) bindImageToCache(blurImg, cardObj.image_url);
+            }
+        });
+
         container.querySelectorAll('.promo-main-img').forEach(img => {
             if (img.complete) {
                 const cardId = img.closest('[id^="promo-card-"]')?.id?.replace('promo-card-', '');

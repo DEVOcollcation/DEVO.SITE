@@ -101,7 +101,7 @@ function switchView(targetId, titleElement, subTabParam = null) {
     const reportsChevron = document.getElementById('reports-chevron');
     const reportsToggle = document.getElementById('sidebar-reports-toggle');
 
-    if (targetId === 'view-reports') {
+    if (targetId === 'view-reports' || targetId === 'view-deposit-reports') {
         if (reportsSubmenu) reportsSubmenu.classList.remove('hidden');
         if (reportsChevron) reportsChevron.classList.add('rotate-180');
         if (reportsToggle) {
@@ -115,6 +115,29 @@ function switchView(targetId, titleElement, subTabParam = null) {
         if (reportsToggle) {
             reportsToggle.classList.remove('text-white', 'bg-devo-orange/10', 'text-devo-orange');
             reportsToggle.classList.add('text-devo-muted');
+        }
+    }
+
+    // 2.2 التعامل مع القائمة الجانبية للإعدادات (تمدد أو طي تلقائي عند الخروج)
+    const settingsViews = ['view-home-settings', 'view-theme-manager', 'view-backup-restore', 'view-notification-settings', 'view-system-reset'];
+    const settingsSubmenu = document.getElementById('sidebar-settings-submenu');
+    const settingsChevron = document.getElementById('settings-chevron');
+    const settingsToggle = document.getElementById('sidebar-settings-toggle');
+
+    if (settingsViews.includes(targetId)) {
+        if (settingsSubmenu) settingsSubmenu.classList.remove('hidden');
+        if (settingsChevron) settingsChevron.classList.add('rotate-180');
+        if (settingsToggle) {
+            settingsToggle.classList.remove('text-devo-muted');
+            settingsToggle.classList.add('text-white');
+        }
+    } else {
+        // الخروج خارج الإعدادات: طي القائمة الفرعية تلقائياً
+        if (settingsSubmenu) settingsSubmenu.classList.add('hidden');
+        if (settingsChevron) settingsChevron.classList.remove('rotate-180');
+        if (settingsToggle) {
+            settingsToggle.classList.remove('text-white', 'bg-devo-orange/10', 'text-devo-orange');
+            settingsToggle.classList.add('text-devo-muted');
         }
     }
 
@@ -143,6 +166,30 @@ function switchView(targetId, titleElement, subTabParam = null) {
         } else {
             aoHeaderTabs.classList.add('hidden');
             aoHeaderTabs.classList.remove('flex');
+        }
+    }
+
+    // 4.2 إظهار أزرار التقارير (تليجرام وطباعة) في الهيدر العلوي فقط عند فتح صفحة التقارير
+    const reportsHeaderActions = document.getElementById('reports-header-actions');
+    if (reportsHeaderActions) {
+        if (targetId === 'view-reports' || targetId === 'view-deposit-reports') {
+            reportsHeaderActions.classList.remove('hidden');
+            reportsHeaderActions.classList.add('flex');
+        } else {
+            reportsHeaderActions.classList.add('hidden');
+            reportsHeaderActions.classList.remove('flex');
+        }
+    }
+
+    // 4.3 إظهار زر إنشاء مظهر جديد في الهيدر العلوي فقط عند فتح صفحة إدارة المظاهر
+    const themeHeaderActions = document.getElementById('theme-header-actions');
+    if (themeHeaderActions) {
+        if (targetId === 'view-theme-manager') {
+            themeHeaderActions.classList.remove('hidden');
+            themeHeaderActions.classList.add('flex');
+        } else {
+            themeHeaderActions.classList.add('hidden');
+            themeHeaderActions.classList.remove('flex');
         }
     }
 
@@ -178,7 +225,7 @@ async function loadViewLogic(targetId, subTab = null) {
         return; 
     }
 
-    if (targetId === 'view-notifications' && !['owner', 'admin'].includes(currentUserContext?.role)) {
+    if ((targetId === 'view-notifications' || targetId === 'view-notification-settings' || targetId === 'view-offers') && !['owner', 'admin'].includes(currentUserContext?.role)) {
         showToast('عفواً، هذه الصفحة مخصصة للمدراء والمالكين فقط 🛑', 'error');
         const defaultLink = document.querySelector('[data-target="view-dashboard"]');
         if (defaultLink) switchView('view-dashboard', defaultLink);
@@ -238,17 +285,17 @@ async function loadViewLogic(targetId, subTab = null) {
             await initPrintBarcodesView();
             break;
         case 'view-admin-orders':
-            const { initAdminOrdersView } = await import('./admin_orders.js?v=8.0');
+            const { initAdminOrdersView } = await import('./admin_orders.js?v=8.1');
             await initAdminOrdersView();
             break;
         case 'view-reports': {
-            const { initReportsView, switchReportTab } = await import('./reports.js');
+            const { initReportsView, switchReportTab } = await import('./reports.js?v=2.1');
             await initReportsView(subTab);
             if (subTab) switchReportTab(subTab);
             break;
         }
         case 'view-deposit-reports': {
-            const { initReportsView, switchReportTab } = await import('./reports.js');
+            const { initReportsView, switchReportTab } = await import('./reports.js?v=2.1');
             await initReportsView('deposits');
             switchReportTab('deposits');
             break;
@@ -271,9 +318,17 @@ async function loadViewLogic(targetId, subTab = null) {
             const { initNotificationsView } = await import('./notifications_view.js');
             await initNotificationsView();
             break;
+        case 'view-offers':
+            const { initOffersView } = await import('./offers.js');
+            await initOffersView();
+            break;
         case 'view-backup-restore':
-            const { initBackupRestoreView } = await import('./backup_restore.js');
+            const { initBackupRestoreView } = await import('./backup_restore.js?v=2.2');
             initBackupRestoreView();
+            break;
+        case 'view-notification-settings':
+            const { initNotificationSettingsView } = await import('./notification_settings.js');
+            await initNotificationSettingsView();
             break;
         case 'view-system-reset':
             const { initSystemResetView } = await import('./system_reset.js');
@@ -324,6 +379,30 @@ async function initRouter() {
             } else {
                 reportsSubmenu.classList.add('hidden');
                 reportsChevron?.classList.remove('rotate-180');
+            }
+        });
+    }
+
+    // معالجة زر فتح وإغلاق قائمة الإعدادات الجانبية
+    const settingsToggle = document.getElementById('sidebar-settings-toggle');
+    if (settingsToggle) {
+        settingsToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            const settingsSubmenu = document.getElementById('sidebar-settings-submenu');
+            const settingsChevron = document.getElementById('settings-chevron');
+            const isHidden = settingsSubmenu?.classList.contains('hidden');
+
+            if (isHidden) {
+                settingsSubmenu.classList.remove('hidden');
+                settingsChevron?.classList.add('rotate-180');
+                const firstVisibleSublink = settingsSubmenu.querySelector('.nav-link:not(.hidden)');
+                if (firstVisibleSublink) {
+                    const target = firstVisibleSublink.getAttribute('data-target');
+                    switchView(target, firstVisibleSublink);
+                }
+            } else {
+                settingsSubmenu.classList.add('hidden');
+                settingsChevron?.classList.remove('rotate-180');
             }
         });
     }

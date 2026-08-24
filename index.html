@@ -196,6 +196,18 @@
         .animate-drift {
             animation: drift 30s infinite ease-in-out;
         }
+
+        /* Smooth In-Place Update Transitions for Cards */
+        .card-price-val {
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+        }
+        .card-stock-badge-container {
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .stock-badge {
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
     </style>
 </head>
 <body class="bg-devo-black text-devo-text overflow-x-hidden flex flex-col min-h-screen">

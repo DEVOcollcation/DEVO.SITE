@@ -53,18 +53,18 @@ export async function initReportsView(targetSubTab = null) {
 export function switchReportTab(tabName) {
     currentTab = tabName;
 
-    // Update Tab Buttons UI
-    const tabButtons = document.querySelectorAll('.reports-tab-btn');
-    tabButtons.forEach(btn => {
-        const tab = btn.getAttribute('data-report-tab');
-        if (tab === tabName) {
-            btn.classList.remove('text-devo-muted', 'bg-transparent', 'border-transparent');
-            btn.classList.add('text-white', 'bg-devo-orange', 'border-devo-orange', 'shadow-md', 'shadow-devo-orange/20');
-        } else {
-            btn.classList.remove('text-white', 'bg-devo-orange', 'border-devo-orange', 'shadow-md', 'shadow-devo-orange/20');
-            btn.classList.add('text-devo-muted', 'bg-devo-dark', 'border-devo-gray');
-        }
-    });
+    // Update Page Header Title
+    const reportTitles = {
+        'sales': 'المبيعات والأوردرات',
+        'deposits': 'تقارير العربون',
+        'inventory': 'المخزن والرصيد',
+        'models': 'حركة الموديلات',
+        'staff': 'الحسابات والعمال'
+    };
+    const pageTitle = document.getElementById('page-title');
+    if (pageTitle && reportTitles[tabName]) {
+        pageTitle.textContent = reportTitles[tabName];
+    }
 
     // Update Tab Content Panels
     const tabPanels = document.querySelectorAll('.reports-tab-panel');
@@ -96,25 +96,6 @@ export function switchReportTab(tabName) {
 // ⚙️ Event Listeners Setup
 // ==========================================
 function setupEventListeners() {
-    // Top Tabs Click Listeners
-    document.querySelectorAll('.reports-tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tab = btn.getAttribute('data-report-tab');
-            switchReportTab(tab);
-        });
-    });
-
-    // Global Refresh Button
-    const refreshBtn = document.getElementById('rep-refresh-btn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', async () => {
-            refreshBtn.classList.add('animate-spin');
-            await fetchReportsData(true);
-            setTimeout(() => refreshBtn.classList.remove('animate-spin'), 600);
-            showToast('تم تحديث بيانات التقارير بنجاح 🔄', 'success');
-        });
-    }
-
     // Print Button Trigger & Dropdown Modal
     const printBtn = document.getElementById('rep-print-btn');
     const printModal = document.getElementById('rep-print-modal');
@@ -565,7 +546,6 @@ export function applySalesFilters() {
     const toVal = document.getElementById('rep-sales-to')?.value;
     const statusVal = document.getElementById('rep-sales-status')?.value || 'all';
     const workerVal = document.getElementById('rep-sales-worker')?.value || 'all';
-    const archiveVal = document.getElementById('rep-sales-archive')?.value || 'active';
     const searchVal = (document.getElementById('rep-sales-search')?.value || '').trim().toLowerCase();
 
     const { startDate, endDate } = getDateRange(period, fromVal, toVal);
@@ -577,10 +557,6 @@ export function applySalesFilters() {
             if (startDate && d < startDate) return false;
             if (endDate && d > endDate) return false;
         }
-
-        // Archive check
-        if (archiveVal === 'active' && o.is_archived === true) return false;
-        if (archiveVal === 'archived' && o.is_archived !== true) return false;
 
         // Status check
         if (statusVal !== 'all' && o.status !== statusVal) return false;
@@ -681,11 +657,14 @@ function renderSalesView(orders) {
         }
 
         const statusBadge = getStatusBadge(o.status);
+        const archiveBadge = o.is_archived
+            ? '<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold ml-1 inline-block">أرشيف</span>'
+            : '<span class="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold ml-1 inline-block">نشط</span>';
 
         return `
             <tr class="hover:bg-devo-dark/50 transition-colors border-b border-devo-gray/40 text-xs">
                 <td class="px-3 py-3 text-center text-devo-muted">${idx + 1}</td>
-                <td class="px-3 py-3 font-mono font-bold text-devo-orange">#${orderNum}</td>
+                <td class="px-3 py-3 font-mono font-bold text-devo-orange whitespace-nowrap">#${orderNum} ${archiveBadge}</td>
                 <td class="px-3 py-3 whitespace-nowrap">
                     <div class="font-medium text-white">${dateStr}</div>
                     <div class="text-[10px] text-devo-muted">${timeStr}</div>
@@ -805,11 +784,14 @@ function renderDepositsView(orders) {
         const depositVal = parseFloat(o.deposit) || 0;
         const totalVal = parseFloat(o.total_price) || 0;
         const remVal = totalVal - depositVal;
+        const archiveBadge = o.is_archived
+            ? '<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold ml-1 inline-block">أرشيف</span>'
+            : '<span class="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold ml-1 inline-block">نشط</span>';
 
         return `
             <tr class="hover:bg-devo-dark/50 transition-colors border-b border-devo-gray/40 text-xs">
                 <td class="px-3 py-3 text-center text-devo-muted">${idx + 1}</td>
-                <td class="px-3 py-3 font-mono font-bold text-devo-orange">#${orderNum}</td>
+                <td class="px-3 py-3 font-mono font-bold text-devo-orange whitespace-nowrap">#${orderNum} ${archiveBadge}</td>
                 <td class="px-3 py-3 whitespace-nowrap">
                     <div class="font-medium text-white">${dateStr}</div>
                     <div class="text-[10px] text-devo-muted">${timeStr}</div>

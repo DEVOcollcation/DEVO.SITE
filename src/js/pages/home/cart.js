@@ -3,6 +3,7 @@ import { getCurrentSession } from '../../services/auth.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js'; 
 import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
+import { resolveImageUrl, bindImageToCache } from '../../services/offline_store.js';
 
 let currentUser = null;
 let cartItems = [];
@@ -404,7 +405,15 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
         `;
     });
 
-    if (container) container.innerHTML = html;
+    if (container) {
+        container.innerHTML = html;
+        container.querySelectorAll('.cart-item-card').forEach(cardEl => {
+            const imgEl = cardEl.querySelector('img');
+            if (imgEl && imgEl.src) {
+                bindImageToCache(imgEl, imgEl.src);
+            }
+        });
+    }
     
     const sumPriceEl = document.getElementById('sum-price');
     const sumModelsEl = document.getElementById('sum-models');
