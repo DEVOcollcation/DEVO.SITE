@@ -2,6 +2,18 @@ import { supabase } from '../config/supabase.js';
 
 let userRealtimeChannel = null;
 
+// تنظيف فوري وشامل لأي كاش قديم كان يعترض استعلامات Supabase
+if (typeof window !== 'undefined' && 'caches' in window) {
+    caches.keys().then(keys => {
+        keys.forEach(key => {
+            if (key.includes('devo-images-v1') || key.includes('devo-images-v2') || key.includes('devo-static-v8') || key.includes('devo-static-v9') || key.includes('devo-static-v10')) {
+                console.log('[Cache Cleanup] Purging poisoned cache:', key);
+                caches.delete(key);
+            }
+        });
+    });
+}
+
 /**
  * تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور عبر Supabase Auth
  * يتم تحويل اسم المستخدم داخلياً إلى بريد إلكتروني وهمي

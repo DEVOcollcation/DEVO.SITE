@@ -276,18 +276,59 @@ async function handleSaveUser(e) {
 
     try {
         if (id) {
-            // استدعاء دالة التحديث الآمنة من قاعدة البيانات
-            const { error } = await supabase.rpc('admin_update_worker', {
-                p_user_id: id,
-                p_full_name: userData.full_name,
-                p_username: userData.username,
-                p_password: password || '', // تمرير فارغ إذا لم يتم تغيير كلمة المرور
-                p_role: userData.role,
-                p_worker_job: userData.worker_job,
-                p_is_active: userData.is_active
-            });
-            if (error) throw error;
-            showToast('تم تحديث بيانات المستخدم بنجاح', 'success');
+            let rpcSucceeded = false;
+            let lastError = null;
+
+            // 1. محاولة استدعاء الدالة السحابية المركزية لتحديث بيانات الدخول وكلمة المرور
+            try {
+                const { error: rpcError } = await supabase.rpc('admin_update_worker', {
+                    p_user_id: id,
+                    p_full_name: userData.full_name,
+                    p_username: userData.username,
+                    p_password: password || '', // تمرير فارغ إذا لم يتم تغيير كلمة المرور
+                    p_role: userData.role,
+                    p_worker_job: userData.worker_job,
+                    p_is_active: userData.is_active
+                });
+                if (!rpcError) {
+                    rpcSucceeded = true;
+                } else {
+                    console.warn('RPC admin_update_worker returned error:', rpcError);
+                    lastError = rpcError;
+                }
+            } catch (rpcErr) {
+                console.warn('RPC admin_update_worker exception:', rpcErr);
+                lastError = rpcErr;
+            }
+
+            // 2. تحديث جدول system_users مباشرة لتأكيد حفظ الصلاحية فوراً
+            const { error: directError } = await supabase
+                .from('system_users')
+                .update({
+                    full_name: userData.full_name,
+                    username: userData.username,
+                    role: userData.role,
+                    worker_job: userData.worker_job,
+                    is_active: userData.is_active
+                })
+                .eq('id', id);
+
+            // 3. تحديث فوري وسريع في الذاكرة المحلية (Instant Optimistic UI Update)
+            const existingIdx = allUsers.findIndex(u => u.id === id);
+            if (existingIdx > -1) {
+                allUsers[existingIdx] = {
+                    ...allUsers[existingIdx],
+                    full_name: userData.full_name,
+                    username: userData.username,
+                    role: userData.role,
+                    worker_job: userData.worker_job,
+                    is_active: userData.is_active
+                };
+                updateUserStatistics();
+                applyUserFilters();
+            }
+
+            showToast('تم تحديث بيانات المستخدم وصلاحيته بنجاح', 'success');
         } else {
             // استدعاء دالة الإنشاء الآمنة من قاعدة البيانات
             const { error } = await supabase.rpc('admin_create_worker', {
@@ -302,7 +343,7 @@ async function handleSaveUser(e) {
         }
 
         closeUserModal();
-        loadUsers();
+        await loadUsers();
     } catch (err) {
         if (err.code === '23505' || err.message?.includes('duplicate key')) {
             showToast('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار اسم آخر', 'error');

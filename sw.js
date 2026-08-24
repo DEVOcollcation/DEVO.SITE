@@ -1,6 +1,6 @@
-const CACHE_VERSION = 'v10.0';
+const CACHE_VERSION = 'v11.0';
 const STATIC_CACHE = `devo-static-${CACHE_VERSION}`;
-const IMAGE_CACHE = 'devo-images-v2';
+const IMAGE_CACHE = 'devo-images-v3';
 
 const staticAssets = [
   './',
@@ -24,14 +24,14 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// تفعيل وتنظيف النسخ القديمة من الكاش والاستحواذ على العملاء فوراً
+// تفعيل وتنظيف كافة النسخ القديمة من الكاش فوراً والاستحواذ على العملاء
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== STATIC_CACHE && key !== IMAGE_CACHE) {
-            console.log('[SW] Clearing old cache version:', key);
+            console.log('[SW] Deleting poisoned/old cache:', key);
             return caches.delete(key);
           }
         })
@@ -47,18 +47,26 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// الاستجابة للطلبات: Network-First للمستندات والسكريبتات (لضمان أحدث كود دائماً)، و Cache-First للصور
+// الاستجابة للطلبات
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // 1. كاش الصور الديناميكي الشامل (Google Drive + Supabase Storage + صور الأصول)
+  // ⚠️ تحذير أمني وقاعدي: منع اعتراض أي طلبات لقاعدة بيانات Supabase نهائياً ⚠️
+  // استعلامات الجداول والأوردرات والمستخدمين (/rest/v1/) والمصادقة (/auth/v1/) يجب أن تذهب للسيرفر مباشرة دون أي كاش
+  if (url.hostname.includes('supabase.co')) {
+    const isSupabaseStorageImage = url.pathname.includes('/storage/v1/object/');
+    if (!isSupabaseStorageImage) {
+      return; // اترك المتصفح يتصل بالسيرفر مباشرة
+    }
+  }
+
+  // 1. كاش الصور الحقيقية فقط (Google Drive Thumbnails + Supabase Storage Images + أصول الصور)
   const isImageRequest = 
     event.request.destination === 'image' ||
     url.hostname.includes('drive.google.com') ||
     url.hostname.includes('googleusercontent.com') ||
-    url.hostname.includes('supabase.co') ||
     url.pathname.includes('/storage/v1/object/') ||
     url.pathname.includes('/thumbnail') ||
     /\.(png|jpg|jpeg|webp|svg|gif|ico)(\?.*)?$/i.test(url.pathname);
