@@ -102,7 +102,8 @@ export function getCurrentSession() {
     if (!sessionStr) return { session: null };
     
     try {
-        const session = JSON.parse(sessionStr);
+        let session = JSON.parse(sessionStr);
+        if (session && session.user) session = session.user;
         return { session: { user: session } }; 
     } catch (e) {
         return { session: null };

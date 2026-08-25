@@ -24,16 +24,32 @@ let currentPage = 1;
 const itemsPerPage = 25;
 let currentFilteredModels = [];
 
+export function checkIsWorker() {
+    if (typeof window !== 'undefined' && window.isVisitor === false) {
+        return true;
+    }
+    try {
+        const sessionStr = localStorage.getItem('devo_session');
+        if (!sessionStr) return false;
+        let u = JSON.parse(sessionStr);
+        if (u && u.user) u = u.user;
+        if (!u) return false;
+        
+        const role = String(u.role || '').toLowerCase().trim();
+        if (role === 'admin' || role === 'owner' || role === 'worker' || role === 'sales') {
+            return true;
+        }
+        if (u.id || u.username) {
+            return true;
+        }
+    } catch(e) {}
+    return false;
+}
+
 export async function initGallery() {
+    isWorker = checkIsWorker();
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
-    
-    // الموظف المخول برؤية الأرصدة والطلب هو الأونر/الأدمن أو العامل
-    isWorker = currentUser && (
-        currentUser.role === 'admin' 
-        || currentUser.role === 'owner' 
-        || currentUser.role === 'worker'
-    );
 
     if (isWorker) {
         loadLocalCart();
@@ -187,7 +203,7 @@ function setupGalleryRealtime() {
 
                 if (payload.eventType === 'INSERT') {
                     if (fullModel.is_active) {
-                        if (!allModels.find(m => m.id === fullModel.id)) {
+                        if (!allModels.find(m => String(m.id) === String(fullModel.id))) {
                             allModels.unshift(fullModel);
                             putCachedModel(fullModel);
                             if (fullModel.model_images?.[0]?.image_url) {
@@ -199,7 +215,7 @@ function setupGalleryRealtime() {
                 } 
                 else if (payload.eventType === 'UPDATE') {
                     if (!fullModel.is_active) {
-                        allModels = allModels.filter(m => m.id !== fullModel.id);
+                        allModels = allModels.filter(m => String(m.id) !== String(fullModel.id));
                         deleteCachedModel(fullModel.id);
                         
                         const card = document.getElementById(`gallery-card-${fullModel.id}`);
@@ -214,7 +230,7 @@ function setupGalleryRealtime() {
 
                         checkAndCloseModal(fullModel.id, 'تم تعطيل هذا الموديل ولم يعد متاحاً.');
                     } else {
-                        const index = allModels.findIndex(m => m.id === fullModel.id);
+                        const index = allModels.findIndex(m => String(m.id) === String(fullModel.id));
                         putCachedModel(fullModel);
                         if (fullModel.model_images?.[0]?.image_url) {
                             cacheImageBlob(fullModel.model_images[0].image_url, fullModel.id);
@@ -236,9 +252,9 @@ function setupGalleryRealtime() {
         
         // 🚨 حالة تعديل المخزون المباشر 🚨
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
-            const modelIndex = allModels.findIndex(m => m.id === payload.new.model_id);
+            const modelIndex = allModels.findIndex(m => String(m.id) === String(payload.new.model_id));
             if (modelIndex > -1) {
-                const invIndex = allModels[modelIndex].model_inventory?.findIndex(i => i.color_id === payload.new.color_id);
+                const invIndex = allModels[modelIndex].model_inventory?.findIndex(i => String(i.color_id) === String(payload.new.color_id));
                 if (invIndex > -1) {
                     allModels[modelIndex].model_inventory[invIndex].available_series = payload.new.available_series;
                     putCachedModel(allModels[modelIndex]);
@@ -253,7 +269,7 @@ function setupGalleryRealtime() {
 // دالة حماية: إغلاق نافذة الموديل إذا تم إخفاؤه أو حذفه
 function checkAndCloseModal(modelId, message) {
     const modal = document.getElementById('model-viewer-modal');
-    if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-current-model-id') === modelId) {
+    if (modal && !modal.classList.contains('hidden') && String(modal.getAttribute('data-current-model-id')) === String(modelId)) {
         window.closeModelViewer();
         showToast(message, 'warning');
     }
@@ -416,7 +432,8 @@ function renderGalleryPage() {
  * Generate stock badge HTML
  */
 function getStockBadgeHTML(totalSeries, isOut) {
-    if (isWorker) {
+    const isWorkerActive = checkIsWorker();
+    if (isWorkerActive) {
         if (isOut) return `<span class="stock-badge bg-devo-error text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold flex items-center gap-1"><i class="ph ph-warning-circle"></i> نفذت</span>`;
         else if (totalSeries <= 5) return `<span class="stock-badge bg-devo-orange text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold">متبقي ${totalSeries} سيريه</span>`;
         else return `<span class="stock-badge bg-devo-success text-white text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-md shadow-lg font-bold">متبقي ${totalSeries} سيريه</span>`;
@@ -523,8 +540,8 @@ function patchGalleryCardDOM(model) {
 // 🌟 التحديث الشامل داخل نافذة التفاصيل 🌟
 function updateModelViewerDOM(id) {
     const modal = document.getElementById('model-viewer-modal');
-    if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-current-model-id') === id) {
-        const model = allModels.find(m => m.id === id);
+    if (modal && !modal.classList.contains('hidden') && String(modal.getAttribute('data-current-model-id')) === String(id)) {
+        const model = allModels.find(m => String(m.id) === String(id));
         if (model) {
             // تحديث الاسم
             const nameEl = document.getElementById('viewer-name');
@@ -589,9 +606,25 @@ window.changeGalleryPage = (newPage) => {
 // ==========================================
 // 🌟 4. تفاصيل الموديل والروابط العميقة 🌟
 // ==========================================
-window.openModelViewer = (id, skipHistory = false) => {
-    const model = allModels.find(m => m.id === id);
-    if (!model) return;
+window.openModelViewer = async (id, skipHistory = false) => {
+    if (id === undefined || id === null || id === '') return;
+
+    let model = allModels.find(m => String(m.id) === String(id));
+    if (!model) {
+        // محاولة سريعة لجلب الموديلات من الكاش المحلي إن لم تكن مصفوفة الذاكرة جاهزة
+        try {
+            const cachedData = await getAllCachedModels();
+            if (cachedData && cachedData.length > 0) {
+                allModels = cachedData;
+                model = allModels.find(m => String(m.id) === String(id));
+            }
+        } catch (e) {}
+    }
+
+    if (!model) {
+        console.warn(`[Gallery] Model ${id} not found.`);
+        return;
+    }
 
     if (!skipHistory) {
         history.pushState({ modelId: id }, '', `?model=${id}`);
@@ -601,7 +634,7 @@ window.openModelViewer = (id, skipHistory = false) => {
     const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
 
     const modal = document.getElementById('model-viewer-modal');
-    if (modal) modal.setAttribute('data-current-model-id', id);
+    if (modal) modal.setAttribute('data-current-model-id', String(id));
 
     const content = document.getElementById('model-viewer-content');
     const imgs = model.model_images?.length > 0 ? model.model_images : [{ image_url: null }];
@@ -622,9 +655,15 @@ window.openModelViewer = (id, skipHistory = false) => {
     
     const sizesHtml = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
 
+    const isWorkerActive = checkIsWorker();
+    if (isWorkerActive) {
+        loadLocalCart();
+        document.getElementById('floating-cart-btn')?.classList.remove('hidden');
+    }
+
     // قسم إضافة طقم (يظهر فقط للموظفين/الآدمن)
     let setHtml = '';
-    if (isWorker) {
+    if (isWorkerActive) {
         setHtml = `
         <div class="bg-gradient-to-r from-devo-orange/15 via-devo-dark to-devo-black border border-devo-orange/40 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
             <div class="flex items-center gap-2">
@@ -708,7 +747,7 @@ function getOwnedQtyForColor(modelId, colorId) {
     try {
         const orderData = JSON.parse(savedOrderData);
         if (orderData && orderData.original_items) {
-            const item = orderData.original_items.find(oi => oi.model_id === modelId && oi.color_id === colorId);
+            const item = orderData.original_items.find(oi => String(oi.model_id) === String(modelId) && String(oi.color_id) === String(colorId));
             return item ? (item.quantity || 0) : 0;
         }
     } catch(e) {}
@@ -717,12 +756,12 @@ function getOwnedQtyForColor(modelId, colorId) {
 
 function getCartQtyForColor(modelId, colorId) {
     loadLocalCart();
-    const item = localCart.find(i => i.modelId === modelId && i.colorId === colorId);
+    const item = localCart.find(i => String(i.modelId) === String(modelId) && String(i.colorId) === String(colorId));
     return item ? item.qty : 0;
 }
 
 function refreshColorsContainer(modelId) {
-    const model = allModels.find(m => m.id === modelId);
+    const model = allModels.find(m => String(m.id) === String(modelId));
     if (!model) return;
     const classSizes = model.classes?.class_sizes || [];
     const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
@@ -735,16 +774,17 @@ function generateColorsHTML(model, sizesCount) {
         return `<div class="text-center p-3 text-devo-error bg-devo-error/10 rounded-xl text-xs sm:text-sm border border-devo-error/20">لا توجد ألوان مسجلة.</div>`;
     }
 
-    const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
+    const isWorkerActive = checkIsWorker();
 
     return model.model_inventory.map(inv => {
         const dbAvailable = inv.available_series || 0;
         const ownedQty = getOwnedQtyForColor(model.id, inv.color_id);
         const available = dbAvailable + ownedQty;
         const isOut = available === 0;
+        const colorName = inv.colors?.name || 'لون';
         
-        if (!isWorker) {
-            return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-gray rounded-xl mb-1.5 transition-all"><span class="text-white text-xs sm:text-sm font-bold">${inv.colors?.name}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
+        if (!isWorkerActive) {
+            return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-gray rounded-xl mb-1.5 transition-all"><span class="text-white text-xs sm:text-sm font-bold">${colorName}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
         }
 
         const cartQty = getCartQtyForColor(model.id, inv.color_id);
@@ -760,7 +800,7 @@ function generateColorsHTML(model, sizesCount) {
             <div class="flex items-center gap-2 min-w-0 flex-1">
                 <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isOut ? 'bg-devo-error' : isDisplayOut ? 'bg-devo-orange' : 'bg-devo-success'}"></span>
                 <div class="flex items-center gap-1.5 flex-wrap min-w-0">
-                    <span class="text-white font-bold text-xs sm:text-sm truncate">${inv.colors?.name}</span>
+                    <span class="text-white font-bold text-xs sm:text-sm truncate">${colorName}</span>
                     <span class="text-[10px] sm:text-xs ${isOut ? 'text-devo-error' : isDisplayOut ? 'text-devo-orange' : 'text-devo-muted'} font-mono whitespace-nowrap">${isOut ? '(نفذت)' : `(متبقي ${displayAvailable})`}</span>
                     ${cartBadge}
                 </div>
@@ -772,7 +812,7 @@ function generateColorsHTML(model, sizesCount) {
                         <input type="number" id="qty-${inv.color_id}" value="1" min="1" max="${displayAvailable}" readonly class="w-8 sm:w-10 bg-transparent text-center text-white text-xs sm:text-sm font-bold outline-none border-x border-devo-gray appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none leading-none">
                         <button onclick="incrementQty('qty-${inv.color_id}', ${displayAvailable})" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
                     </div>
-                    <button onclick="addToCart(event, '${model.id}', '${inv.color_id}', '${model.name.replace(/'/g, "\\'")}', '${inv.colors?.name}', ${model.price}, '${mainImg}', ${dbAvailable}, ${sizesCount}, '${model.factory_code || model.system_code}')" class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-xs sm:text-sm font-bold transition-all shadow-md flex justify-center items-center gap-1 active:scale-95">
+                    <button onclick="addToCart(event, '${model.id}', '${inv.color_id}')" class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-xs sm:text-sm font-bold transition-all shadow-md flex justify-center items-center gap-1 active:scale-95">
                         <i class="ph ph-shopping-cart-simple text-sm sm:text-base"></i> <span class="hidden xs:inline">إضافة</span>
                     </button>
                 </div>
@@ -839,13 +879,13 @@ window.addSetToCart = (event, modelId) => {
         btn.disabled = true;
     }
 
-    const model = allModels.find(m => m.id === modelId);
+    const model = allModels.find(m => String(m.id) === String(modelId));
     if (!model || !model.model_inventory || model.model_inventory.length === 0) {
         if (btn) { btn.disabled = false; delete btn.dataset.locked; }
         return showToast('لا توجد ألوان متاحة لهذا الموديل!', 'error');
     }
 
-    const setQtyInput = document.getElementById(`set-qty-${modelId}`);
+    const setQtyInput = document.getElementById(`set-qty-${model.id}`);
     const setCount = parseInt(setQtyInput?.value) || 1;
 
     loadLocalCart();
@@ -853,7 +893,7 @@ window.addSetToCart = (event, modelId) => {
     const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
     const classSizes = model.classes?.class_sizes || [];
     const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
-    const factoryCode = model.factory_code || model.system_code;
+    const factoryCode = model.factory_code || model.system_code || '';
 
     let addedColorsCount = 0;
     let totalSeriesAdded = 0;
@@ -869,7 +909,7 @@ window.addSetToCart = (event, modelId) => {
             return;
         }
 
-        const existingIndex = localCart.findIndex(i => i.modelId === model.id && i.colorId === inv.color_id);
+        const existingIndex = localCart.findIndex(i => String(i.modelId) === String(model.id) && String(i.colorId) === String(inv.color_id));
         const currentQty = existingIndex > -1 ? localCart[existingIndex].qty : 0;
         
         const spaceLeft = trueAvailable - currentQty;
@@ -887,7 +927,7 @@ window.addSetToCart = (event, modelId) => {
                 modelId: model.id,
                 colorId: inv.color_id,
                 modelName: model.name,
-                colorName: inv.colors?.name,
+                colorName: inv.colors?.name || 'لون',
                 price: model.price,
                 image: mainImg,
                 qty: qtyToAdd,
@@ -904,7 +944,7 @@ window.addSetToCart = (event, modelId) => {
     } else {
         saveLocalCart();
         if (window.refreshCartView) window.refreshCartView();
-        refreshColorsContainer(modelId);
+        refreshColorsContainer(model.id);
 
         let msg = `تم إضافة ${setCount} طقم (${addedColorsCount} لون) للسلة بنجاح!`;
         if (skippedColors.length > 0) {
@@ -929,7 +969,7 @@ window.addSetToCart = (event, modelId) => {
     }
 };
 
-window.addToCart = (event, modelId, colorId, modelName, colorName, price, image, maxAvailable, sizesCount, factoryCode) => {
+window.addToCart = (event, modelId, colorId) => {
     const btn = event?.currentTarget || event?.target;
     if (btn) {
         if (btn.dataset.locked === "true") return; // 🛡️ حماية ضد الضغط المتكرر
@@ -944,21 +984,38 @@ window.addToCart = (event, modelId, colorId, modelName, colorName, price, image,
         }
     };
 
+    const model = allModels.find(m => String(m.id) === String(modelId));
+    if (!model) {
+        unlockBtn();
+        return showToast('الموديل غير متوفر حالياً', 'error');
+    }
+
+    const inv = model.model_inventory?.find(i => String(i.color_id) === String(colorId));
+    if (!inv) {
+        unlockBtn();
+        return showToast('هذا اللون غير متوفر', 'error');
+    }
+
     const qtyInput = document.getElementById(`qty-${colorId}`);
     const qty = parseInt(qtyInput?.value) || 1;
 
-    // 🌟 قراءة أحدث سلة من localStorage مباشرة لمنع مسح أصناف الفاتورة عند التعديل 🌟
     loadLocalCart();
 
-    const ownedQty = getOwnedQtyForColor(modelId, colorId);
-    const trueAvailable = maxAvailable + ownedQty;
+    const dbAvailable = inv.available_series || 0;
+    const ownedQty = getOwnedQtyForColor(model.id, inv.color_id);
+    const trueAvailable = dbAvailable + ownedQty;
 
     if (qty > trueAvailable) {
         unlockBtn();
         return showToast('الكمية المطلوبة تتجاوز المتاح لك في المخزن!', 'error');
     }
 
-    const existingIndex = localCart.findIndex(i => i.modelId === modelId && i.colorId === colorId);
+    const classSizes = model.classes?.class_sizes || [];
+    const itemSizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
+    const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
+    const itemFactoryCode = model.factory_code || model.system_code || '';
+
+    const existingIndex = localCart.findIndex(i => String(i.modelId) === String(modelId) && String(i.colorId) === String(colorId));
     
     if (existingIndex > -1) {
         if (localCart[existingIndex].qty + qty > trueAvailable) {
@@ -967,12 +1024,22 @@ window.addToCart = (event, modelId, colorId, modelName, colorName, price, image,
         }
         localCart[existingIndex].qty += qty;
     } else {
-        localCart.push({ modelId, colorId, modelName, colorName, price, image, qty, sizesCount, factoryCode });
+        localCart.push({
+            modelId: model.id,
+            colorId: inv.color_id,
+            modelName: model.name,
+            colorName: inv.colors?.name || 'لون',
+            price: model.price,
+            image: mainImg,
+            qty: qty,
+            sizesCount: itemSizesCount,
+            factoryCode: itemFactoryCode
+        });
     }
 
     saveLocalCart();
     if (window.refreshCartView) window.refreshCartView();
-    refreshColorsContainer(modelId);
+    refreshColorsContainer(model.id);
 
     if (btn) {
         const originalHtml = btn.innerHTML;
@@ -1064,9 +1131,9 @@ export function findModelByCode(code, matchType = 'both') {
 
     // 3. Match against allModels based on explicitType
     return allModels.find(m => {
-        const sysCode = m.system_code ? m.system_code.toString().toLowerCase() : '';
-        const facCode = m.factory_code ? m.factory_code.toString().toLowerCase() : '';
-        const modelId = m.id ? m.id.toString().toLowerCase() : '';
+        const sysCode = m.system_code ? m.system_code.toString().toLowerCase().trim() : '';
+        const facCode = m.factory_code ? m.factory_code.toString().toLowerCase().trim() : '';
+        const modelId = m.id ? m.id.toString().toLowerCase().trim() : '';
 
         if (explicitType === 'system') {
             return sysCode === cleanCode || modelId === cleanCode;

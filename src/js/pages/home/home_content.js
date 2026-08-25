@@ -218,14 +218,9 @@ export function applySectionBackgrounds(map) {
 }
 
 window.openPromoModelLink = (modelId) => {
-    if (typeof window.switchSiteView === 'function') {
-        window.switchSiteView('view-gallery');
+    if (typeof window.openModelViewer === 'function') {
+        window.openModelViewer(modelId);
     }
-    setTimeout(() => {
-        if (typeof window.openModelViewer === 'function') {
-            window.openModelViewer(modelId);
-        }
-    }, 400);
 };
 
 // 🌟 الكشف الذكي عن أبعاد الصورة وتغيير تخطيط الكارت تلقائياً مع الحفاظ التام على توحيد حجم الكروت طولاً وعرضاً 🌟

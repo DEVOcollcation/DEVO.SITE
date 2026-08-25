@@ -1,9 +1,9 @@
 import { initNavbar } from './navbar.js';
-import { initGallery } from './gallery.js?v=9.0';
-import { initHomeContent } from './home_content.js?v=9.0';
-import { initCart } from './cart.js?v=9.0';
-import { initOrdersView } from './orders.js?v=9.0';
-import { initBarcode } from './barcode.js';
+import { initGallery } from './gallery.js?v=9.2';
+import { initHomeContent } from './home_content.js?v=9.2';
+import { initCart } from './cart.js?v=9.2';
+import { initOrdersView } from './orders.js?v=9.2';
+import { initBarcode } from './barcode.js?v=9.2';
 import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNetworkStatusMonitor } from '../../components/network_banner.js';
@@ -23,14 +23,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sessionStr) {
         try {
             currentUser = JSON.parse(sessionStr);
+            if (currentUser && currentUser.user) currentUser = currentUser.user;
         } catch (e) {
             localStorage.removeItem('devo_session');
+            currentUser = null;
         }
     }
     
     if (currentUser) {
-        const role = currentUser.role;
-        const isAuthorized = (role === 'owner' || role === 'admin' || role === 'worker');
+        const role = String(currentUser.role || '').toLowerCase().trim();
+        const isAuthorized = (role === 'owner' || role === 'admin' || role === 'worker' || role === 'sales' || !!currentUser.id);
         
         if (!isAuthorized) {
             localStorage.removeItem('devo_session');

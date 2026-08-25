@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v11.0';
+const CACHE_VERSION = 'v11.2';
 const STATIC_CACHE = `devo-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = 'devo-images-v3';
 

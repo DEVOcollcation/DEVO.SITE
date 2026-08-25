@@ -48,7 +48,7 @@ function setupCartRealtime() {
     cartRealtimeChannel = supabase.channel('cart_realtime_sync')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
             const { model_id, color_id, available_series } = payload.new;
-            const itemInCart = cartItems.find(i => i.modelId === model_id && i.colorId === color_id);
+            const itemInCart = cartItems.find(i => String(i.modelId) === String(model_id) && String(i.colorId) === String(color_id));
             
             if (itemInCart && !editingOrderId) { // لا نزعج المستخدم بالرادار أثناء التعديل المباشر
                 if (available_series === 0) {
@@ -58,7 +58,7 @@ function setupCartRealtime() {
                 }
                 
                 // تحديث الكاش
-                const cachedInv = cachedDbInventory.find(i => i.model_id === model_id && i.color_id === color_id);
+                const cachedInv = cachedDbInventory.find(i => String(i.model_id) === String(model_id) && String(i.color_id) === String(color_id));
                 if (cachedInv) {
                     cachedInv.available_series = available_series;
                 } else {
@@ -76,13 +76,13 @@ function setupCartRealtime() {
             
             if (isDeleted || isDisabled) {
                 const targetId = isDeleted ? payload.old.id : payload.new.id;
-                const itemInCart = cartItems.find(i => i.modelId === targetId);
+                const itemInCart = cartItems.find(i => String(i.modelId) === String(targetId));
                 
                 if (itemInCart) {
                     showToast(`⚠️ الموديل (${itemInCart.modelName}) لم يعد متاحاً للطلب! يرجى إزالته من السلة.`, 'error');
                     
                     // تحديث الكاش للموديلات
-                    const cachedModel = cachedDbModels.find(m => m.id === targetId);
+                    const cachedModel = cachedDbModels.find(m => String(m.id) === String(targetId));
                     if (cachedModel) {
                         cachedModel.is_active = false;
                     }
@@ -284,15 +284,15 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
         const pricePerSeries = pricePerPiece * piecesPerSeries; 
 
         modelGroup.colors.forEach((item) => {
-            const dbInv = dbInventory.find(i => i.model_id === item.modelId && i.color_id === item.colorId);
-            const dbModel = dbModels.find(m => m.id === item.modelId);
+            const dbInv = dbInventory.find(i => String(i.model_id) === String(item.modelId) && String(i.color_id) === String(item.colorId));
+            const dbModel = dbModels.find(m => String(m.id) === String(item.modelId));
 
             let errorMsg = null;
             let availableInDB = dbInv ? dbInv.available_series : 0;
 
             let ownedQty = 0;
             if (editingOrderId && originalOrderData && originalOrderData.original_items) {
-                const oldItem = originalOrderData.original_items.find(oi => oi.model_id === item.modelId && oi.color_id === item.colorId);
+                const oldItem = originalOrderData.original_items.find(oi => String(oi.model_id) === String(item.modelId) && String(oi.color_id) === String(item.colorId));
                 if (oldItem) ownedQty = oldItem.quantity;
             }
             
@@ -452,7 +452,7 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
 
 // 🌟 دالة حذف الموديل بالكامل بجميع ألوانه 🌟
 window.confirmRemoveModelFromCart = async (modelId) => {
-    const modelItems = cartItems.filter(i => i.modelId === modelId);
+    const modelItems = cartItems.filter(i => String(i.modelId) === String(modelId));
     if (modelItems.length === 0) return;
     const modelName = modelItems[0].modelName || 'الموديل';
 
@@ -463,7 +463,7 @@ window.confirmRemoveModelFromCart = async (modelId) => {
     });
 
     if (confirmed) {
-        cartItems = cartItems.filter(i => i.modelId !== modelId);
+        cartItems = cartItems.filter(i => String(i.modelId) !== String(modelId));
         saveCart();
         renderCartFromCacheOrFetch();
         showToast(`تم حذف الموديل (${modelName}) من السلة`, 'success');
@@ -574,12 +574,12 @@ async function handleCheckout(e) {
 
         let hasFinalErrors = false;
         cartItems.forEach(item => {
-            const inv = dbInv?.find(i => i.model_id === item.modelId && i.color_id === item.colorId);
-            const mod = dbMod?.find(m => m.id === item.modelId);
+            const inv = dbInv?.find(i => String(i.model_id) === String(item.modelId) && String(i.color_id) === String(item.colorId));
+            const mod = dbMod?.find(m => String(m.id) === String(item.modelId));
             
             let ownedQty = 0;
             if (editingOrderId && originalOrderData && originalOrderData.original_items) {
-                 const oldItem = originalOrderData.original_items.find(oi => oi.model_id === item.modelId && oi.color_id === item.colorId);
+                 const oldItem = originalOrderData.original_items.find(oi => String(oi.model_id) === String(item.modelId) && String(oi.color_id) === String(item.colorId));
                  if (oldItem) ownedQty = oldItem.quantity;
             }
             const trueAvail = (inv ? inv.available_series : 0) + ownedQty;

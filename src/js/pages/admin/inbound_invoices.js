@@ -700,9 +700,8 @@ async function exportInboundInvoiceToExcel(invoiceId) {
         const excelData = (itemsData || []).map((i, idx) => {
             const classSizes = i.models?.classes?.class_sizes || [];
             const sizesCount = classSizes.length > 0 ? classSizes.length : (i.models?.model_sizes?.length || 1); 
-            const piecesQty = i.quantity * sizesCount;
-            const modelPrice = i.models?.price || 0;
-            const unitPrice = sizesCount > 0 ? (modelPrice / sizesCount) : modelPrice;
+            const piecesQty = (Number(i.quantity) || 0) * sizesCount;
+            const unitPrice = Number(i.models?.price) || 0;
 
             return {
                 'الملاحظات': idx === 0 ? invoiceNotes : '',
