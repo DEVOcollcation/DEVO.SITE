@@ -761,6 +761,22 @@ export function applyTheme(theme) {
         color: var(--devo-text);
       }
     ` : ''}
+
+    /* Universal Date Input Styling across Themes */
+    input[type="date"] {
+      color-scheme: ${isLightPageBg ? 'light' : 'dark'};
+      color: ${isLightPageBg ? 'var(--devo-text)' : '#ffffff'};
+      font-family: inherit;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
   `;
 
   // 3. Modals & Shadows Overrides

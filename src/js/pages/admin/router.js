@@ -303,7 +303,7 @@ async function loadViewLogic(targetId, subTab = null) {
             await initPrintBarcodesView();
             break;
         case 'view-admin-orders':
-            const { initAdminOrdersView } = await import('./admin_orders.js?v=8.1');
+            const { initAdminOrdersView } = await import('./admin_orders.js?v=8.4');
             await initAdminOrdersView();
             break;
         case 'view-reports': {

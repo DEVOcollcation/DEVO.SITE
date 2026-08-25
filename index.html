@@ -107,6 +107,19 @@
                                 --scrollbar-thumb: ${colors.scrollbar?.thumb || '#262626'};
                                 --scrollbar-thumb-hover: ${colors.scrollbar?.thumb_hover || '#f97316'};
                             }
+                            input[type="date"] {
+                                color-scheme: ${isLight ? 'light' : 'dark'};
+                                font-family: inherit;
+                            }
+                            input[type="date"]::-webkit-calendar-picker-indicator {
+                                cursor: pointer;
+                                opacity: 0.7;
+                                transition: opacity 0.2s, transform 0.2s;
+                            }
+                            input[type="date"]::-webkit-calendar-picker-indicator:hover {
+                                opacity: 1;
+                                transform: scale(1.1);
+                            }
                         `;
                         styleEl.innerHTML = cssText;
                         document.head.appendChild(styleEl);
@@ -632,15 +645,15 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                        <div class="relative sm:col-span-6">
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
+                        <div class="relative md:col-span-5">
                             <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
                             <input type="text" id="ord-search" placeholder="بحث برقم الأوردر، العميل، الهاتف..." 
-                                class="w-full bg-devo-black border border-devo-gray rounded-lg sm:rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs sm:text-sm h-[38px]">
+                                class="w-full bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs sm:text-sm h-[38px]">
                         </div>
                         
-                        <div class="sm:col-span-3">
-                            <select id="ord-status" class="w-full bg-devo-black border border-devo-gray rounded-lg sm:rounded-xl px-2 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs sm:text-sm h-[38px]">
+                        <div class="md:col-span-3">
+                            <select id="ord-status" class="w-full bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl px-3 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs sm:text-sm h-[38px] transition-all">
                                 <option value="">كل الحالات</option>
                                 <option value="created">تم إنشاء الأوردر</option>
                                 <option value="in_progress">جاري العمل</option>
@@ -652,11 +665,16 @@
                             </select>
                         </div>
 
-                        <div class="sm:col-span-3 flex items-center gap-1 bg-devo-black border border-devo-gray rounded-lg sm:rounded-xl px-2 py-1 h-[38px]">
-                            <span class="text-[10px] sm:text-xs text-devo-muted shrink-0">من:</span>
-                            <input type="date" id="ord-date-from" class="bg-transparent text-white outline-none text-[10px] sm:text-xs py-1 w-full cursor-pointer">
-                            <span class="text-[10px] sm:text-xs text-devo-muted border-r border-devo-gray pr-1 shrink-0">إلى:</span>
-                            <input type="date" id="ord-date-to" class="bg-transparent text-white outline-none text-[10px] sm:text-xs py-1 w-full cursor-pointer">
+                        <div class="md:col-span-4 flex items-center bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl px-3 py-1 h-[38px] gap-1.5 transition-all">
+                            <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                                <span class="text-xs text-devo-muted font-bold whitespace-nowrap shrink-0">من:</span>
+                                <input type="date" id="ord-date-from" dir="ltr" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer w-full text-center">
+                            </div>
+                            <span class="text-devo-muted/40 font-light select-none px-0.5">|</span>
+                            <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                                <span class="text-xs text-devo-muted font-bold whitespace-nowrap shrink-0">إلى:</span>
+                                <input type="date" id="ord-date-to" dir="ltr" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer w-full text-center">
+                            </div>
                         </div>
                     </div>
                 </div>

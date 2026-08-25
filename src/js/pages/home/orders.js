@@ -249,26 +249,28 @@ function renderOrders() {
             : (o.is_locked ? `الأوردر قيد التعديل بواسطة (${o.assigned_admin_name || 'مستخدم آخر'})` : 'يجب أن يكون الأوردر بحالة تم إنشاء الأوردر لتعديله');
 
         let actionButtons = `
-            <div class="flex items-center justify-center gap-2">
-                <button onclick="viewOrderDetails('${o.id}')" class="p-2 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded text-white transition-colors" title="عرض"><i class="ph ph-eye"></i></button>
-                <button onclick="reprintOrder('${o.id}')" class="p-2 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="طباعة"><i class="ph ph-printer"></i></button>
+            <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                <button onclick="viewOrderDetails('${o.id}')" class="p-2 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded text-white transition-colors cursor-pointer" title="عرض"><i class="ph ph-eye"></i></button>
+                <button onclick="reprintOrder('${o.id}')" class="p-2 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors cursor-pointer" title="طباعة"><i class="ph ph-printer"></i></button>
+                <button onclick="duplicateOrderToCart('${o.id}')" class="p-2 bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500 hover:text-white rounded transition-colors cursor-pointer" title="نسخ الأصناف للسلة كفاتورة جديدة"><i class="ph ph-copy"></i></button>
                 ${isEditable 
-                    ? `<button onclick="confirmEditOrder('${o.id}')" class="p-2 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple"></i></button>` 
+                    ? `<button onclick="confirmEditOrder('${o.id}')" class="p-2 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors cursor-pointer" title="تعديل الأوردر"><i class="ph ph-pencil-simple"></i></button>` 
                     : `<button disabled class="p-2 bg-devo-gray/20 text-devo-muted rounded cursor-not-allowed" title="${lockTitle}"><i class="ph ph-lock text-devo-muted"></i></button>`
                 }
-                <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="p-2 bg-devo-black border border-devo-gray hover:border-devo-orange rounded text-devo-muted hover:text-white transition-colors" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'}"></i></button>
+                <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="p-2 bg-devo-black border border-devo-gray hover:border-devo-orange rounded text-devo-muted hover:text-white transition-colors cursor-pointer" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'}"></i></button>
             </div>
         `;
 
         let cardActionButtons = `
-            <div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-devo-gray/60 mt-3">
-                <button onclick="viewOrderDetails('${o.id}')" class="h-9 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="عرض الفاتورة"><i class="ph ph-eye text-sm"></i> <span>عرض</span></button>
-                <button onclick="reprintOrder('${o.id}')" class="h-9 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="طباعة"><i class="ph ph-printer text-sm"></i> <span>طباعة</span></button>
+            <div class="grid grid-cols-5 gap-1 pt-2 border-t border-devo-gray/60 mt-3">
+                <button onclick="viewOrderDetails('${o.id}')" class="h-9 bg-devo-black border border-devo-gray hover:bg-devo-gray rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer" title="عرض الفاتورة"><i class="ph ph-eye text-sm"></i> <span class="hidden sm:inline">عرض</span></button>
+                <button onclick="reprintOrder('${o.id}')" class="h-9 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer" title="طباعة"><i class="ph ph-printer text-sm"></i> <span class="hidden sm:inline">طباعة</span></button>
+                <button onclick="duplicateOrderToCart('${o.id}')" class="h-9 bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500 hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer" title="نسخ للسلة"><i class="ph ph-copy text-sm"></i> <span class="hidden sm:inline">نسخ</span></button>
                 ${isEditable 
-                    ? `<button onclick="confirmEditOrder('${o.id}')" class="h-9 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="تعديل"><i class="ph ph-pencil-simple text-sm"></i> <span>تعديل</span></button>` 
-                    : `<button disabled class="h-9 bg-devo-gray/20 text-devo-muted rounded-lg text-xs font-medium flex items-center justify-center gap-1 opacity-50 cursor-not-allowed" title="${lockTitle}"><i class="ph ph-lock text-sm"></i> <span>مقفل</span></button>`
+                    ? `<button onclick="confirmEditOrder('${o.id}')" class="h-9 bg-devo-orange/10 text-devo-orange hover:bg-devo-orange hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer" title="تعديل"><i class="ph ph-pencil-simple text-sm"></i> <span class="hidden sm:inline">تعديل</span></button>` 
+                    : `<button disabled class="h-9 bg-devo-gray/20 text-devo-muted rounded-lg text-xs font-medium flex items-center justify-center gap-1 opacity-50 cursor-not-allowed" title="${lockTitle}"><i class="ph ph-lock text-sm"></i> <span class="hidden sm:inline">مقفل</span></button>`
                 }
-                <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="h-9 bg-devo-black border border-devo-gray text-devo-muted hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'} text-sm"></i> <span>${o.is_archived ? 'استعادة' : 'أرشيف'}</span></button>
+                <button onclick="toggleArchive('${o.id}', ${!o.is_archived})" class="h-9 bg-devo-black border border-devo-gray text-devo-muted hover:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer" title="${o.is_archived ? 'استعادة' : 'أرشفة'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'} text-sm"></i> <span class="hidden sm:inline">${o.is_archived ? 'استعادة' : 'أرشيف'}</span></button>
             </div>
         `;
 
@@ -412,15 +414,20 @@ window.viewOrderDetails = async (id) => {
     }
 
     document.getElementById('order-details-content').innerHTML = `
-        <div class="bg-devo-black p-4 rounded-xl border border-devo-gray mb-6 flex justify-between items-center">
+        <div class="bg-devo-black p-4 rounded-xl border border-devo-gray mb-6 flex justify-between items-center flex-wrap gap-3">
             <div>
                 <p class="text-xs text-devo-muted">العميل</p>
                 <h4 class="text-white font-bold text-lg">${o.customer_name}</h4>
                 <p class="text-sm text-devo-muted" dir="ltr">${o.phone_1}</p>
             </div>
-            <div class="text-left">
-                <p class="text-xs text-devo-muted">رقم الفاتورة</p>
-                <p class="text-devo-orange font-mono font-bold text-lg">${o.invoice_number}</p>
+            <div class="flex items-center gap-3">
+                <button onclick="closeOrderDetailsModal(); duplicateOrderToCart('${o.id}')" class="px-3.5 py-2 bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer" title="نسخ الأصناف للسلة كفاتورة جديدة">
+                    <i class="ph ph-copy text-base"></i> نسخ كأوردر جديد
+                </button>
+                <div class="text-left">
+                    <p class="text-xs text-devo-muted">رقم الفاتورة</p>
+                    <p class="text-devo-orange font-mono font-bold text-lg">${o.invoice_number}</p>
+                </div>
             </div>
         </div>
 
@@ -636,6 +643,45 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', async () 
     if (window.refreshCartView) window.refreshCartView();
     window.switchSiteView('view-cart');
 });
+
+// ==========================================
+// 🌟 نسخ الأوردر إلى السلة لإنشاء فاتورة جديدة (Showroom Duplicate) 🌟
+// ==========================================
+window.duplicateOrderToCart = (id) => {
+    const targetOrder = allOrders.find(x => x.id === id);
+    if (!targetOrder) return;
+
+    const newCart = (targetOrder.order_items || []).map(item => {
+        let imgUrl = './src/assets/icons/devo.png';
+        if (item.models?.model_images && item.models.model_images.length > 0) {
+            imgUrl = resolveImageUrl(item.models.model_images[0].image_url);
+        }
+        
+        const classSizes = item.models?.classes?.class_sizes || [];
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
+
+        return {
+            modelId: item.model_id, 
+            factoryCode: item.models?.factory_code || item.models?.system_code || '',
+            colorId: item.color_id,
+            modelName: item.models?.name, 
+            colorName: item.colors?.name,
+            price: item.price_per_series / sizesCount,
+            image: imgUrl, 
+            qty: item.quantity,
+            sizesCount: sizesCount
+        };
+    });
+
+    localStorage.setItem('devo_cart', JSON.stringify(newCart));
+    // حذف أي بيانات ربط تعديل حتى تتعامل السلة مع الطلب كأوردر جديد تماماً
+    localStorage.removeItem('devo_edit_order_data');
+
+    showToast(`تم نسخ أصناف الأوردر #${targetOrder.invoice_number} إلى السلة لإنشاء فاتورة جديدة!`, 'success');
+
+    if (window.refreshCartView) window.refreshCartView();
+    window.switchSiteView('view-cart');
+};
 
 window.refreshOrders = fetchMyOrders;
 

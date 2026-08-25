@@ -10,6 +10,9 @@ let currentUserProfile = null;
 let currentEditingOrderId = null;
 let localEditingItems = [];
 let isLocalEditMode = false;
+let isDuplicateMode = false;
+let sourceDuplicatingOrderId = null;
+let sourceDuplicatingInvoiceNumber = '';
 let localEditingInventory = {};
 let localEditingCustomerData = {
     customer_name: '',
@@ -30,6 +33,17 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function resolveImageUrl(url) {
+    if (!url || url.trim() === "" || url === "null" || url === "undefined") return './src/assets/icons/devo.png';
+    try {
+        if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
+            const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+            if (idMatch && idMatch[1]) return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w400`;
+        }
+    } catch (e) {}
+    return url; 
 }
 
 const statusConfig = {
@@ -113,7 +127,7 @@ export async function fetchAdminOrders() {
             system_users!worker_id (full_name),
             order_items (
                 *,
-                models (id, name, factory_code, system_code, price, class_id, model_sizes(size_id), classes(id, name, class_sizes(size_id))),
+                models (id, name, factory_code, system_code, price, class_id, model_sizes(size_id), classes(id, name, class_sizes(size_id)), model_images(image_url)),
                 colors (id, name, color_code)
             )
         `)
@@ -137,7 +151,7 @@ async function fetchFullOrderById(orderId) {
                 system_users!worker_id (full_name),
                 order_items (
                     *,
-                    models (id, name, factory_code, system_code, price, class_id, model_sizes(size_id), classes(id, name, class_sizes(size_id))),
+                    models (id, name, factory_code, system_code, price, class_id, model_sizes(size_id), classes(id, name, class_sizes(size_id)), model_images(image_url)),
                     colors (id, name, color_code)
                 )
             `)
@@ -288,15 +302,16 @@ function generateOrderRowHTML(o) {
                 <div class="mt-1 text-[10px] ${conf.color} px-2 py-0.5 rounded inline-block">${conf.text}</div>
             </td>
             <td class="p-3">
-                <div class="flex items-center justify-center gap-1.5">
-                    <button onclick="exportSingleOrderToExcel('${o.id}')" class="p-1.5 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded transition-colors" title="تصدير (Excel)"><i class="ph ph-file-xls text-lg"></i></button>
+                <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                    <button onclick="exportSingleOrderToExcel('${o.id}')" class="p-1.5 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded transition-colors cursor-pointer" title="تصدير (Excel)"><i class="ph ph-file-xls text-lg"></i></button>
 
-                    <button onclick="printAdminOrder('${o.id}', 'customer')" class="p-1.5 bg-gray-200 text-gray-800 hover:bg-white rounded transition-colors" title="طباعة فاتورة العميل"><i class="ph ph-receipt text-lg"></i></button>
-                    <button onclick="printAdminOrder('${o.id}', 'detailed')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-lg"></i></button>
+                    <button onclick="printAdminOrder('${o.id}', 'customer')" class="p-1.5 bg-gray-200 text-gray-800 hover:bg-white rounded transition-colors cursor-pointer" title="طباعة فاتورة العميل"><i class="ph ph-receipt text-lg"></i></button>
+                    <button onclick="printAdminOrder('${o.id}', 'detailed')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors cursor-pointer" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-lg"></i></button>
+                    <button onclick="duplicateAdminOrder('${o.id}')" class="p-1.5 bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500 hover:text-white rounded transition-colors cursor-pointer" title="نسخ الأوردر كفاتورة جديدة (Duplicate)"><i class="ph ph-copy text-lg"></i></button>
                     ${editBtnHtml}
-                    <button onclick="viewAdminOrderDetails('${o.id}')" class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors" title="التفاصيل"><i class="ph ph-eye text-lg"></i></button>
+                    <button onclick="viewAdminOrderDetails('${o.id}')" class="p-1.5 bg-devo-info/10 text-devo-info hover:bg-devo-info hover:text-white rounded transition-colors cursor-pointer" title="التفاصيل"><i class="ph ph-eye text-lg"></i></button>
                     ${archiveBtn}
-                    ${isOwner ? `<button onclick="deleteOrder('${o.id}')" class="p-1.5 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded transition-colors" title="حذف وإرجاع المخزون"><i class="ph ph-trash text-lg"></i></button>` : ''}
+                    ${isOwner ? `<button onclick="deleteOrder('${o.id}')" class="p-1.5 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded transition-colors cursor-pointer" title="حذف وإرجاع المخزون"><i class="ph ph-trash text-lg"></i></button>` : ''}
                 </div>
             </td>
         </tr>
@@ -568,73 +583,32 @@ window.viewAdminOrderDetails = async (id) => {
     if (!o) return;
 
     isLocalEditMode = false;
+    isDuplicateMode = false;
     currentEditingOrderId = null;
+    sourceDuplicatingOrderId = null;
+    sourceDuplicatingInvoiceNumber = '';
 
-    // ضبط عنوان المودال وإظهار أزرار الطباعة
+    // ضبط عنوان المودال وإظهار أزرار الطباعة والنسخ
     const modalTitle = document.getElementById('ao-modal-title');
     if (modalTitle) {
         modalTitle.innerHTML = `<i class="ph ph-receipt text-devo-orange text-xl"></i> <span>تفاصيل الأوردر</span> <span class="text-devo-orange font-mono font-bold mr-1">#${escapeHtml(o.invoice_number)}</span>`;
     }
     const printCustBtn = document.getElementById('ao-print-customer-btn');
     const printDetBtn = document.getElementById('ao-print-detailed-btn');
+    const duplicateBtn = document.getElementById('ao-duplicate-btn');
     if (printCustBtn) printCustBtn.classList.remove('hidden');
     if (printDetBtn) printDetBtn.classList.remove('hidden');
+    if (duplicateBtn) {
+        duplicateBtn.classList.remove('hidden');
+        duplicateBtn.onclick = () => window.duplicateAdminOrder(o.id);
+    }
 
     const remaining = Number(o.total_price || 0) - Number(o.deposit || 0);
-    const groupedItems = {};
     let totalPiecesCount = 0;
-
-    o.order_items.forEach(item => {
-        const modelId = item.model_id;
-        const code = item.models?.factory_code || item.models?.system_code || '';
-        const colorName = item.colors?.name || '-';
-        const qty = item.quantity;
-        
-        // حساب المقاسات الذكي
-        const classSizes = item.models?.classes?.class_sizes || [];
-        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1); 
-        const pieces = qty * sizesCount;
-        totalPiecesCount += pieces;
-        const piecePrice = sizesCount > 0 ? (item.price_per_series / sizesCount) : item.price_per_series;
-        
-        const colorWithQty = `${qty} ${colorName}`;
-
-        if (!groupedItems[modelId]) {
-            groupedItems[modelId] = {
-                modelName: item.models?.name || 'موديل غير محدد',
-                code: code,
-                colorsList: [colorWithQty],
-                totalQty: qty,
-                totalPieces: pieces, 
-                price: piecePrice,
-                pricePerSeries: item.price_per_series,
-                totalPrice: item.total_price
-            };
-        } else {
-            groupedItems[modelId].colorsList.push(colorWithQty);
-            groupedItems[modelId].totalQty += qty;
-            groupedItems[modelId].totalPieces += pieces;
-            groupedItems[modelId].totalPrice += item.total_price;
-        }
+    (o.order_items || []).forEach(item => {
+        const sizesCount = getModelSizesCount(item.models, item.sizes_count);
+        totalPiecesCount += (item.quantity * sizesCount);
     });
-
-    let itemsHtml = Object.values(groupedItems).map(item => `
-        <tr class="border-b border-devo-gray last:border-0 hover:bg-devo-black/60 transition-colors">
-            <td class="py-3 px-4 text-white text-sm font-bold search-target">
-                ${escapeHtml(item.modelName)}
-                <span class="text-devo-muted text-xs font-mono mr-1.5 bg-devo-black px-2 py-0.5 rounded border border-devo-gray/50">(${escapeHtml(item.code)})</span>
-            </td>
-            <td class="py-3 px-4 text-devo-info text-xs leading-relaxed font-medium">
-                ${escapeHtml(item.colorsList.join('، '))}
-            </td>
-            <td class="py-3 px-4 text-center">
-                <span class="text-base text-white font-black font-mono">${item.totalQty}</span> <span class="text-xs text-devo-muted">سيريه</span><br>
-                <span class="text-[11px] text-devo-muted font-normal">(${item.totalPieces} قطعة)</span>
-            </td>
-            <td class="py-3 px-4 text-devo-muted text-center font-mono font-medium">${Number(item.price).toLocaleString('en-US')} ج.م</td>
-            <td class="py-3 px-4 text-devo-orange font-black text-left text-base font-mono">${Number(item.totalPrice).toLocaleString('en-US')} ج.م</td>
-        </tr>
-    `).join('');
 
     // جلب سجل الحركات بقاعدة البيانات للأوردر
     let logsHtml = '';
@@ -784,28 +758,13 @@ window.viewAdminOrderDetails = async (id) => {
             <!-- شريط البحث داخل الأصناف -->
             <div class="relative shrink-0">
                 <i class="ph ph-magnifying-glass absolute right-3.5 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
-                <input type="text" oninput="filterModalTable(this.value)" placeholder="بحث سريع داخل الأصناف باسم الموديل أو الكود..." 
+                <input type="text" oninput="filterModalTable(this.value)" placeholder="بحث سريع داخل الأصناف باسم الموديل أو الكود أو اللون..." 
                     class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2.5 text-white placeholder-devo-muted focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
             </div>
 
-            <!-- جدول الأصناف الواسع -->
-            <div class="flex-1 overflow-hidden border border-devo-gray rounded-2xl bg-devo-black flex flex-col min-h-[220px]">
-                <div class="overflow-y-auto custom-scrollbar flex-1">
-                    <table class="w-full text-right text-sm">
-                        <thead class="text-xs text-devo-muted bg-devo-dark/95 backdrop-blur-sm sticky top-0 shadow-sm z-10 border-b border-devo-gray">
-                            <tr>
-                                <th class="py-3 px-4 font-bold">الموديل</th>
-                                <th class="py-3 px-4 font-bold">الألوان</th>
-                                <th class="py-3 px-4 text-center font-bold">الكمية</th>
-                                <th class="py-3 px-4 text-center font-bold">سعر القطعة</th>
-                                <th class="py-3 px-4 text-left font-bold">الإجمالي</th>
-                            </tr>
-                        </thead>
-                        <tbody id="modal-items-tbody" class="divide-y divide-devo-gray">
-                            ${itemsHtml}
-                        </tbody>
-                    </table>
-                </div>
+            <!-- حاوية كروت الموديلات المجمعة (مثل السلة) -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar border border-devo-gray rounded-2xl bg-devo-black/40 p-3 md:p-4 min-h-[240px]" id="modal-items-container">
+                ${renderViewOrderCardsHTML(o)}
             </div>
 
             <!-- سجل حركات الأوردر -->
@@ -870,6 +829,9 @@ window.closeAdminOrderDetails = async () => {
         modal.classList.add('hidden');
         currentEditingOrderId = null;
         isLocalEditMode = false;
+        isDuplicateMode = false;
+        sourceDuplicatingOrderId = null;
+        sourceDuplicatingInvoiceNumber = '';
         localEditingItems = [];
         localEditingInventory = {};
         localEditingCustomerData = {
@@ -1313,6 +1275,10 @@ window.triggerLocalEdit = async () => {
     closeEditOrderChoices(true);
     
     isLocalEditMode = true;
+    isDuplicateMode = false;
+    sourceDuplicatingOrderId = null;
+    sourceDuplicatingInvoiceNumber = '';
+
     localEditingCustomerData = {
         customer_name: o.customer_name || '',
         phone_1: o.phone_1 || '',
@@ -1323,7 +1289,7 @@ window.triggerLocalEdit = async () => {
         notes: o.notes || ''
     };
 
-    localEditingItems = o.order_items.map(item => ({
+    localEditingItems = (o.order_items || []).map(item => ({
         ...item,
         isDeleted: false
     }));
@@ -1352,69 +1318,146 @@ window.triggerLocalEdit = async () => {
     renderLocalEditModal(o);
 };
 
+// ==========================================
+// 🌟 نسخ الأوردر كفاتورة جديدة (Duplicate Order) 🌟
+// ==========================================
+window.duplicateAdminOrder = async (orderId) => {
+    const freshOrder = await fetchFullOrderById(orderId);
+    const o = freshOrder || allAdminOrders.find(x => x.id === orderId);
+    if (!o) return;
+
+    closeEditOrderChoices(true);
+
+    isDuplicateMode = true;
+    isLocalEditMode = false;
+    currentEditingOrderId = null;
+    sourceDuplicatingOrderId = o.id;
+    sourceDuplicatingInvoiceNumber = o.invoice_number;
+
+    localEditingCustomerData = {
+        customer_name: o.customer_name || '',
+        phone_1: o.phone_1 || '',
+        phone_2: o.phone_2 || '',
+        address: o.address || '',
+        deposit: Number(o.deposit) || 0,
+        deposit_receiver: o.deposit_receiver || '',
+        notes: o.notes || ''
+    };
+
+    localEditingItems = (o.order_items || []).map(item => ({
+        ...item,
+        isDeleted: false
+    }));
+
+    localEditingInventory = {};
+    const modelIds = [...new Set(localEditingItems.map(item => item.model_id))];
+    if (modelIds.length > 0) {
+        try {
+            const { data: invData, error: invError } = await supabase
+                .from('model_inventory')
+                .select('model_id, color_id, available_series')
+                .in('model_id', modelIds);
+            
+            if (!invError && invData) {
+                invData.forEach(inv => {
+                    const key = `${inv.model_id}_${inv.color_id}`;
+                    localEditingInventory[key] = inv.available_series;
+                });
+            }
+        } catch (e) {
+            console.error('Error fetching inventory for duplicate order cache:', e);
+        }
+    }
+
+    renderLocalEditModal(o);
+};
+
+window.triggerDuplicateFromChoices = () => {
+    if (currentEditingOrderId) {
+        duplicateAdminOrder(currentEditingOrderId);
+    }
+};
+
 async function renderLocalEditModal(o) {
     const modalTitle = document.getElementById('ao-modal-title');
     if (modalTitle) {
-        modalTitle.innerHTML = `
-            <div class="flex flex-wrap items-center gap-2.5">
-                <i class="ph ph-note-pencil text-devo-orange text-xl"></i>
-                <span>تعديل الأوردر محلياً</span>
-                <span class="text-devo-orange font-mono font-bold">#${escapeHtml(o.invoice_number)}</span>
-                <span class="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> وضع التعديل المباشر
-                </span>
-            </div>
-        `;
+        if (isDuplicateMode) {
+            modalTitle.innerHTML = `
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <i class="ph ph-copy text-cyan-400 text-xl"></i>
+                    <span>نسخ وتكرار كفاتورة جديدة</span>
+                    <span class="text-devo-muted text-xs font-mono mr-1">(مأخوذ من #${escapeHtml(sourceDuplicatingInvoiceNumber)})</span>
+                    <span class="text-xs bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <i class="ph ph-files"></i> وضع نسخ الأوردر
+                    </span>
+                </div>
+            `;
+        } else {
+            modalTitle.innerHTML = `
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <i class="ph ph-note-pencil text-devo-orange text-xl"></i>
+                    <span>تعديل الأوردر محلياً</span>
+                    <span class="text-devo-orange font-mono font-bold">#${escapeHtml(o.invoice_number)}</span>
+                    <span class="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> وضع التعديل المباشر
+                    </span>
+                </div>
+            `;
+        }
     }
 
-    // إخفاء أزرار الطباعة في وضع التعديل
+    // إخفاء أزرار الطباعة والنسخ في وضع التعديل/النسخ
     const printCustBtn = document.getElementById('ao-print-customer-btn');
     const printDetBtn = document.getElementById('ao-print-detailed-btn');
+    const duplicateBtn = document.getElementById('ao-duplicate-btn');
     if (printCustBtn) printCustBtn.classList.add('hidden');
     if (printDetBtn) printDetBtn.classList.add('hidden');
+    if (duplicateBtn) duplicateBtn.classList.add('hidden');
 
     const remaining = calculateLocalRemaining();
     const totalPrice = calculateLocalTotalPrice();
     const totalSeries = calculateLocalTotalSeries();
     const totalPieces = calculateLocalTotalPieces();
 
-    // جلب سجل الحركات للأوردر
+    // جلب سجل الحركات للأوردر (في حال كان تعديل أوردر قائم)
     let logsHtml = '';
-    try {
-        const { data: logs, error: logsError } = await supabase
-            .from('order_logs')
-            .select('*')
-            .eq('order_id', o.id)
-            .order('created_at', { ascending: false });
+    if (!isDuplicateMode) {
+        try {
+            const { data: logs, error: logsError } = await supabase
+                .from('order_logs')
+                .select('*')
+                .eq('order_id', o.id)
+                .order('created_at', { ascending: false });
 
-        if (!logsError && logs && logs.length > 0) {
-            logsHtml = `
-                <div class="mt-3 bg-devo-black/40 border border-devo-gray rounded-xl p-3.5 shrink-0">
-                    <details class="group cursor-pointer">
-                        <summary class="text-xs text-devo-orange font-bold flex items-center justify-between list-none outline-none">
-                            <span class="flex items-center gap-1.5"><i class="ph ph-clock-counter-clockwise text-sm"></i> سجل حركات وتعديلات الأوردر (${logs.length})</span>
-                            <i class="ph ph-caret-down transition-transform group-open:rotate-180 text-devo-muted"></i>
-                        </summary>
-                        <div class="space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar text-xs mt-2.5 pt-2 border-t border-devo-gray/40">
-                            ${logs.map(log => {
-                                const logDate = new Date(log.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                                return `
-                                    <div class="flex gap-2 items-start bg-devo-dark/60 p-2 rounded-lg border border-devo-gray/20">
-                                        <div class="w-1.5 h-1.5 rounded-full bg-devo-orange mt-1.5 shrink-0"></div>
-                                        <div class="flex-1 text-devo-text">
-                                            <span class="font-normal text-white">${escapeHtml(log.notes)}</span>
-                                            <span class="text-[10px] text-devo-muted mr-1.5 font-mono" dir="ltr">(${logDate})</span>
+            if (!logsError && logs && logs.length > 0) {
+                logsHtml = `
+                    <div class="mt-3 bg-devo-black/40 border border-devo-gray rounded-xl p-3.5 shrink-0">
+                        <details class="group cursor-pointer">
+                            <summary class="text-xs text-devo-orange font-bold flex items-center justify-between list-none outline-none">
+                                <span class="flex items-center gap-1.5"><i class="ph ph-clock-counter-clockwise text-sm"></i> سجل حركات وتعديلات الأوردر (${logs.length})</span>
+                                <i class="ph ph-caret-down transition-transform group-open:rotate-180 text-devo-muted"></i>
+                            </summary>
+                            <div class="space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar text-xs mt-2.5 pt-2 border-t border-devo-gray/40">
+                                ${logs.map(log => {
+                                    const logDate = new Date(log.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                    return `
+                                        <div class="flex gap-2 items-start bg-devo-dark/60 p-2 rounded-lg border border-devo-gray/20">
+                                            <div class="w-1.5 h-1.5 rounded-full bg-devo-orange mt-1.5 shrink-0"></div>
+                                            <div class="flex-1 text-devo-text">
+                                                <span class="font-normal text-white">${escapeHtml(log.notes)}</span>
+                                                <span class="text-[10px] text-devo-muted mr-1.5 font-mono" dir="ltr">(${logDate})</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </details>
-                </div>
-            `;
+                                    `;
+                                }).join('')}
+                            </div>
+                        </details>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.error('Error fetching logs for edit modal:', e);
         }
-    } catch (e) {
-        console.error('Error fetching logs for edit modal:', e);
     }
 
     document.getElementById('ao-details-content').innerHTML = `
@@ -1424,36 +1467,30 @@ async function renderLocalEditModal(o) {
                 <!-- كارت 1: بيانات العميل (5 أعمدة) -->
                 <div class="lg:col-span-5 bg-devo-black p-4 rounded-2xl border border-devo-gray shadow-sm flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-3 pb-2 border-b border-devo-gray/40">
-                            <span class="text-xs text-devo-orange font-bold flex items-center gap-1.5">
-                                <i class="ph ph-user-gear text-base"></i> بيانات العميل (قابلة للتعديل)
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs ${isDuplicateMode ? 'text-cyan-400' : 'text-devo-orange'} font-bold flex items-center gap-1.5">
+                                <i class="ph ${isDuplicateMode ? 'ph-user-plus' : 'ph-user-gear'} text-base"></i> بيانات العميل المستلم
                             </span>
-                            <span class="text-[10px] text-devo-muted">تعديل فوري</span>
+                            <span class="text-[10px] text-devo-muted">قابلة للتعديل مباشرة</span>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div class="sm:col-span-2">
-                                <label class="text-[11px] text-devo-muted font-medium mb-1 block">اسم العميل / المحل <span class="text-devo-error">*</span></label>
-                                <input type="text" id="ao-edit-cust-name" value="${escapeHtml(localEditingCustomerData.customer_name)}"
-                                    class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-sm font-medium focus:border-devo-orange outline-none transition-colors"
-                                    placeholder="اسم العميل أو اسم المحل...">
+                        <div class="space-y-2.5">
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">اسم العميل / المحل <span class="text-devo-orange">*</span></label>
+                                <input type="text" id="ao-edit-cust-name" value="${escapeHtml(localEditingCustomerData.customer_name)}" placeholder="اسم العميل أو اسم المحل..." class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white font-bold text-sm focus:border-devo-orange outline-none transition-colors">
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-devo-muted mb-1">رقم الهاتف الأساسي <span class="text-devo-orange">*</span></label>
+                                    <input type="text" id="ao-edit-phone-1" dir="ltr" value="${escapeHtml(localEditingCustomerData.phone_1)}" placeholder="01xxxxxxxxx" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white font-mono text-sm focus:border-devo-orange outline-none transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-devo-muted mb-1">رقم هاتف إضافي (اختياري)</label>
+                                    <input type="text" id="ao-edit-phone-2" dir="ltr" value="${escapeHtml(localEditingCustomerData.phone_2)}" placeholder="رقم إضافي..." class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white font-mono text-sm focus:border-devo-orange outline-none transition-colors">
+                                </div>
                             </div>
                             <div>
-                                <label class="text-[11px] text-devo-muted font-medium mb-1 block">رقم الهاتف الأساسي <span class="text-devo-error">*</span></label>
-                                <input type="tel" id="ao-edit-phone-1" dir="ltr" value="${escapeHtml(localEditingCustomerData.phone_1)}"
-                                    class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-sm font-mono focus:border-devo-orange outline-none transition-colors"
-                                    placeholder="01xxxxxxxxx">
-                            </div>
-                            <div>
-                                <label class="text-[11px] text-devo-muted font-medium mb-1 block">رقم هاتف إضافي (اختياري)</label>
-                                <input type="tel" id="ao-edit-phone-2" dir="ltr" value="${escapeHtml(localEditingCustomerData.phone_2)}"
-                                    class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-sm font-mono focus:border-devo-orange outline-none transition-colors"
-                                    placeholder="01xxxxxxxxx">
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label class="text-[11px] text-devo-muted font-medium mb-1 block">العنوان وتفاصيل الشحن</label>
-                                <input type="text" id="ao-edit-address" value="${escapeHtml(localEditingCustomerData.address)}"
-                                    class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-sm font-medium focus:border-devo-orange outline-none transition-colors"
-                                    placeholder="المحافظة - المنطقة - تفاصيل العنوان...">
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">العنوان وتفاصيل الشحن</label>
+                                <input type="text" id="ao-edit-address" value="${escapeHtml(localEditingCustomerData.address)}" placeholder="العنوان، المحافظة، تفاصيل الشحن..." class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors">
                             </div>
                         </div>
                     </div>
@@ -1462,106 +1499,85 @@ async function renderLocalEditModal(o) {
                 <!-- كارت 2: بيانات الدفع والملاحظات (4 أعمدة) -->
                 <div class="lg:col-span-4 bg-devo-black p-4 rounded-2xl border border-devo-gray shadow-sm flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-3 pb-2 border-b border-devo-gray/40">
-                            <span class="text-xs text-devo-orange font-bold flex items-center gap-1.5">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs ${isDuplicateMode ? 'text-cyan-400' : 'text-devo-orange'} font-bold flex items-center gap-1.5">
                                 <i class="ph ph-wallet text-base"></i> الدفع والملاحظات
                             </span>
-                            <span class="text-[10px] text-devo-muted">حسابات تلقائية</span>
+                            <span class="text-[10px] text-devo-muted">تحديث تلقائي</span>
                         </div>
-                        <div class="space-y-3">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="space-y-2.5">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 <div>
-                                    <label class="text-[11px] text-devo-muted font-medium mb-1 block">العربون المدفوع (ج.م)</label>
-                                    <input type="number" min="0" step="any" id="ao-edit-deposit" oninput="handleLocalDepositChange(this.value)" value="${localEditingCustomerData.deposit}"
-                                        class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-devo-success font-bold font-mono text-base focus:border-devo-orange outline-none transition-colors"
-                                        placeholder="0">
+                                    <label class="block text-[11px] font-bold text-devo-muted mb-1">العربون المدفوع (ج.م)</label>
+                                    <input type="number" step="any" min="0" id="ao-edit-deposit" value="${localEditingCustomerData.deposit}" oninput="handleLocalDepositChange(this.value)" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-devo-success font-black font-mono text-sm focus:border-devo-orange outline-none transition-colors">
                                 </div>
                                 <div>
-                                    <label class="text-[11px] text-devo-muted font-medium mb-1 block">مستلم العربون</label>
-                                    <input type="text" id="ao-edit-deposit-receiver" value="${escapeHtml(localEditingCustomerData.deposit_receiver)}"
-                                        class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-sm font-medium focus:border-devo-orange outline-none transition-colors"
-                                        placeholder="اسم المستلم أو الخزينة...">
+                                    <label class="block text-[11px] font-bold text-devo-muted mb-1">مستلم العربون</label>
+                                    <input type="text" id="ao-edit-deposit-receiver" value="${escapeHtml(localEditingCustomerData.deposit_receiver)}" placeholder="اسم المستلم / الخزينة..." class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors">
                                 </div>
                             </div>
                             <div>
-                                <label class="text-[11px] text-devo-muted font-medium mb-1 block">ملاحظات وتعليمات الأوردر</label>
-                                <textarea id="ao-edit-notes" rows="2"
-                                    class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors custom-scrollbar resize-none"
-                                    placeholder="أي تعليمات خاصة بالشحن أو التجهيز أو العميل...">${escapeHtml(localEditingCustomerData.notes)}</textarea>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">ملاحظات وتعليمات الأوردر</label>
+                                <textarea id="ao-edit-notes" placeholder="أي تعليمات خاصة بالتجهيز أو الشحن..." rows="2" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors resize-none">${escapeHtml(localEditingCustomerData.notes)}</textarea>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- كارت 3: معلومات الأوردر والملخص المالي اللحظي (3 أعمدة) -->
+                <!-- كارت 3: ملخص الحسابات اللحظي (3 أعمدة) -->
                 <div class="lg:col-span-3 bg-devo-black p-4 rounded-2xl border border-devo-gray shadow-sm flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-3 pb-2 border-b border-devo-gray/40">
+                        <div class="flex items-center justify-between mb-3">
                             <span class="text-xs text-devo-orange font-bold flex items-center gap-1.5">
                                 <i class="ph ph-calculator text-base"></i> ملخص الحسابات اللحظي
                             </span>
-                            <span class="text-xs text-devo-muted font-mono" dir="ltr">#${escapeHtml(o.invoice_number)}</span>
+                            <span class="text-[10px] bg-devo-orange/15 text-devo-orange border border-devo-orange/30 px-2 py-0.5 rounded-full font-bold">مباشر</span>
                         </div>
                         <div class="space-y-2 text-xs">
-                            <div class="flex justify-between items-center text-devo-muted">
-                                <span>البائع (المعرض):</span>
-                                <span class="text-white font-medium">${escapeHtml(o.system_users?.full_name || '-')}</span>
-                            </div>
                             <div class="flex justify-between items-center pb-1.5 border-b border-devo-gray/40">
-                                <span class="text-devo-muted">الكمية الإجمالية:</span>
+                                <span class="text-devo-muted">البائع المنشئ:</span>
+                                <span class="text-white font-bold">${escapeHtml(currentUserProfile?.full_name || o.system_users?.full_name || 'موظف')}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-devo-muted">إجمالي السيريهات:</span>
                                 <span class="text-white font-bold font-mono text-sm">
-                                    <span id="local-edit-total-series">${totalSeries}</span> سيريه
-                                    <span id="local-edit-total-pieces" class="text-devo-muted font-normal text-xs">(${totalPieces} قطعة)</span>
+                                    <span id="local-edit-total-series">${totalSeries}</span> سيريه 
+                                    <span id="local-edit-total-pieces" class="text-devo-muted text-[11px] font-normal">(${totalPieces} قطعة)</span>
                                 </span>
                             </div>
                             <div class="flex justify-between items-center">
-                                <span class="text-devo-muted">إجمالي الفاتورة الجديد:</span>
-                                <span class="text-white font-black font-mono text-base" id="local-edit-total-price">${totalPrice.toLocaleString('en-US')} ج.م</span>
+                                <span class="text-devo-muted">إجمالي الفاتورة:</span>
+                                <span id="local-edit-total-price" class="text-white font-bold font-mono text-sm">${totalPrice.toLocaleString('en-US')} ج.م</span>
                             </div>
                             <div class="flex justify-between items-center">
-                                <span class="text-devo-muted">العربون المدفوع:</span>
-                                <span class="text-devo-success font-bold font-mono text-base" id="local-edit-deposit-display">${Number(localEditingCustomerData.deposit || 0).toLocaleString('en-US')} ج.م</span>
+                                <span class="text-devo-muted">المدفوع (العربون):</span>
+                                <span id="local-edit-deposit-display" class="text-devo-success font-bold font-mono text-sm">${Number(localEditingCustomerData.deposit || 0).toLocaleString('en-US')} ج.م</span>
                             </div>
-                            <div class="flex justify-between items-center pt-2 border-t border-devo-gray mt-1 bg-devo-dark/50 p-2.5 rounded-xl border border-devo-gray/30">
-                                <span class="text-white font-bold text-xs">المتبقي للدفع:</span>
-                                <span class="text-devo-orange font-black font-mono text-xl" id="local-edit-remaining">${remaining.toLocaleString('en-US')} ج.م</span>
+                            <div class="flex justify-between items-center pt-2 border-t border-devo-gray mt-1 bg-devo-orange/10 p-2 rounded-xl border border-devo-orange/20">
+                                <span class="text-white font-bold text-xs">المتبقي للتحصيل:</span>
+                                <span id="local-edit-remaining" class="text-devo-orange font-black font-mono text-base">${remaining.toLocaleString('en-US')} ج.م</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 🌟 القسم الأوسط: شريط البحث وجدول الأصناف التفاعلي بكامل الشاشة 🌟 -->
-            <div class="flex items-center justify-between gap-3 shrink-0">
-                <div class="relative flex-1">
+            <!-- 🌟 شريط البحث وإحصائيات الأصناف 🌟 -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <div class="relative w-full sm:w-80">
                     <i class="ph ph-magnifying-glass absolute right-3.5 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
-                    <input type="text" id="ao-local-search-input" oninput="filterModalTable(this.value)" placeholder="بحث سريع داخل الأصناف باسم الموديل أو الكود..."
-                        class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2 text-white placeholder-devo-muted focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
+                    <input type="text" id="ao-local-search-input" oninput="filterModalTable(this.value)" placeholder="بحث سريع في الأصناف بالكود أو الموديل أو اللون..." 
+                        class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-2 text-white placeholder-devo-muted focus:border-devo-orange outline-none text-xs transition-all shadow-sm">
                 </div>
-                <div class="text-xs text-devo-muted font-medium shrink-0 bg-devo-black px-3 py-2 rounded-xl border border-devo-gray">
-                    عدد الأصناف: <span id="ao-local-items-count" class="text-devo-orange font-bold font-mono">${localEditingItems.filter(i => !i.isDeleted).length}</span>
+                <div class="text-xs text-devo-muted flex items-center gap-2 self-end sm:self-center">
+                    <span>عدد الأصناف المتاحة بالفاتورة:</span>
+                    <span id="ao-local-items-count" class="font-bold text-white font-mono bg-devo-gray/40 px-2 py-0.5 rounded-lg border border-devo-gray">${localEditingItems.filter(i => !i.isDeleted).length}</span>
                 </div>
             </div>
 
-            <!-- جدول الأصناف الواسع والمريح -->
-            <div class="flex-1 overflow-hidden border border-devo-gray rounded-2xl bg-devo-black flex flex-col min-h-[240px]">
-                <div class="overflow-y-auto custom-scrollbar flex-1">
-                    <table class="w-full text-right text-sm">
-                        <thead class="text-xs text-devo-muted bg-devo-dark/95 backdrop-blur-sm sticky top-0 shadow-sm z-10 border-b border-devo-gray">
-                            <tr>
-                                <th class="py-3 px-4 font-bold">الموديل والكود</th>
-                                <th class="py-3 px-4 font-bold">اللون والمخزون المتاح</th>
-                                <th class="py-3 px-4 text-center font-bold">الكمية (سيريهات)</th>
-                                <th class="py-3 px-4 text-center font-bold">سعر القطعة</th>
-                                <th class="py-3 px-4 text-left font-bold">إجمالي الصنف</th>
-                                <th class="py-3 px-4 text-center font-bold w-16">إجراء</th>
-                            </tr>
-                        </thead>
-                        <tbody id="modal-items-tbody" class="divide-y divide-devo-gray">
-                            ${renderLocalItemsRowsHTML(o)}
-                        </tbody>
-                    </table>
-                </div>
+            <!-- حاوية كروت الموديلات المجمعة (مثل السلة) -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar border border-devo-gray rounded-2xl bg-devo-black/40 p-3 md:p-4 min-h-[260px]" id="modal-items-container">
+                ${renderLocalItemsCardsHTML(o)}
             </div>
 
             <!-- سجل حركات الأوردر (قابل للطي) -->
@@ -1569,16 +1585,16 @@ async function renderLocalEditModal(o) {
 
             <!-- 🌟 شريط الأزرار والإجراءات السفلي 🌟 -->
             <div class="flex items-center justify-between gap-3 pt-3 shrink-0 border-t border-devo-gray bg-devo-dark/80 p-2 rounded-xl">
-                <div class="text-xs text-devo-muted flex items-center gap-1.5">
-                    <i class="ph ph-info text-devo-info text-base"></i>
-                    <span>تعديل الكميات يخصم/يضيف تلقائياً من المخزون عند الحفظ.</span>
+                <div class="text-xs ${isDuplicateMode ? 'text-cyan-400' : 'text-devo-muted'} flex items-center gap-1.5">
+                    <i class="ph ${isDuplicateMode ? 'ph-copy' : 'ph-info text-devo-info'} text-base"></i>
+                    <span>${isDuplicateMode ? `سيتم إصدار فاتورة جديدة برقم جديد وخصم الأصناف من المخزن دون أي تعديل على الفاتورة الأصلية #${escapeHtml(sourceDuplicatingInvoiceNumber)}.` : 'تعديل الكميات يخصم/يضيف تلقائياً من المخزون عند الحفظ.'}</span>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button id="ao-local-save-btn" onclick="saveLocalOrderEdits('${o.id}')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-7 py-2.5 rounded-xl font-black transition-all shadow-md flex items-center gap-2 text-sm cursor-pointer active:scale-95">
-                        <i class="ph ph-check-circle text-lg"></i> حفظ جميع التعديلات
+                    <button id="ao-local-save-btn" onclick="saveLocalOrderEdits('${isDuplicateMode ? '' : o.id}')" class="${isDuplicateMode ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-devo-orange hover:bg-devo-orangeHover'} text-white px-7 py-2.5 rounded-xl font-black transition-all shadow-md flex items-center gap-2 text-sm cursor-pointer active:scale-95">
+                        <i class="ph ${isDuplicateMode ? 'ph-plus-circle' : 'ph-check-circle'} text-lg"></i> ${isDuplicateMode ? 'إنشاء وحفظ الفاتورة المنسوخة' : 'حفظ جميع التعديلات'}
                     </button>
-                    <button onclick="cancelLocalEdit('${o.id}')" class="bg-devo-gray hover:bg-white/10 text-white px-5 py-2.5 rounded-xl font-bold transition-colors text-sm cursor-pointer">
-                        إلغاء التعديل
+                    <button onclick="cancelLocalEdit('${isDuplicateMode ? '' : o.id}')" class="bg-devo-gray hover:bg-white/10 text-white px-5 py-2.5 rounded-xl font-bold transition-colors text-sm cursor-pointer">
+                        ${isDuplicateMode ? 'إلغاء النسخ' : 'إلغاء التعديل'}
                     </button>
                 </div>
             </div>
@@ -1590,73 +1606,270 @@ async function renderLocalEditModal(o) {
     setTimeout(() => modal.classList.remove('opacity-0'), 10);
 }
 
-function renderLocalItemsRowsHTML(o) {
-    let rows = localEditingItems.map((item, index) => {
-        if (item.isDeleted) return '';
+// =========================================================================
+// 🌟 3. رسم كروت الموديلات المجمعة مع ألوانها (Local Edit & Duplicate) 🌟
+// =========================================================================
+function renderLocalItemsCardsHTML(o) {
+    const groupedMap = new Map();
+    localEditingItems.forEach((item, index) => {
+        if (item.isDeleted) return;
+        if (!groupedMap.has(item.model_id)) {
+            const code = item.models?.factory_code || item.models?.system_code || '';
+            const sizesCount = getModelSizesCount(item.models);
+            const piecePrice = sizesCount > 0 ? (item.price_per_series / sizesCount) : item.price_per_series;
+            
+            let imgUrl = './src/assets/icons/devo.png';
+            if (item.models?.model_images && item.models.model_images.length > 0) {
+                imgUrl = resolveImageUrl(item.models.model_images[0].image_url);
+            }
 
-        const code = item.models?.factory_code || item.models?.system_code || '';
-        const classSizes = item.models?.classes?.class_sizes || [];
-        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
-        const pieces = item.quantity * sizesCount;
-        
-        const piecePrice = sizesCount > 0 ? (item.price_per_series / sizesCount) : item.price_per_series;
-        const itemTotal = item.quantity * item.price_per_series;
-
-        const key = `${item.model_id}_${item.color_id}`;
-        const dbStock = localEditingInventory[key] !== undefined ? localEditingInventory[key] : 0;
-
-        const originalItem = o.order_items.find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
-        const originalQty = originalItem ? originalItem.quantity : 0;
-        const realTimeStock = dbStock - (item.quantity - originalQty);
-
-        let stockBadgeClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
-        if (realTimeStock <= 0) {
-            stockBadgeClass = 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-bold';
-        } else if (realTimeStock < 5) {
-            stockBadgeClass = 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+            groupedMap.set(item.model_id, {
+                modelId: item.model_id,
+                modelName: item.models?.name || 'موديل غير محدد',
+                factoryCode: code,
+                sizesCount: sizesCount,
+                piecePrice: piecePrice,
+                pricePerSeries: item.price_per_series,
+                image: imgUrl,
+                colors: []
+            });
         }
+        groupedMap.get(item.model_id).colors.push({
+            ...item,
+            originalIndex: index
+        });
+    });
 
-        return `
-            <tr class="border-b border-devo-gray last:border-0 hover:bg-devo-black/60 transition-colors">
-                <td class="py-3 px-4 text-white text-sm font-bold search-target">
-                    ${escapeHtml(item.models?.name || 'موديل محذوف')}
-                    <span class="text-devo-muted text-xs font-mono mr-1.5 bg-devo-black px-2 py-0.5 rounded border border-devo-gray/50">(${escapeHtml(code)})</span>
-                </td>
-                <td class="py-3 px-4">
-                    <div class="flex items-center gap-2">
-                        <span class="text-devo-info text-xs font-medium">${escapeHtml(item.colors?.name || '-')}</span>
-                        <span class="text-[11px] px-2 py-0.5 rounded-full border ${stockBadgeClass} font-mono" dir="ltr">
+    if (groupedMap.size === 0) {
+        return `<div class="p-10 text-center text-devo-muted text-sm flex flex-col items-center justify-center gap-2"><i class="ph ph-shopping-bag text-3xl"></i><span>تم حذف جميع الأصناف من الفاتورة.</span></div>`;
+    }
+
+    let cardsHtml = '';
+    groupedMap.forEach((modelGroup) => {
+        let modelTotalPrice = 0;
+        let modelTotalSeries = 0;
+        let colorsHtml = '';
+
+        const piecesPerSeries = modelGroup.sizesCount;
+
+        modelGroup.colors.forEach((item) => {
+            const key = `${item.model_id}_${item.color_id}`;
+            const dbStock = localEditingInventory[key] !== undefined ? localEditingInventory[key] : 0;
+
+            let realTimeStock;
+            if (isDuplicateMode) {
+                realTimeStock = dbStock - item.quantity;
+            } else {
+                const originalItem = (o?.order_items || []).find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
+                const originalQty = originalItem ? originalItem.quantity : 0;
+                realTimeStock = dbStock - (item.quantity - originalQty);
+            }
+
+            const itemTotalPrice = item.quantity * item.price_per_series;
+            const pieces = item.quantity * piecesPerSeries;
+
+            modelTotalPrice += itemTotalPrice;
+            modelTotalSeries += item.quantity;
+
+            let stockBadgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+            if (realTimeStock <= 0) {
+                stockBadgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30 font-bold';
+            } else if (realTimeStock < 5) {
+                stockBadgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+            }
+
+            colorsHtml += `
+                <div class="p-2.5 bg-devo-black border border-devo-gray/70 rounded-xl transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 hover:border-devo-gray">
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-devo-info shrink-0 shadow-sm shadow-devo-info/50"></span>
+                            <span class="text-white font-bold text-xs sm:text-sm"><i class="ph-fill ph-palette text-devo-info mr-0.5"></i> ${escapeHtml(item.colors?.name || '-')}</span>
+                        </div>
+                        <span class="text-[11px] px-2.5 py-0.5 rounded-full border ${stockBadgeClass} font-mono font-bold" dir="ltr">
                             متاح: ${realTimeStock} سيريه
                         </span>
                     </div>
-                </td>
-                <td class="py-3 px-4 text-center">
-                    <div class="inline-flex items-center justify-center bg-devo-dark border border-devo-gray rounded-xl overflow-hidden h-9 shadow-inner">
-                        <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity - 1})" class="px-2.5 text-white hover:text-devo-orange hover:bg-white/5 transition-colors h-full flex items-center justify-center cursor-pointer" title="تقليل الكمية">
-                            <i class="ph ph-minus font-bold"></i>
-                        </button>
-                        <input type="text" inputmode="numeric" pattern="[0-9]*" onchange="updateLocalItemQty(${index}, parseInt(this.value) || 0)" value="${item.quantity}" class="w-12 h-full bg-transparent text-center text-white text-sm font-bold font-mono outline-none border-x border-devo-gray leading-none">
-                        <button type="button" onclick="updateLocalItemQty(${index}, ${item.quantity + 1})" ${realTimeStock <= 0 ? 'disabled' : ''} class="px-2.5 h-full transition-colors flex items-center justify-center ${realTimeStock <= 0 ? 'text-devo-muted cursor-not-allowed opacity-40' : 'text-white hover:text-devo-orange hover:bg-white/5 cursor-pointer'}" title="زيادة الكمية">
-                            <i class="ph ph-plus font-bold"></i>
+
+                    <div class="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+                        <!-- Stepper -->
+                        <div class="inline-flex items-center justify-center bg-devo-dark border border-devo-gray rounded-xl overflow-hidden h-8 shadow-inner">
+                            <button type="button" onclick="updateLocalItemQty(${item.originalIndex}, ${item.quantity - 1})" class="px-2.5 text-white hover:text-devo-orange hover:bg-white/5 transition-colors h-full flex items-center justify-center cursor-pointer" title="تقليل الكمية">
+                                <i class="ph ph-minus font-bold text-xs"></i>
+                            </button>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" onchange="updateLocalItemQty(${item.originalIndex}, parseInt(this.value) || 0)" value="${item.quantity}" class="w-11 h-full bg-transparent text-center text-white text-xs font-bold font-mono outline-none border-x border-devo-gray leading-none">
+                            <button type="button" onclick="updateLocalItemQty(${item.originalIndex}, ${item.quantity + 1})" ${realTimeStock <= 0 ? 'disabled' : ''} class="px-2.5 h-full transition-colors flex items-center justify-center ${realTimeStock <= 0 ? 'text-devo-muted cursor-not-allowed opacity-40' : 'text-white hover:text-devo-orange hover:bg-white/5 cursor-pointer'}" title="زيادة الكمية">
+                                <i class="ph ph-plus font-bold text-xs"></i>
+                            </button>
+                        </div>
+
+                        <!-- Price & Pieces -->
+                        <div class="text-left flex items-center gap-2">
+                            <div>
+                                <p class="text-devo-orange font-black text-xs sm:text-sm font-mono">${Number(itemTotalPrice).toLocaleString('en-US')} ج.م</p>
+                                <p class="text-devo-muted text-[10px] font-mono">(${pieces} قطعة)</p>
+                            </div>
+                            <button type="button" onclick="deleteLocalItem(${item.originalIndex})" class="text-devo-error hover:bg-devo-error/20 p-1.5 rounded-lg transition-colors cursor-pointer" title="إزالة هذا اللون">
+                                <i class="ph ph-trash text-base"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        cardsHtml += `
+            <div class="cart-item-card flex flex-col md:flex-row gap-3 md:gap-4 p-4 bg-devo-dark border border-devo-gray rounded-2xl relative transition-all duration-300 mb-3.5 shadow-sm" data-search="${escapeHtml(modelGroup.modelName)} ${escapeHtml(modelGroup.factoryCode)}">
+                <div class="flex gap-3 items-start shrink-0">
+                    <img src="${modelGroup.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover bg-devo-black shrink-0 border border-devo-gray" onerror="this.src='./src/assets/icons/devo.png'">
+                </div>
+
+                <div class="flex flex-col flex-1 justify-between gap-2.5">
+                    <div class="flex justify-between items-start flex-wrap gap-2">
+                        <div>
+                            <h4 class="text-white font-black text-base md:text-lg search-target">${escapeHtml(modelGroup.modelName)}</h4>
+                            <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                <span class="text-devo-muted text-[11px] font-mono bg-devo-black px-2.5 py-0.5 rounded-lg border border-devo-gray font-bold" title="كود الموديل"><i class="ph ph-barcode"></i> ${escapeHtml(modelGroup.factoryCode || 'بدون كود')}</span>
+                                <span class="text-devo-muted text-[11px] bg-devo-black px-2.5 py-0.5 rounded-lg border border-devo-gray font-bold" title="عدد القطع بالسيريه"><i class="ph ph-ruler"></i> ${piecesPerSeries} قطع</span>
+                                <span class="text-devo-info text-[11px] bg-devo-info/10 text-devo-info px-2.5 py-0.5 rounded-lg border border-devo-info/30 font-bold font-mono" title="سعر القطعة"><i class="ph ph-tag"></i> ق: ${Number(modelGroup.piecePrice).toLocaleString('en-US')} ج</span>
+                                <span class="text-devo-orange text-[11px] bg-devo-orange/10 text-devo-orange px-2.5 py-0.5 rounded-lg border border-devo-orange/30 font-bold font-mono" title="سعر السيريه"><i class="ph ph-stack"></i> سيريه: ${Number(modelGroup.pricePerSeries).toLocaleString('en-US')} ج</span>
+                            </div>
+                        </div>
+                        <button type="button" onclick="deleteLocalModel('${modelGroup.modelId}')" class="text-devo-error hover:bg-devo-error/20 px-3 py-1.5 rounded-xl transition-colors shrink-0 flex items-center gap-1.5 text-xs font-bold border border-devo-error/30 cursor-pointer active:scale-95" title="إزالة الموديل بالكامل بجميع ألوانه">
+                            <i class="ph ph-trash text-base"></i> <span>حذف الموديل</span>
                         </button>
                     </div>
-                    <span class="text-[11px] text-devo-muted font-normal block mt-1 font-mono">(${pieces} قطعة)</span>
-                </td>
-                <td class="py-3 px-4 text-devo-muted text-center font-mono text-sm">${Number(piecePrice).toLocaleString('en-US')} ج.م</td>
-                <td class="py-3 px-4 text-devo-orange font-black text-left text-base font-mono">${Number(itemTotal).toLocaleString('en-US')} ج.م</td>
-                <td class="py-3 px-4 text-center">
-                    <button type="button" onclick="deleteLocalItem(${index})" class="text-devo-error hover:bg-devo-error/20 p-2 rounded-xl transition-colors cursor-pointer" title="حذف هذا الصنف من الفاتورة">
-                        <i class="ph ph-trash text-lg"></i>
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
 
-    if (rows.trim() === '') {
-        rows = `<tr><td colspan="6" class="p-8 text-center text-devo-muted text-sm">تم حذف جميع الأصناف من الفاتورة.</td></tr>`;
+                    <div class="mt-1">
+                        <p class="text-devo-muted text-xs font-bold mb-2 flex items-center gap-1.5">
+                            <i class="ph ph-palette text-devo-orange"></i> الألوان المحددة لهذا الموديل (${modelGroup.colors.length}):
+                        </p>
+                        <div class="space-y-1.5">
+                            ${colorsHtml}
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center pt-2.5 border-t border-devo-gray/50 text-xs flex-wrap gap-2">
+                        <span class="text-devo-muted font-bold">
+                            إجمالي الموديل: <span class="text-white font-bold font-mono text-sm">${modelTotalSeries} سيريه</span> <span class="text-devo-muted text-[11px]">(${modelTotalSeries * piecesPerSeries} قطعة)</span>
+                        </span>
+                        <span class="text-devo-orange font-black font-mono text-base md:text-lg">${modelTotalPrice.toLocaleString('en-US')} ج.م</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    return cardsHtml;
+}
+
+// =========================================================================
+// 🌟 4. رسم كروت الموديلات المجمعة لوضع العرض (View Order Details) 🌟
+// =========================================================================
+function renderViewOrderCardsHTML(o) {
+    const groupedMap = new Map();
+    (o.order_items || []).forEach((item) => {
+        if (!groupedMap.has(item.model_id)) {
+            const code = item.models?.factory_code || item.models?.system_code || '';
+            const sizesCount = getModelSizesCount(item.models, item.sizes_count);
+            const piecePrice = sizesCount > 0 ? (item.price_per_series / sizesCount) : item.price_per_series;
+            
+            let imgUrl = './src/assets/icons/devo.png';
+            if (item.models?.model_images && item.models.model_images.length > 0) {
+                imgUrl = resolveImageUrl(item.models.model_images[0].image_url);
+            }
+
+            groupedMap.set(item.model_id, {
+                modelId: item.model_id,
+                modelName: item.models?.name || 'موديل غير محدد',
+                factoryCode: code,
+                sizesCount: sizesCount,
+                piecePrice: piecePrice,
+                pricePerSeries: item.price_per_series,
+                image: imgUrl,
+                colors: []
+            });
+        }
+        groupedMap.get(item.model_id).colors.push(item);
+    });
+
+    if (groupedMap.size === 0) {
+        return `<div class="p-10 text-center text-devo-muted text-sm">لا توجد أصناف مسجلة في هذا الأوردر.</div>`;
     }
-    return rows;
+
+    let cardsHtml = '';
+    groupedMap.forEach((modelGroup) => {
+        let modelTotalPrice = 0;
+        let modelTotalSeries = 0;
+        let colorsHtml = '';
+
+        const piecesPerSeries = modelGroup.sizesCount;
+
+        modelGroup.colors.forEach((item) => {
+            const itemTotalPrice = item.quantity * item.price_per_series;
+            const pieces = item.quantity * piecesPerSeries;
+
+            modelTotalPrice += itemTotalPrice;
+            modelTotalSeries += item.quantity;
+
+            colorsHtml += `
+                <div class="p-2.5 bg-devo-black border border-devo-gray/70 rounded-xl transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 hover:border-devo-gray">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-devo-info shrink-0 shadow-sm shadow-devo-info/50"></span>
+                        <span class="text-white font-bold text-xs sm:text-sm"><i class="ph-fill ph-palette text-devo-info mr-0.5"></i> ${escapeHtml(item.colors?.name || '-')}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                        <div class="bg-devo-dark border border-devo-gray px-3 py-1 rounded-xl text-center">
+                            <span class="text-white font-black font-mono text-sm">${item.quantity}</span> <span class="text-[11px] text-devo-muted">سيريه</span>
+                            <span class="text-[10px] text-devo-muted font-mono mr-1">(${pieces} قطعة)</span>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-devo-orange font-black text-xs sm:text-sm font-mono">${Number(itemTotalPrice).toLocaleString('en-US')} ج.م</p>
+                            <p class="text-devo-muted text-[10px] font-mono">سعر السيريه: ${Number(item.price_per_series).toLocaleString('en-US')} ج</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        cardsHtml += `
+            <div class="cart-item-card flex flex-col md:flex-row gap-3 md:gap-4 p-4 bg-devo-dark border border-devo-gray rounded-2xl relative transition-all duration-300 mb-3.5 shadow-sm" data-search="${escapeHtml(modelGroup.modelName)} ${escapeHtml(modelGroup.factoryCode)}">
+                <div class="flex gap-3 items-start shrink-0">
+                    <img src="${modelGroup.image}" class="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover bg-devo-black shrink-0 border border-devo-gray" onerror="this.src='./src/assets/icons/devo.png'">
+                </div>
+
+                <div class="flex flex-col flex-1 justify-between gap-2.5">
+                    <div>
+                        <h4 class="text-white font-black text-base md:text-lg search-target">${escapeHtml(modelGroup.modelName)}</h4>
+                        <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <span class="text-devo-muted text-[11px] font-mono bg-devo-black px-2.5 py-0.5 rounded-lg border border-devo-gray font-bold" title="كود الموديل"><i class="ph ph-barcode"></i> ${escapeHtml(modelGroup.factoryCode || 'بدون كود')}</span>
+                            <span class="text-devo-muted text-[11px] bg-devo-black px-2.5 py-0.5 rounded-lg border border-devo-gray font-bold" title="عدد القطع بالسيريه"><i class="ph ph-ruler"></i> ${piecesPerSeries} قطع</span>
+                            <span class="text-devo-info text-[11px] bg-devo-info/10 text-devo-info px-2.5 py-0.5 rounded-lg border border-devo-info/30 font-bold font-mono" title="سعر القطعة"><i class="ph ph-tag"></i> ق: ${Number(modelGroup.piecePrice).toLocaleString('en-US')} ج</span>
+                            <span class="text-devo-orange text-[11px] bg-devo-orange/10 text-devo-orange px-2.5 py-0.5 rounded-lg border border-devo-orange/30 font-bold font-mono" title="سعر السيريه"><i class="ph ph-stack"></i> سيريه: ${Number(modelGroup.pricePerSeries).toLocaleString('en-US')} ج</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-1">
+                        <p class="text-devo-muted text-xs font-bold mb-2 flex items-center gap-1.5">
+                            <i class="ph ph-palette text-devo-orange"></i> الألوان المسجلة لهذا الموديل (${modelGroup.colors.length}):
+                        </p>
+                        <div class="space-y-1.5">
+                            ${colorsHtml}
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center pt-2.5 border-t border-devo-gray/50 text-xs flex-wrap gap-2">
+                        <span class="text-devo-muted font-bold">
+                            إجمالي الموديل: <span class="text-white font-bold font-mono text-sm">${modelTotalSeries} سيريه</span> <span class="text-devo-muted text-[11px]">(${modelTotalSeries * piecesPerSeries} قطعة)</span>
+                        </span>
+                        <span class="text-devo-orange font-black font-mono text-base md:text-lg">${modelTotalPrice.toLocaleString('en-US')} ج.م</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    return cardsHtml;
 }
 
 function calculateLocalTotalSeries() {
@@ -1702,9 +1915,9 @@ window.handleLocalDepositChange = (val) => {
 };
 
 function updateLocalItemsTableAndFinancials(o) {
-    const tbody = document.getElementById('modal-items-tbody');
-    if (tbody) {
-        tbody.innerHTML = renderLocalItemsRowsHTML(o);
+    const container = document.getElementById('modal-items-container');
+    if (container) {
+        container.innerHTML = renderLocalItemsCardsHTML(o);
     }
 
     const totalSeries = calculateLocalTotalSeries();
@@ -1734,24 +1947,68 @@ function updateLocalItemsTableAndFinancials(o) {
     }
 }
 
+window.filterModalTable = (term) => {
+    term = (term || '').toLowerCase().trim();
+    const container = document.getElementById('modal-items-container');
+    if (!container) return;
+    const cards = container.querySelectorAll('.cart-item-card');
+    cards.forEach(card => {
+        const text = (card.getAttribute('data-search') || card.innerText || '').toLowerCase();
+        card.style.display = text.includes(term) ? '' : 'none';
+    });
+};
+
+window.deleteLocalModel = async (modelId) => {
+    const modelItems = localEditingItems.filter(i => i.model_id === modelId && !i.isDeleted);
+    if (modelItems.length === 0) return;
+
+    const modelName = modelItems[0]?.models?.name || 'هذا الموديل';
+    const confirmed = await confirmDialog({
+        title: 'حذف الموديل بالكامل',
+        message: `هل أنت متأكد من حذف الموديل (${modelName}) بجميع ألوانه (${modelItems.length} ألوان) من الفاتورة؟`,
+        isDestructive: true
+    });
+
+    if (confirmed) {
+        localEditingItems.forEach(item => {
+            if (item.model_id === modelId) {
+                item.isDeleted = true;
+                item.quantity = 0;
+            }
+        });
+        const targetOrderId = isDuplicateMode ? sourceDuplicatingOrderId : currentEditingOrderId;
+        const o = allAdminOrders.find(x => x.id === targetOrderId);
+        if (o) updateLocalItemsTableAndFinancials(o);
+        showToast(`تم حذف الموديل (${modelName}) بنجاح`, 'info');
+    }
+};
+
 window.updateLocalItemQty = async (index, newQty) => {
     if (newQty < 1) return;
-    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    const targetOrderId = isDuplicateMode ? sourceDuplicatingOrderId : currentEditingOrderId;
+    const o = allAdminOrders.find(x => x.id === targetOrderId);
     if (!o) return;
     
     const item = localEditingItems[index];
     const key = `${item.model_id}_${item.color_id}`;
     const dbStock = localEditingInventory[key] !== undefined ? localEditingInventory[key] : 0;
     
-    const originalItem = o.order_items.find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
-    const originalQty = originalItem ? originalItem.quantity : 0;
-    const realTimeStock = dbStock - (item.quantity - originalQty);
-
-    if (newQty > item.quantity) {
-        const diff = newQty - item.quantity;
-        if (diff > realTimeStock) {
-            showToast(`المخزون غير كافي! المتاح إضافته هو: ${realTimeStock} سيريه فقط.`, 'warning');
+    if (isDuplicateMode) {
+        if (newQty > dbStock) {
+            showToast(`المخزون غير كافي! المتاح بالمخزن هو: ${dbStock} سيريه فقط.`, 'warning');
             return;
+        }
+    } else {
+        const originalItem = (o.order_items || []).find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
+        const originalQty = originalItem ? originalItem.quantity : 0;
+        const realTimeStock = dbStock - (item.quantity - originalQty);
+
+        if (newQty > item.quantity) {
+            const diff = newQty - item.quantity;
+            if (diff > realTimeStock) {
+                showToast(`المخزون غير كافي! المتاح إضافته هو: ${realTimeStock} سيريه فقط.`, 'warning');
+                return;
+            }
         }
     }
     
@@ -1762,11 +2019,36 @@ window.updateLocalItemQty = async (index, newQty) => {
 window.deleteLocalItem = async (index) => {
     localEditingItems[index].isDeleted = true;
     localEditingItems[index].quantity = 0;
-    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
+    const targetOrderId = isDuplicateMode ? sourceDuplicatingOrderId : currentEditingOrderId;
+    const o = allAdminOrders.find(x => x.id === targetOrderId);
     if (o) updateLocalItemsTableAndFinancials(o);
 };
 
 window.cancelLocalEdit = async (orderId) => {
+    if (isDuplicateMode) {
+        const sourceId = sourceDuplicatingOrderId;
+        isDuplicateMode = false;
+        sourceDuplicatingOrderId = null;
+        sourceDuplicatingInvoiceNumber = '';
+        localEditingItems = [];
+        localEditingInventory = {};
+        localEditingCustomerData = {
+            customer_name: '',
+            phone_1: '',
+            phone_2: '',
+            address: '',
+            deposit: 0,
+            deposit_receiver: '',
+            notes: ''
+        };
+        if (sourceId) {
+            viewAdminOrderDetails(sourceId);
+        } else {
+            closeAdminOrderDetails();
+        }
+        return;
+    }
+
     isLocalEditMode = false;
     localEditingItems = [];
     localEditingInventory = {};
@@ -1807,9 +2089,6 @@ window.cancelLocalEdit = async (orderId) => {
 };
 
 window.saveLocalOrderEdits = async (orderId) => {
-    const o = allAdminOrders.find(x => x.id === orderId);
-    if (!o) return;
-
     // جمع وقراءة بيانات العميل المدخلة من الحقول
     const customerName = document.getElementById('ao-edit-cust-name')?.value?.trim() || '';
     const phone1 = document.getElementById('ao-edit-phone-1')?.value?.trim() || '';
@@ -1840,10 +2119,9 @@ window.saveLocalOrderEdits = async (orderId) => {
     if (!saveBtn) return;
     const oldBtnHtml = saveBtn.innerHTML;
     saveBtn.disabled = true;
-    saveBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> جاري حفظ التعديلات والمخزون...`;
+    saveBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> ${isDuplicateMode ? 'جاري إنشاء ونسخ الأوردر...' : 'جاري حفظ التعديلات والمخزون...'}`;
 
     try {
-        // 1. التحقق من توافر المخزون للزيادات
         const modelIds = [...new Set(activeItems.map(i => i.model_id))];
         const { data: dbInv, error: dbInvError } = await supabase
             .from('model_inventory')
@@ -1853,20 +2131,36 @@ window.saveLocalOrderEdits = async (orderId) => {
         if (dbInvError) throw dbInvError;
 
         let hasStockErrors = false;
-        activeItems.forEach(item => {
-            const originalItem = o.order_items.find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
-            const originalQty = originalItem ? originalItem.quantity : 0;
-            const diff = item.quantity - originalQty;
 
-            if (diff > 0) {
+        if (isDuplicateMode) {
+            // فحص المخزون بالكامل لجميع أصناف الفاتورة المنسوخة الجديدة
+            activeItems.forEach(item => {
                 const inv = dbInv.find(x => x.model_id === item.model_id && x.color_id === item.color_id);
                 const available = inv ? inv.available_series : 0;
-                if (available < diff) {
-                    showToast(`المخزون غير كافي للموديل ${item.models?.name || ''}. المطلوب زيادة: ${diff}، المتاح بالمخزن: ${available}`, 'error');
+                if (available < item.quantity) {
+                    showToast(`المخزون غير كافي للموديل ${item.models?.name || ''}. المطلوب: ${item.quantity}، المتاح بالمخزن: ${available}`, 'error');
                     hasStockErrors = true;
                 }
-            }
-        });
+            });
+        } else {
+            const o = allAdminOrders.find(x => x.id === orderId);
+            if (!o) throw new Error('الأوردر غير موجود');
+
+            activeItems.forEach(item => {
+                const originalItem = (o.order_items || []).find(oi => oi.model_id === item.model_id && oi.color_id === item.color_id);
+                const originalQty = originalItem ? originalItem.quantity : 0;
+                const diff = item.quantity - originalQty;
+
+                if (diff > 0) {
+                    const inv = dbInv.find(x => x.model_id === item.model_id && x.color_id === item.color_id);
+                    const available = inv ? inv.available_series : 0;
+                    if (available < diff) {
+                        showToast(`المخزون غير كافي للموديل ${item.models?.name || ''}. المطلوب زيادة: ${diff}، المتاح بالمخزن: ${available}`, 'error');
+                        hasStockErrors = true;
+                    }
+                }
+            });
+        }
 
         if (hasStockErrors) {
             saveBtn.disabled = false;
@@ -1884,7 +2178,8 @@ window.saveLocalOrderEdits = async (orderId) => {
             deposit_receiver: depositReceiver,
             notes: notes,
             total_price: calculateLocalTotalPrice(),
-            total_series: calculateLocalTotalSeries()
+            total_series: calculateLocalTotalSeries(),
+            worker_id: currentUserProfile?.id || null
         };
 
         const orderItemsData = activeItems.map(item => {
@@ -1901,30 +2196,58 @@ window.saveLocalOrderEdits = async (orderId) => {
             };
         });
 
-        const { data, error: rpcError } = await supabase.rpc('process_order_transaction', {
-            p_order_id: orderId,
-            p_order_data: orderData,
-            p_order_items: orderItemsData
-        });
+        if (isDuplicateMode) {
+            // إنشاء أوردر جديد تماماً كفاتورة مكررة برقم جديد
+            const { data: rpcData, error: rpcError } = await supabase.rpc('process_order_transaction', {
+                p_order_id: null,
+                p_order_data: orderData,
+                p_order_items: orderItemsData
+            });
 
-        if (rpcError) throw rpcError;
+            if (rpcError) throw rpcError;
 
-        // إزالة الإسناد وإلغاء القفل بعد الحفظ الناجح وإعادة الحالة إلى تم إنشاء الأوردر
-        await supabase.from('orders').update({ 
-            assigned_worker_id: null,
-            is_locked: false,
-            assigned_admin_name: null,
-            status: 'created'
-        }).eq('id', orderId);
+            const newOrderId = rpcData?.order_id;
+            const newInvoiceNumber = rpcData?.invoice_number;
 
-        await logOrderAction(orderId, 'edited_locally', `تم تعديل بيانات وأصناف الأوردر محلياً وحفظ المخزون بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
+            if (newOrderId) {
+                await logOrderAction(newOrderId, 'created_via_duplicate', `تم إنشاء الأوردر كنسخة مكررة من الأوردر #${sourceDuplicatingInvoiceNumber} بواسطة (${currentUserProfile?.full_name || 'إداري'})`);
+            }
 
-        showToast('تم حفظ تعديلات الأوردر والبيانات وتحديث المخزون بنجاح!', 'success');
-        closeAdminOrderDetails();
-        await fetchAdminOrders();
+            showToast(`تم إنشاء ونسخ الأوردر بنجاح! رقم الفاتورة الجديد: #${newInvoiceNumber}`, 'success');
+
+            isDuplicateMode = false;
+            sourceDuplicatingOrderId = null;
+            sourceDuplicatingInvoiceNumber = '';
+            closeAdminOrderDetails();
+            await fetchAdminOrders();
+
+        } else {
+            // تحديث أوردر قائم محلياً
+            const { data, error: rpcError } = await supabase.rpc('process_order_transaction', {
+                p_order_id: orderId,
+                p_order_data: orderData,
+                p_order_items: orderItemsData
+            });
+
+            if (rpcError) throw rpcError;
+
+            // إزالة الإسناد وإلغاء القفل بعد الحفظ الناجح وإعادة الحالة إلى تم إنشاء الأوردر
+            await supabase.from('orders').update({ 
+                assigned_worker_id: null,
+                is_locked: false,
+                assigned_admin_name: null,
+                status: 'created'
+            }).eq('id', orderId);
+
+            await logOrderAction(orderId, 'edited_locally', `تم تعديل بيانات وأصناف الأوردر محلياً وحفظ المخزون بواسطة الإداري ${currentUserProfile?.full_name || ''}`);
+
+            showToast('تم حفظ تعديلات الأوردر والبيانات وتحديث المخزون بنجاح!', 'success');
+            closeAdminOrderDetails();
+            await fetchAdminOrders();
+        }
 
     } catch (e) {
-        showToast('فشل حفظ التعديلات: ' + e.message, 'error');
+        showToast('فشل حفظ الأوردر: ' + e.message, 'error');
         console.error(e);
         saveBtn.disabled = false;
         saveBtn.innerHTML = oldBtnHtml;
