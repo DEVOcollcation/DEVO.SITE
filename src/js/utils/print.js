@@ -31,17 +31,17 @@ export function printOrderCustomerInvoice(o) {
     
     o.order_items.forEach(item => {
         const modelId = item.model_id;
-        const code = item.models?.factory_code || item.models?.system_code || '';
+        const code = item.models?.system_code || item.models?.factory_code || '';
         const colorName = item.colors?.name || '-';
-        const qty = item.quantity;
+        const qty = Number(item.quantity) || 0;
         
         const classSizes = item.models?.classes?.class_sizes || [];
-        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1); 
+        const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || (item.sizes_count > 1 ? Number(item.sizes_count) : 1)); 
         const pieces = qty * sizesCount;
         
         const colorWithQty = colorName; 
 
-        const piecePrice = item.price_per_series / sizesCount;
+        const piecePrice = sizesCount > 0 ? Math.round((Number(item.price_per_series) / sizesCount) * 100) / 100 : (Number(item.piece_price) || Number(item.models?.price) || 0);
 
         if (!groupedItems[modelId]) {
             groupedItems[modelId] = { 

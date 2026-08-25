@@ -37,12 +37,15 @@ async function fetchFullWorkerOrderById(orderId) {
                 order_items (
                     *,
                     models (
+                        id,
                         name, 
                         factory_code,
                         system_code,
+                        price,
+                        class_id,
                         model_images(image_url),
                         model_sizes(size_id),
-                        classes(class_sizes(size_id))
+                        classes(id, name, class_sizes(size_id))
                     ),
                     colors (name)
                 )
@@ -160,12 +163,15 @@ async function fetchMyOrders() {
             order_items (
                 *,
                 models (
+                    id,
                     name, 
                     factory_code,
                     system_code,
+                    price,
+                    class_id,
                     model_images(image_url),
                     model_sizes(size_id),
-                    classes(class_sizes(size_id))
+                    classes(id, name, class_sizes(size_id))
                 ),
                 colors (name)
             )

@@ -94,7 +94,7 @@ export async function fetchAdminOrders() {
             system_users!worker_id (full_name),
             order_items (
                 *,
-                models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))),
+                models (id, name, factory_code, system_code, price, class_id, model_sizes(size_id), classes(id, name, class_sizes(size_id))),
                 colors (id, name, color_code)
             )
         `)
@@ -118,7 +118,7 @@ async function fetchFullOrderById(orderId) {
                 system_users!worker_id (full_name),
                 order_items (
                     *,
-                    models (name, factory_code, system_code, model_sizes(size_id), classes(class_sizes(size_id))),
+                    models (id, name, factory_code, system_code, price, class_id, model_sizes(size_id), classes(id, name, class_sizes(size_id))),
                     colors (id, name, color_code)
                 )
             `)
@@ -905,14 +905,25 @@ window.exportOrdersToExcel = () => {
     allAdminOrders.forEach(o => {
         const orderNotes = formatOrderExportNotes(o);
         (o.order_items || []).forEach((i, idx) => {
-            const sizesCount = i.sizes_count || getModelSizesCount(i.models);
-            const piecesQty = i.total_pieces || (i.quantity * sizesCount);
-            const unitPrice = i.piece_price || (sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0));
+            const sizesCount = getModelSizesCount(i.models, i.sizes_count);
+            const seriesQty = Number(i.quantity) || 0;
+            const piecesQty = seriesQty * sizesCount;
+
+            let unitPrice = 0;
+            if (i.price_per_series && sizesCount > 0) {
+                unitPrice = Math.round((Number(i.price_per_series) / sizesCount) * 100) / 100;
+            } else if (i.piece_price && Number(i.piece_price) > 0) {
+                unitPrice = Number(i.piece_price);
+            } else if (i.models?.price) {
+                unitPrice = Number(i.models.price);
+            }
+
+            const itemCode = i.models?.system_code || i.models?.factory_code || '';
 
             excelData.push({
                 'الملاحظات': idx === 0 ? orderNotes : '',
                 'كود المخزن': 1,
-                'كودالصنف': i.models?.system_code || '',
+                'كودالصنف': itemCode,
                 'عدد': piecesQty,
                 'الفئة': unitPrice,
                 'هدية': '',
@@ -951,14 +962,25 @@ window.exportSingleOrderToExcel = async (id) => {
     const orderNotes = formatOrderExportNotes(o);
 
     const excelData = (o.order_items || []).map((i, idx) => {
-        const sizesCount = i.sizes_count || getModelSizesCount(i.models);
-        const piecesQty = i.total_pieces || (i.quantity * sizesCount);
-        const unitPrice = i.piece_price || (sizesCount > 0 ? (i.price_per_series / sizesCount) : (i.price_per_series || 0));
+        const sizesCount = getModelSizesCount(i.models, i.sizes_count);
+        const seriesQty = Number(i.quantity) || 0;
+        const piecesQty = seriesQty * sizesCount;
+
+        let unitPrice = 0;
+        if (i.price_per_series && sizesCount > 0) {
+            unitPrice = Math.round((Number(i.price_per_series) / sizesCount) * 100) / 100;
+        } else if (i.piece_price && Number(i.piece_price) > 0) {
+            unitPrice = Number(i.piece_price);
+        } else if (i.models?.price) {
+            unitPrice = Number(i.models.price);
+        }
+
+        const itemCode = i.models?.system_code || i.models?.factory_code || '';
 
         return {
             'الملاحظات': idx === 0 ? orderNotes : '',
             'كود المخزن': 1,
-            'كودالصنف': i.models?.system_code || '',
+            'كودالصنف': itemCode,
             'عدد': piecesQty,
             'الفئة': unitPrice,
             'هدية': '',
@@ -1657,11 +1679,20 @@ async function logOrderAction(orderId, actionType, notes) {
 }
 
 // دالة مساعدة لحساب عدد مقاسات الموديل لتحديد أسعار القطع
-function getModelSizesCount(model) {
-    if (!model) return 1;
-    const classSizes = model.classes?.class_sizes || [];
-    if (classSizes.length > 0) return classSizes.length;
-    const modelSizes = model.model_sizes || [];
-    if (modelSizes.length > 0) return modelSizes.length;
+function getModelSizesCount(model, fallbackSizesCount = 1) {
+    if (model) {
+        const classSizes = model.classes?.class_sizes;
+        if (Array.isArray(classSizes) && classSizes.length > 0) {
+            return classSizes.length;
+        }
+        const modelSizes = model.model_sizes;
+        if (Array.isArray(modelSizes) && modelSizes.length > 0) {
+            return modelSizes.length;
+        }
+    }
+    const num = Number(fallbackSizesCount);
+    if (!isNaN(num) && num > 1) {
+        return num;
+    }
     return 1;
 }
