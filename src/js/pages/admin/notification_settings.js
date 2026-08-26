@@ -25,6 +25,8 @@ function setupWindowBindings() {
     window.testTelegramConnection = testTelegramConnection;
     window.sendDailyReportToTelegramNow = sendDailyReportToTelegramNow;
     window.sendWeeklyReportToTelegramNow = sendWeeklyReportToTelegramNow;
+    window.sendMonthlyReportToTelegramNow = sendMonthlyReportToTelegramNow;
+    window.sendYearlyReportToTelegramNow = sendYearlyReportToTelegramNow;
     window.sendBackupToTelegramNow = sendBackupToTelegramNow;
 }
 
@@ -47,9 +49,18 @@ export async function loadTelegramSettings() {
                 'telegram_backup_chat_id',
                 'telegram_reports_chat_id',
                 'telegram_reports_group_link',
+                'telegram_daily_report_enabled',
                 'telegram_daily_report_time',
+                'telegram_weekly_report_enabled',
                 'telegram_weekly_report_day',
-                'telegram_weekly_report_time'
+                'telegram_weekly_report_time',
+                'telegram_monthly_report_enabled',
+                'telegram_monthly_report_day',
+                'telegram_monthly_report_time',
+                'telegram_yearly_report_enabled',
+                'telegram_yearly_report_time',
+                'telegram_backup_enabled',
+                'telegram_backup_time'
             ]);
             
         if (error) throw error;
@@ -69,9 +80,19 @@ export async function loadTelegramSettings() {
         const backupChatInput = document.getElementById('telegram-backup-chat-id');
         const reportsChatInput = document.getElementById('telegram-reports-chat-id');
         const reportsGroupLinkInput = document.getElementById('telegram-reports-group-link');
+        
+        // Automation Inputs
+        const dailyEnabledInput = document.getElementById('telegram-daily-report-enabled');
         const dailyTimeInput = document.getElementById('telegram-daily-report-time');
+        const weeklyEnabledInput = document.getElementById('telegram-weekly-report-enabled');
         const weeklyDayInput = document.getElementById('telegram-weekly-report-day');
         const weeklyTimeInput = document.getElementById('telegram-weekly-report-time');
+        const monthlyEnabledInput = document.getElementById('telegram-monthly-report-enabled');
+        const monthlyDayInput = document.getElementById('telegram-monthly-report-day');
+        const monthlyTimeInput = document.getElementById('telegram-monthly-report-time');
+        const yearlyEnabledInput = document.getElementById('telegram-yearly-report-enabled');
+        const backupEnabledInput = document.getElementById('telegram-backup-enabled');
+        const backupTimeInput = document.getElementById('telegram-backup-time');
         
         if (enabledInput) enabledInput.checked = settings['telegram_enabled'] === 'true';
         if (stockEnabledInput) stockEnabledInput.checked = settings['telegram_stock_enabled'] !== 'false';
@@ -83,9 +104,18 @@ export async function loadTelegramSettings() {
         if (backupChatInput) backupChatInput.value = settings['telegram_backup_chat_id'] || '-1004363122042';
         if (reportsChatInput) reportsChatInput.value = settings['telegram_reports_chat_id'] || '-1004352609361';
         if (reportsGroupLinkInput) reportsGroupLinkInput.value = settings['telegram_reports_group_link'] || 'https://t.me/+3LkR_kgCBPY3MzFk';
+        
+        if (dailyEnabledInput) dailyEnabledInput.checked = settings['telegram_daily_report_enabled'] !== 'false';
         if (dailyTimeInput) dailyTimeInput.value = settings['telegram_daily_report_time'] || '23:55';
+        if (weeklyEnabledInput) weeklyEnabledInput.checked = settings['telegram_weekly_report_enabled'] !== 'false';
         if (weeklyDayInput) weeklyDayInput.value = settings['telegram_weekly_report_day'] || 'friday';
         if (weeklyTimeInput) weeklyTimeInput.value = settings['telegram_weekly_report_time'] || '23:59';
+        if (monthlyEnabledInput) monthlyEnabledInput.checked = settings['telegram_monthly_report_enabled'] !== 'false';
+        if (monthlyDayInput) monthlyDayInput.value = settings['telegram_monthly_report_day'] || 'last_day';
+        if (monthlyTimeInput) monthlyTimeInput.value = settings['telegram_monthly_report_time'] || '23:59';
+        if (yearlyEnabledInput) yearlyEnabledInput.checked = settings['telegram_yearly_report_enabled'] !== 'false';
+        if (backupEnabledInput) backupEnabledInput.checked = settings['telegram_backup_enabled'] !== 'false';
+        if (backupTimeInput) backupTimeInput.value = settings['telegram_backup_time'] || '23:55';
     } catch (e) {
         console.error('Error loading Telegram settings:', e);
     }
@@ -105,9 +135,20 @@ export async function saveTelegramSettings() {
     const backupChatInput = document.getElementById('telegram-backup-chat-id');
     const reportsChatInput = document.getElementById('telegram-reports-chat-id');
     const reportsGroupLinkInput = document.getElementById('telegram-reports-group-link');
+    
+    // Automation Inputs
+    const dailyEnabledInput = document.getElementById('telegram-daily-report-enabled');
     const dailyTimeInput = document.getElementById('telegram-daily-report-time');
+    const weeklyEnabledInput = document.getElementById('telegram-weekly-report-enabled');
     const weeklyDayInput = document.getElementById('telegram-weekly-report-day');
     const weeklyTimeInput = document.getElementById('telegram-weekly-report-time');
+    const monthlyEnabledInput = document.getElementById('telegram-monthly-report-enabled');
+    const monthlyDayInput = document.getElementById('telegram-monthly-report-day');
+    const monthlyTimeInput = document.getElementById('telegram-monthly-report-time');
+    const yearlyEnabledInput = document.getElementById('telegram-yearly-report-enabled');
+    const backupEnabledInput = document.getElementById('telegram-backup-enabled');
+    const backupTimeInput = document.getElementById('telegram-backup-time');
+    
     const btn = document.getElementById('save-tg-btn');
     
     if (!enabledInput || !tokenInput || !chatInput) return;
@@ -122,9 +163,18 @@ export async function saveTelegramSettings() {
     const backupChat = backupChatInput ? backupChatInput.value.trim() : '-1004363122042';
     const reportsChat = reportsChatInput ? reportsChatInput.value.trim() : '-1004352609361';
     const reportsGroupLink = reportsGroupLinkInput ? reportsGroupLinkInput.value.trim() : 'https://t.me/+3LkR_kgCBPY3MzFk';
+    
+    const dailyEnabled = dailyEnabledInput ? (dailyEnabledInput.checked ? 'true' : 'false') : 'true';
     const dailyTime = dailyTimeInput ? dailyTimeInput.value : '23:55';
+    const weeklyEnabled = weeklyEnabledInput ? (weeklyEnabledInput.checked ? 'true' : 'false') : 'true';
     const weeklyDay = weeklyDayInput ? weeklyDayInput.value : 'friday';
     const weeklyTime = weeklyTimeInput ? weeklyTimeInput.value : '23:59';
+    const monthlyEnabled = monthlyEnabledInput ? (monthlyEnabledInput.checked ? 'true' : 'false') : 'true';
+    const monthlyDay = monthlyDayInput ? monthlyDayInput.value : 'last_day';
+    const monthlyTime = monthlyTimeInput ? monthlyTimeInput.value : '23:59';
+    const yearlyEnabled = yearlyEnabledInput ? (yearlyEnabledInput.checked ? 'true' : 'false') : 'true';
+    const backupEnabled = backupEnabledInput ? (backupEnabledInput.checked ? 'true' : 'false') : 'true';
+    const backupTime = backupTimeInput ? backupTimeInput.value : '23:55';
     
     if (enabled === 'true' && (!token || !chat)) {
         showToast('يرجى إدخال التوكن ومعرّف المحادثة لتفعيل التنبيهات', 'warning');
@@ -148,9 +198,17 @@ export async function saveTelegramSettings() {
             { setting_key: 'telegram_backup_chat_id', setting_value: backupChat },
             { setting_key: 'telegram_reports_chat_id', setting_value: reportsChat },
             { setting_key: 'telegram_reports_group_link', setting_value: reportsGroupLink },
+            { setting_key: 'telegram_daily_report_enabled', setting_value: dailyEnabled },
             { setting_key: 'telegram_daily_report_time', setting_value: dailyTime },
+            { setting_key: 'telegram_weekly_report_enabled', setting_value: weeklyEnabled },
             { setting_key: 'telegram_weekly_report_day', setting_value: weeklyDay },
-            { setting_key: 'telegram_weekly_report_time', setting_value: weeklyTime }
+            { setting_key: 'telegram_weekly_report_time', setting_value: weeklyTime },
+            { setting_key: 'telegram_monthly_report_enabled', setting_value: monthlyEnabled },
+            { setting_key: 'telegram_monthly_report_day', setting_value: monthlyDay },
+            { setting_key: 'telegram_monthly_report_time', setting_value: monthlyTime },
+            { setting_key: 'telegram_yearly_report_enabled', setting_value: yearlyEnabled },
+            { setting_key: 'telegram_backup_enabled', setting_value: backupEnabled },
+            { setting_key: 'telegram_backup_time', setting_value: backupTime }
         ];
         
         const { error } = await supabase
@@ -262,7 +320,7 @@ export async function sendDailyReportToTelegramNow() {
     const btn = document.getElementById('send-daily-tg-report-btn');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال تقرير اليوم...`;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري الإرسال...`;
     }
 
     try {
@@ -294,7 +352,7 @@ export async function sendWeeklyReportToTelegramNow() {
     const btn = document.getElementById('send-weekly-tg-report-btn');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال تقرير الأسبوع...`;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري الإرسال...`;
     }
 
     try {
@@ -315,6 +373,70 @@ export async function sendWeeklyReportToTelegramNow() {
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-calendar-check text-base"></i> تقرير الأسبوع`;
+        }
+    }
+}
+
+// ============================================================
+// 🗓️ إرسال تقرير الشهر فورياً إلى جروب التليجرام
+// ============================================================
+export async function sendMonthlyReportToTelegramNow() {
+    const btn = document.getElementById('send-monthly-tg-report-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري الإرسال...`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: 'monthly'
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل توليد التقرير الشهري');
+        }
+
+        showToast('تم إرسال تقرير الشهر بنجاح إلى جروب التليجرام 🗓️🚀', 'success');
+    } catch (e) {
+        console.error('Error sending monthly Telegram report:', e);
+        showToast(`تعذر إرسال تقرير الشهر: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-calendar-blank text-base"></i> تقرير الشهر`;
+        }
+    }
+}
+
+// ============================================================
+// 🏆 إرسال تقرير السنة فورياً إلى جروب التليجرام
+// ============================================================
+export async function sendYearlyReportToTelegramNow() {
+    const btn = document.getElementById('send-yearly-tg-report-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري الإرسال...`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: 'yearly'
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل توليد التقرير السنوي');
+        }
+
+        showToast('تم إرسال تقرير السنة بنجاح إلى جروب التليجرام 🏆🚀', 'success');
+    } catch (e) {
+        console.error('Error sending yearly Telegram report:', e);
+        showToast(`تعذر إرسال تقرير السنة: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-trophy text-base"></i> تقرير السنة`;
         }
     }
 }

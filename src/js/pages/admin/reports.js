@@ -139,6 +139,8 @@ function setupEventListeners() {
     const tgModalClose = document.getElementById('rep-telegram-modal-close');
     const tgSendDailyBtn = document.getElementById('rep-tg-send-daily');
     const tgSendWeeklyBtn = document.getElementById('rep-tg-send-weekly');
+    const tgSendMonthlyBtn = document.getElementById('rep-tg-send-monthly');
+    const tgSendYearlyBtn = document.getElementById('rep-tg-send-yearly');
     const tgSendCurrentBtn = document.getElementById('rep-tg-send-current');
 
     if (tgBtn && tgModal) {
@@ -161,6 +163,14 @@ function setupEventListeners() {
 
     if (tgSendWeeklyBtn) {
         tgSendWeeklyBtn.addEventListener('click', () => sendTelegramReport('weekly'));
+    }
+
+    if (tgSendMonthlyBtn) {
+        tgSendMonthlyBtn.addEventListener('click', () => sendTelegramReport('monthly'));
+    }
+
+    if (tgSendYearlyBtn) {
+        tgSendYearlyBtn.addEventListener('click', () => sendTelegramReport('yearly'));
     }
 
     if (tgSendCurrentBtn) {
@@ -1909,7 +1919,11 @@ export async function sendTelegramReport(reportType = 'daily') {
             throw new Error(data.error || 'فشل إرسال التقرير');
         }
 
-        const typeLabel = reportType === 'weekly' ? 'الأسبوع الشامل' : 'اليوم';
+        let typeLabel = 'اليوم';
+        if (reportType === 'weekly') typeLabel = 'الأسبوع الشامل';
+        else if (reportType === 'monthly') typeLabel = 'الشهر المالي الشامل';
+        else if (reportType === 'yearly') typeLabel = 'السنة الختامي الشامل';
+
         showToast(`تم إرسال تقرير ${typeLabel} بنجاح إلى جروب التليجرام 📊🚀`, 'success');
     } catch (err) {
         console.error('Error sending telegram report:', err);

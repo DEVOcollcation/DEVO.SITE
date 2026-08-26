@@ -1241,6 +1241,17 @@ export async function executeCloudAutoBackup(isManualClick = false) {
 // فحص الجدولة التلقائية لمنتصف الليل عند فتح الصفحة
 async function checkAutoCloudBackupMidnight() {
     try {
+        const { data: settingData } = await supabase
+            .from('home_settings')
+            .select('setting_value')
+            .eq('setting_key', 'telegram_backup_enabled')
+            .maybeSingle();
+
+        if (settingData && settingData.setting_value === 'false') {
+            console.log('ℹ️ Automated cloud backup is disabled in settings.');
+            return;
+        }
+
         const lastBackupDate = localStorage.getItem('devo_last_auto_backup_date');
         const todayDate = new Date().toISOString().split('T')[0];
 

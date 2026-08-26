@@ -1188,7 +1188,35 @@
                         <i class="ph ph-paper-plane-tilt text-lg text-emerald-400"></i>
                     </button>
 
-                    <!-- Option 3: Current Filtered View -->
+                    <!-- Option 3: Monthly Report -->
+                    <button id="rep-tg-send-monthly" type="button" class="w-full bg-devo-dark hover:bg-indigo-500/10 border border-indigo-500/30 hover:border-indigo-400 text-white p-3.5 rounded-xl font-bold transition-all flex items-center justify-between text-xs cursor-pointer group shadow-sm">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                                <i class="ph ph-calendar-blank"></i>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-black text-sm text-indigo-400">🗓️ تقرير الشهر المالي الشامل (Monthly Report)</div>
+                                <div class="text-[11px] text-devo-muted font-normal mt-0.5">أداء الشهر كاملاً، أفضل 10 موديلات، أداء الموظفين، وأعلى أيام الشهر مبيعاً</div>
+                            </div>
+                        </div>
+                        <i class="ph ph-paper-plane-tilt text-lg text-indigo-400"></i>
+                    </button>
+
+                    <!-- Option 4: Yearly Report -->
+                    <button id="rep-tg-send-yearly" type="button" class="w-full bg-devo-dark hover:bg-amber-500/10 border border-amber-500/30 hover:border-amber-400 text-white p-3.5 rounded-xl font-bold transition-all flex items-center justify-between text-xs cursor-pointer group shadow-sm">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                                <i class="ph ph-trophy"></i>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-black text-sm text-amber-400">🏆 تقرير السنة المالي الختامي (Annual Report)</div>
+                                <div class="text-[11px] text-devo-muted font-normal mt-0.5">حصاد العام، حركة شهور السنة، أفضل موديلات العام، وأعلى شهر مبيعاً</div>
+                            </div>
+                        </div>
+                        <i class="ph ph-paper-plane-tilt text-lg text-amber-400"></i>
+                    </button>
+
+                    <!-- Option 5: Current Filtered View -->
                     <button id="rep-tg-send-current" type="button" class="w-full bg-devo-dark hover:bg-devo-orange/10 border border-devo-orange/30 hover:border-devo-orange text-white p-3.5 rounded-xl font-bold transition-all flex items-center justify-between text-xs cursor-pointer group shadow-sm">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-xl bg-devo-orange/20 text-devo-orange flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
@@ -3777,7 +3805,7 @@
                     <span class="text-xs text-devo-muted bg-devo-black px-2.5 py-1 rounded-lg border border-devo-gray">التحكم الفوري</span>
                 </div>
 
-                <div class="space-y-3.5">
+                <div class="space-y-3">
                     <label class="flex items-center justify-between p-3.5 rounded-xl border border-devo-gray bg-devo-black/40 hover:border-devo-orange/50 transition-all cursor-pointer">
                         <div>
                             <span class="text-sm font-bold text-white block">بوت الطلبات (Orders Bot)</span>
@@ -3797,9 +3825,17 @@
                     <label class="flex items-center justify-between p-3.5 rounded-xl border border-sky-500/30 bg-sky-500/5 hover:border-sky-400 transition-all cursor-pointer">
                         <div>
                             <span class="text-sm font-bold text-sky-400 block">بوت التقارير الدورية (Reports Bot)</span>
-                            <span class="text-xs text-devo-muted">إرسال التقارير التلقائية اليومية والأسبوعية لجروب التقارير</span>
+                            <span class="text-xs text-devo-muted">المفتاح الرئيسي لإرسال التقارير التلقائية لجروب التقارير</span>
                         </div>
                         <input type="checkbox" id="telegram-reports-enabled" class="accent-sky-500 w-4 h-4 cursor-pointer">
+                    </label>
+
+                    <label class="flex items-center justify-between p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 hover:border-purple-400 transition-all cursor-pointer">
+                        <div>
+                            <span class="text-sm font-bold text-purple-400 block">النسخ الاحتياطي التلقائي (Cloud Auto Backup)</span>
+                            <span class="text-xs text-devo-muted">إنشاء وأرشفة نسخ سحابية يومية للنظام وإرسالها للتليجرام</span>
+                        </div>
+                        <input type="checkbox" id="telegram-backup-enabled" class="accent-purple-500 w-4 h-4 cursor-pointer">
                     </label>
 
                     <label class="flex items-center justify-between p-3.5 rounded-xl border border-devo-gray bg-devo-black/40 hover:border-devo-orange/50 transition-all cursor-pointer">
@@ -3845,9 +3881,9 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block font-bold text-devo-muted mb-1">معرّف جروب النسخ الاحتياطي</label>
+                            <label class="block font-bold text-purple-400 mb-1">معرّف جروب النسخ الاحتياطي</label>
                             <input type="text" id="telegram-backup-chat-id" placeholder="-1004363122042" 
-                                class="w-full bg-devo-black border border-devo-gray rounded-xl px-3.5 py-2 text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none font-mono">
+                                class="w-full bg-devo-black border border-purple-500/50 rounded-xl px-3.5 py-2 text-white placeholder-devo-muted/50 focus:border-purple-400 outline-none font-mono">
                         </div>
 
                         <div>
@@ -3867,48 +3903,147 @@
 
         </div>
 
-        <!-- ⏰ مواعيد التقارير التلقائية المجدولة -->
-        <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-4 shadow-sm">
+        <!-- ⏰ مواعيد وجدولة إرسال التقارير التلقائية المتقدمة -->
+        <div class="bg-devo-dark border border-devo-gray rounded-2xl p-6 space-y-5 shadow-sm">
             <div class="flex items-center justify-between border-b border-devo-gray pb-3">
                 <h3 class="text-base font-bold text-white flex items-center gap-2">
                     <i class="ph ph-clock-countdown text-sky-400 text-xl"></i>
-                    مواعيد وجدولة إرسال التقارير التلقائية (Scheduled Reports)
+                    التحكم في مواعيد وجدولة التقارير التلقائية والنسخ الاحتياطي (Automations)
                 </h3>
-                <span class="text-xs text-sky-400 bg-sky-400/10 px-2.5 py-1 rounded-lg border border-sky-400/20 font-mono">pg_cron Automations</span>
+                <span class="text-xs text-sky-400 bg-sky-400/10 px-2.5 py-1 rounded-lg border border-sky-400/20 font-mono">pg_cron Granular Automations</span>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                <div class="space-y-1.5 bg-devo-black/40 p-3.5 rounded-xl border border-devo-gray">
-                    <label class="font-bold text-white flex items-center gap-1.5">
-                        <i class="ph ph-chart-polar text-sky-400 text-base"></i> وقت إرسال التقرير اليومي
-                    </label>
-                    <input type="time" id="telegram-daily-report-time" value="23:55" 
-                        class="w-full bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-sm text-white focus:border-sky-400 outline-none">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                
+                <!-- 1. التقرير اليومي -->
+                <div class="space-y-3 bg-devo-black/40 p-4 rounded-xl border border-sky-500/30 flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2">
+                        <span class="font-bold text-sky-400 flex items-center gap-1.5 text-sm">
+                            <i class="ph ph-chart-polar text-base"></i> التقرير اليومي
+                        </span>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="telegram-daily-report-enabled" class="accent-sky-500 w-4 h-4 cursor-pointer">
+                            <span class="text-[11px] text-devo-muted">تفعيل</span>
+                        </label>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-devo-muted block text-[11px]">وقت الإرسال اليومي:</label>
+                        <input type="time" id="telegram-daily-report-time" value="23:55" 
+                            class="w-full bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-sm text-white focus:border-sky-400 outline-none">
+                    </div>
+                    <button onclick="sendDailyReportToTelegramNow()" type="button" class="w-full py-2 rounded-lg bg-sky-500/15 hover:bg-sky-500 text-sky-400 hover:text-white transition-all font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-paper-plane-tilt"></i> إرسال فوري الآن
+                    </button>
                 </div>
 
-                <div class="space-y-1.5 bg-devo-black/40 p-3.5 rounded-xl border border-devo-gray">
-                    <label class="font-bold text-white flex items-center gap-1.5">
-                        <i class="ph ph-calendar-check text-emerald-400 text-base"></i> يوم التقرير الأسبوعي
-                    </label>
-                    <select id="telegram-weekly-report-day" 
-                        class="w-full bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-400 outline-none cursor-pointer">
-                        <option value="friday">الجمعة (نهاية الأسبوع)</option>
-                        <option value="saturday">السبت</option>
-                        <option value="thursday">الخميس</option>
-                        <option value="sunday">الأحد</option>
-                        <option value="monday">الإثنين</option>
-                        <option value="tuesday">الثلاثاء</option>
-                        <option value="wednesday">الأربعاء</option>
-                    </select>
+                <!-- 2. التقرير الأسبوعي -->
+                <div class="space-y-3 bg-devo-black/40 p-4 rounded-xl border border-emerald-500/30 flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2">
+                        <span class="font-bold text-emerald-400 flex items-center gap-1.5 text-sm">
+                            <i class="ph ph-calendar-check text-base"></i> التقرير الأسبوعي
+                        </span>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="telegram-weekly-report-enabled" class="accent-emerald-500 w-4 h-4 cursor-pointer">
+                            <span class="text-[11px] text-devo-muted">تفعيل</span>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="space-y-1">
+                            <label class="text-devo-muted block text-[11px]">يوم الإرسال:</label>
+                            <select id="telegram-weekly-report-day" 
+                                class="w-full bg-devo-dark border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-emerald-400 outline-none cursor-pointer">
+                                <option value="friday">الجمعة</option>
+                                <option value="saturday">السبت</option>
+                                <option value="thursday">الخميس</option>
+                                <option value="sunday">الأحد</option>
+                                <option value="monday">الإثنين</option>
+                                <option value="tuesday">الثلاثاء</option>
+                                <option value="wednesday">الأربعاء</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-devo-muted block text-[11px]">وقت الإرسال:</label>
+                            <input type="time" id="telegram-weekly-report-time" value="23:59" 
+                                class="w-full bg-devo-dark border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-emerald-400 outline-none">
+                        </div>
+                    </div>
+                    <button onclick="sendWeeklyReportToTelegramNow()" type="button" class="w-full py-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-white transition-all font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-paper-plane-tilt"></i> إرسال فوري الآن
+                    </button>
                 </div>
 
-                <div class="space-y-1.5 bg-devo-black/40 p-3.5 rounded-xl border border-devo-gray">
-                    <label class="font-bold text-white flex items-center gap-1.5">
-                        <i class="ph ph-clock text-emerald-400 text-base"></i> وقت إرسال التقرير الأسبوعي
-                    </label>
-                    <input type="time" id="telegram-weekly-report-time" value="23:59" 
-                        class="w-full bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-400 outline-none">
+                <!-- 3. التقرير الشهري -->
+                <div class="space-y-3 bg-devo-black/40 p-4 rounded-xl border border-indigo-500/30 flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2">
+                        <span class="font-bold text-indigo-400 flex items-center gap-1.5 text-sm">
+                            <i class="ph ph-calendar-blank text-base"></i> التقرير الشهري
+                        </span>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="telegram-monthly-report-enabled" class="accent-indigo-500 w-4 h-4 cursor-pointer">
+                            <span class="text-[11px] text-devo-muted">تفعيل</span>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="space-y-1">
+                            <label class="text-devo-muted block text-[11px]">موعد الإرسال:</label>
+                            <select id="telegram-monthly-report-day" 
+                                class="w-full bg-devo-dark border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-indigo-400 outline-none cursor-pointer">
+                                <option value="last_day">أول يوم بالجديد</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-devo-muted block text-[11px]">وقت الإرسال:</label>
+                            <input type="time" id="telegram-monthly-report-time" value="23:59" 
+                                class="w-full bg-devo-dark border border-devo-gray rounded-lg px-2 py-2 text-xs text-white focus:border-indigo-400 outline-none">
+                        </div>
+                    </div>
+                    <button onclick="sendMonthlyReportToTelegramNow()" type="button" class="w-full py-2 rounded-lg bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white transition-all font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-paper-plane-tilt"></i> إرسال فوري الآن
+                    </button>
                 </div>
+
+                <!-- 4. التقرير السنوي -->
+                <div class="space-y-3 bg-devo-black/40 p-4 rounded-xl border border-amber-500/30 flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2">
+                        <span class="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
+                            <i class="ph ph-trophy text-base"></i> التقرير السنوي
+                        </span>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="telegram-yearly-report-enabled" class="accent-amber-500 w-4 h-4 cursor-pointer">
+                            <span class="text-[11px] text-devo-muted">تفعيل</span>
+                        </label>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-devo-muted block text-[11px]">موعد الإرسال:</label>
+                        <div class="text-[11px] text-white bg-devo-dark px-2.5 py-2 rounded-lg border border-devo-gray font-mono">1 يناير (ختام السنة)</div>
+                    </div>
+                    <button onclick="sendYearlyReportToTelegramNow()" type="button" class="w-full py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500 text-amber-400 hover:text-white transition-all font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-paper-plane-tilt"></i> إرسال فوري الآن
+                    </button>
+                </div>
+
+                <!-- 5. النسخ الاحتياطي التلقائي -->
+                <div class="space-y-3 bg-devo-black/40 p-4 rounded-xl border border-purple-500/30 flex flex-col justify-between md:col-span-2 lg:col-span-2">
+                    <div class="flex items-center justify-between border-b border-devo-gray/50 pb-2">
+                        <span class="font-bold text-purple-400 flex items-center gap-1.5 text-sm">
+                            <i class="ph ph-shield-check text-base"></i> النسخ الاحتياطي السحابي التلقائي
+                        </span>
+                        <span class="text-[11px] text-purple-300 font-mono">Full Cloud Backup</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                        <div class="space-y-1">
+                            <label class="text-devo-muted block text-[11px]">وقت النسخ اليومي:</label>
+                            <input type="time" id="telegram-backup-time" value="23:55" 
+                                class="w-full bg-devo-dark border border-devo-gray rounded-lg px-3 py-2 text-sm text-white focus:border-purple-400 outline-none">
+                        </div>
+                        <div class="pt-4">
+                            <button onclick="sendBackupToTelegramNow()" type="button" class="w-full py-2 rounded-lg bg-purple-500/15 hover:bg-purple-600 text-purple-400 hover:text-white transition-all font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                                <i class="ph ph-cloud-arrow-up"></i> إنشاء ورفع نسخة سحابية الآن
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -3924,16 +4059,22 @@
             </div>
 
             <div class="pt-4 border-t border-devo-gray">
-                <span class="text-xs font-bold text-devo-muted block mb-3">⚡ الإرسال الفوري اليدوي لجروبات التليجرام:</span>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button onclick="sendDailyReportToTelegramNow()" id="send-daily-tg-report-btn" class="py-2.5 px-3 rounded-xl bg-sky-600/15 hover:bg-sky-600 text-sky-400 hover:text-white border border-sky-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm">
-                        <i class="ph ph-chart-bar text-base"></i> إرسال تقرير اليوم الآن
+                <span class="text-xs font-bold text-devo-muted block mb-3">⚡ الإرسال الفوري اليدوي لجروبات التقارير والتليجرام:</span>
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                    <button onclick="sendDailyReportToTelegramNow()" id="send-daily-tg-report-btn" class="py-2.5 px-2 rounded-xl bg-sky-600/15 hover:bg-sky-600 text-sky-400 hover:text-white border border-sky-500/30 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                        <i class="ph ph-chart-bar text-base"></i> تقرير اليوم
                     </button>
-                    <button onclick="sendWeeklyReportToTelegramNow()" id="send-weekly-tg-report-btn" class="py-2.5 px-3 rounded-xl bg-emerald-600/15 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm">
-                        <i class="ph ph-calendar-check text-base"></i> إرسال تقرير الأسبوع الآن
+                    <button onclick="sendWeeklyReportToTelegramNow()" id="send-weekly-tg-report-btn" class="py-2.5 px-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                        <i class="ph ph-calendar-check text-base"></i> تقرير الأسبوع
                     </button>
-                    <button onclick="sendBackupToTelegramNow()" id="send-backup-tg-btn" class="py-2.5 px-3 rounded-xl bg-purple-600/15 hover:bg-purple-600 text-purple-400 hover:text-white border border-purple-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm">
-                        <i class="ph ph-shield-check text-base"></i> إرسال النسخة الاحتياطية الآن
+                    <button onclick="sendMonthlyReportToTelegramNow()" id="send-monthly-tg-report-btn" class="py-2.5 px-2 rounded-xl bg-indigo-600/15 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                        <i class="ph ph-calendar-blank text-base"></i> تقرير الشهر
+                    </button>
+                    <button onclick="sendYearlyReportToTelegramNow()" id="send-yearly-tg-report-btn" class="py-2.5 px-2 rounded-xl bg-amber-600/15 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-500/30 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                        <i class="ph ph-trophy text-base"></i> تقرير السنة
+                    </button>
+                    <button onclick="sendBackupToTelegramNow()" id="send-backup-tg-btn" class="col-span-2 sm:col-span-1 py-2.5 px-2 rounded-xl bg-purple-600/15 hover:bg-purple-600 text-purple-400 hover:text-white border border-purple-500/30 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                        <i class="ph ph-shield-check text-base"></i> إرسال النسخة
                     </button>
                 </div>
             </div>

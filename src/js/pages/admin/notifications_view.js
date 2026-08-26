@@ -35,6 +35,8 @@ function setupWindowBindings() {
     window.testTelegramConnection = testTelegramConnection;
     window.sendDailyReportToTelegramNow = sendDailyReportToTelegramNow;
     window.sendWeeklyReportToTelegramNow = sendWeeklyReportToTelegramNow;
+    window.sendMonthlyReportToTelegramNow = sendMonthlyReportToTelegramNow;
+    window.sendYearlyReportToTelegramNow = sendYearlyReportToTelegramNow;
     window.sendBackupToTelegramNow = sendBackupToTelegramNow;
 }
 
@@ -731,6 +733,68 @@ export async function sendWeeklyReportToTelegramNow() {
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-calendar-check text-base"></i> إرسال تقرير الأسبوع الآن`;
+        }
+    }
+}
+
+// 14-ب. إرسال تقرير الشهر فورياً إلى جروب التليجرام
+export async function sendMonthlyReportToTelegramNow() {
+    const btn = document.getElementById('send-monthly-tg-report-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال تقرير الشهر...`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: 'monthly'
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل توليد التقرير الشهري');
+        }
+
+        showToast('تم إرسال تقرير الشهر بنجاح إلى جروب التليجرام 🗓️🚀', 'success');
+        await fetchNotifications();
+    } catch (e) {
+        console.error('Error sending monthly Telegram report:', e);
+        showToast(`تعذر إرسال تقرير الشهر: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-calendar-blank text-base"></i> تقرير الشهر`;
+        }
+    }
+}
+
+// 14-ج. إرسال تقرير السنة فورياً إلى جروب التليجرام
+export async function sendYearlyReportToTelegramNow() {
+    const btn = document.getElementById('send-yearly-tg-report-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner animate-spin text-base"></i> جاري إرسال تقرير السنة...`;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('generate_and_send_telegram_report', {
+            p_report_type: 'yearly'
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) {
+            throw new Error(data.error || 'فشل توليد التقرير السنوي');
+        }
+
+        showToast('تم إرسال تقرير السنة بنجاح إلى جروب التليجرام 🏆🚀', 'success');
+        await fetchNotifications();
+    } catch (e) {
+        console.error('Error sending yearly Telegram report:', e);
+        showToast(`تعذر إرسال تقرير السنة: ${e.message || 'خطأ غير متوقع'}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-trophy text-base"></i> تقرير السنة`;
         }
     }
 }
