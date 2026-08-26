@@ -334,8 +334,8 @@ DECLARE
     is_tg_enabled text;
     formatted_message text;
 BEGIN
-    -- تخطي إشعارات المخزون الفردية لأنها تُرسل مجمّعة ومصنفة بالتريجر المؤجل
-    IF (NEW.type = 'out_of_stock' OR NEW.type = 'restocked') THEN
+    -- تخطي إشعارات المخزون والنسخ الاحتياطي (لأن النسخ له شات مستقل)
+    IF (NEW.type = 'out_of_stock' OR NEW.type = 'restocked' OR NEW.type = 'system_backup_completed') THEN
         RETURN NEW;
     END IF;
 

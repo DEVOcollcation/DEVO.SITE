@@ -759,11 +759,7 @@ BEGIN
     );
 
     v_file_size_bytes := octet_length(v_payload::text);
-    IF v_file_size_bytes >= 1048576 THEN
-        v_formatted_size := ROUND((v_file_size_bytes / 1048576.0)::numeric, 2) || ' MB';
-    ELSE
-        v_formatted_size := ROUND((v_file_size_bytes / 1024.0)::numeric, 1) || ' KB';
-    END IF;
+    v_formatted_size := ROUND((v_file_size_bytes / 1024.0)::numeric, 1) || ' KB';
 
     -- تسجيل النسخة الاحتياطية في جدول system_backups_log
     INSERT INTO public.system_backups_log (
@@ -793,10 +789,17 @@ BEGIN
     -- تطبيق سياسة الأرشفة والتنظيف (30 يوماً)
     PERFORM public.purge_old_backups_log(30);
 
-    -- إرسال الإشعار والملف إلى تليجرام
+    -- رفع ملف الـ JSON تلقائياً إلى حاوية التخزين السحابي Supabase Storage (system_backups)
+    PERFORM net.http_post(
+        url := 'https://abxbhtysmqzrswzsdrzi.supabase.co/storage/v1/object/system_backups/' || v_filename,
+        body := v_payload,
+        headers := '{"Content-Type": "application/json", "Authorization": "Bearer sb_publishable_so6KzXru538HEc5dFORaIA_4dB_SWzo", "apikey": "sb_publishable_so6KzXru538HEc5dFORaIA_4dB_SWzo"}'::jsonb
+    );
+
+    -- إرسال الإشعار والملف إلى تليجرام (حصراً لجروب النسخ الاحتياطي فقط)
     SELECT setting_value INTO v_backup_chat_id FROM public.home_settings WHERE setting_key = 'telegram_backup_chat_id';
     IF v_backup_chat_id IS NULL OR v_backup_chat_id = '' THEN
-        SELECT setting_value INTO v_backup_chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
+        v_backup_chat_id := '-1004363122042';
     END IF;
 
     IF v_backup_chat_id LIKE '-%' AND v_backup_chat_id NOT LIKE '-100%' AND LENGTH(v_backup_chat_id) >= 8 THEN
@@ -804,28 +807,34 @@ BEGIN
     END IF;
 
     IF COALESCE(v_is_tg_enabled, 'true') = 'true' AND v_bot_token IS NOT NULL AND v_backup_chat_id IS NOT NULL AND v_bot_token <> '' AND v_backup_chat_id <> '' THEN
-        v_caption := '🛡️ <b>نسخة احتياطية سحابية تلقائية جديدة</b>' || E'\n' ||
-                     '━━━━━━━━━━━━' || E'\n' ||
-                     '📦 <b>نوع النسخة:</b> نسخة كاملة للنظام (Full Backup)' || E'\n' ||
-                     '📊 <b>إجمالي السجلات:</b> ' || v_total_records || ' سجل' || E'\n' ||
-                     '💾 <b>الحجم:</b> ' || v_formatted_size || E'\n' ||
-                     '📁 <b>الملف:</b> <code>' || v_filename || '</code>' || E'\n' ||
-                     '⏰ <b>الوقت:</b> ' || TO_CHAR(v_cairo_now, 'YYYY-MM-DD HH12:MI') || CASE WHEN EXTRACT(HOUR FROM v_cairo_now) >= 12 THEN ' م' ELSE ' ص' END || E'\n' ||
-                     '━━━━━━━━━━━━' || E'\n' ||
-                     '🤖 <i>تم الحفظ والأرشفة السحابية بنجاح عبر النظام التلقائي</i>';
+        DECLARE
+            v_public_url text;
+        BEGIN
+            v_public_url := 'https://abxbhtysmqzrswzsdrzi.supabase.co/storage/v1/object/public/system_backups/' || v_filename;
 
-        PERFORM net.http_post(
-            url := 'https://api.telegram.org/bot' || v_bot_token || '/sendMessage',
-            body := jsonb_build_object(
-                'chat_id', v_backup_chat_id,
-                'text', v_caption,
-                'parse_mode', 'HTML'
-            ),
-            headers := '{"Content-Type": "application/json"}'::jsonb
-        );
+            v_caption := '🛡️ <b>النسخ الاحتياطي للنظام</b>' || E'\n\n' ||
+                         '📅 <b>التاريخ والوقت:</b> ' || to_char(v_cairo_now, 'YYYY/M/D') || '، ' || to_char(v_cairo_now, 'HH12:MI:SS') || CASE WHEN EXTRACT(HOUR FROM v_cairo_now) >= 12 THEN ' م' ELSE ' ص' END || E'\n' ||
+                         '📦 <b>نوع النسخة:</b> نسخة احتياطية كاملة للنظام' || E'\n' ||
+                         '📊 <b>إجمالي السجلات:</b> ' || to_char(v_total_records, 'FM999,999,999') || ' سجل' || E'\n' ||
+                         '💾 <b>حجم الملف:</b> ' || v_formatted_size || E'\n' ||
+                         '🌐 <b>النظام:</b> DEVO Collection v2.5.0' || E'\n\n' ||
+                         '🔗 <a href="' || v_public_url || '">اضغط هنا لتنزيل النسخة المباشرة من السحابة (.json)</a>';
+
+            -- إرسال ملف الـ JSON المرفق مباشرة مع الكابشن ورابط التنزيل المباشر إلى جروب النسخ الاحتياطي
+            PERFORM net.http_post(
+                url := 'https://api.telegram.org/bot' || v_bot_token || '/sendDocument',
+                body := jsonb_build_object(
+                    'chat_id', v_backup_chat_id,
+                    'document', v_public_url,
+                    'caption', v_caption,
+                    'parse_mode', 'HTML'
+                ),
+                headers := '{"Content-Type": "application/json"}'::jsonb
+            );
+        END;
     END IF;
 
-    -- تسجيل إشعار بنجاح النسخ الاحتياطي في جدول الإشعارات
+    -- تسجيل إشعار بنجاح النسخ الاحتياطي في جدول الإشعارات داخل السيستم فقط
     BEGIN
         INSERT INTO public.system_notifications (type, title, body, metadata)
         VALUES (
@@ -866,7 +875,8 @@ DECLARE
     is_tg_enabled text;
     formatted_message text;
 BEGIN
-    IF (NEW.type = 'out_of_stock' OR NEW.type = 'restocked') THEN
+    -- استبعاد إشعارات المخزون وإشعارات النسخ الاحتياطي (لأن النسخ له جروبه المستقل)
+    IF (NEW.type = 'out_of_stock' OR NEW.type = 'restocked' OR NEW.type = 'system_backup_completed') THEN
         RETURN NEW;
     END IF;
 

@@ -2005,13 +2005,19 @@ function openProgressModal(title, subtitle) {
     const modal = document.getElementById('backup-progress-modal');
     if (!modal) return;
 
-    document.getElementById('progress-modal-title').textContent = title;
-    document.getElementById('progress-modal-subtitle').textContent = subtitle;
-    document.getElementById('progress-modal-percentage').textContent = '0%';
-    document.getElementById('progress-bar-fill').style.width = '0%';
-    document.getElementById('progress-steps-list').innerHTML = '';
+    const titleEl = document.getElementById('progress-modal-title');
+    if (titleEl) titleEl.textContent = title;
+    const subEl = document.getElementById('progress-modal-subtitle');
+    if (subEl) subEl.textContent = subtitle;
+    const pctEl = document.getElementById('progress-modal-percentage');
+    if (pctEl) pctEl.textContent = '0%';
+    const barEl = document.getElementById('progress-bar-fill');
+    if (barEl) barEl.style.width = '0%';
+    const listEl = document.getElementById('progress-steps-list');
+    if (listEl) listEl.innerHTML = '';
     document.getElementById('progress-errors-container')?.classList.add('hidden');
-    document.getElementById('progress-errors-list').innerHTML = '';
+    const errList = document.getElementById('progress-errors-list');
+    if (errList) errList.innerHTML = '';
     document.getElementById('progress-modal-footer')?.classList.add('hidden');
 
     const iconContainer = document.getElementById('progress-modal-icon-container');
@@ -2079,8 +2085,10 @@ function addOrUpdateStepItem(tableId, arabicName, status, statusText) {
 }
 
 function showProgressCompletion(title, subtitle) {
-    document.getElementById('progress-modal-title').textContent = title;
-    document.getElementById('progress-modal-subtitle').textContent = subtitle;
+    const titleEl = document.getElementById('progress-modal-title');
+    if (titleEl) titleEl.textContent = title;
+    const subEl = document.getElementById('progress-modal-subtitle');
+    if (subEl) subEl.textContent = subtitle;
     document.getElementById('progress-modal-footer')?.classList.remove('hidden');
 
     const iconContainer = document.getElementById('progress-modal-icon-container');
