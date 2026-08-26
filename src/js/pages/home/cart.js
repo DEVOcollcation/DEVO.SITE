@@ -4,6 +4,7 @@ import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js'; 
 import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
 import { resolveImageUrl, bindImageToCache } from '../../services/offline_store.js';
+import { deliverOrderTelegramNotification } from '../../services/notifications.js';
 
 let currentUser = null;
 let cartItems = [];
@@ -676,6 +677,8 @@ async function handleCheckout(e) {
             await logOrderAction(orderIdToPrint, 'edited_in_cart', `تم تعديل أصناف الأوردر وإعادة حفظه من السلة بواسطة (${userName})`);
         } else {
             await logOrderAction(orderIdToPrint, 'created', `تم إنشاء الأوردر بواسطة (${userName})`);
+            // إرسال وتأكيد وصول الإشعار اللحظي لتليجرام بالخلفية مع معالجة الأخطاء
+            deliverOrderTelegramNotification(orderIdToPrint, { ...finalOrderObj, order_items: orderItemsData }).catch(e => console.warn('Background TG dispatch:', e));
         }
 
         if (window.refreshWorkerOrders) {

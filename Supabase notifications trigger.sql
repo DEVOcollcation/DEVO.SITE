@@ -392,6 +392,11 @@ BEGIN
     -- للأنواع الأخرى (إشعارات الطلبات)
     SELECT setting_value INTO chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
 
+    -- توحيد معرف المجموعة ومعالجة مجموعات السوبر جروب (-100...)
+    IF chat_id LIKE '-%' AND chat_id NOT LIKE '-100%' AND LENGTH(chat_id) >= 8 THEN
+        chat_id := '-100' || SUBSTRING(chat_id FROM 2);
+    END IF;
+
     -- التحقق من تفعيل الخدمة ووجود التوكن ومعرف الشات
     IF (is_tg_enabled = 'true' AND bot_token IS NOT NULL AND chat_id IS NOT NULL AND bot_token <> '' AND chat_id <> '') THEN
         DECLARE

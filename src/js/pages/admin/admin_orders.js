@@ -3,6 +3,7 @@ import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { getCurrentSession } from '../../services/auth.js';
 import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
+import { deliverOrderTelegramNotification } from '../../services/notifications.js';
 
 let isInitialized = false;
 let allAdminOrders = [];
@@ -2211,6 +2212,7 @@ window.saveLocalOrderEdits = async (orderId) => {
 
             if (newOrderId) {
                 await logOrderAction(newOrderId, 'created_via_duplicate', `تم إنشاء الأوردر كنسخة مكررة من الأوردر #${sourceDuplicatingInvoiceNumber} بواسطة (${currentUserProfile?.full_name || 'إداري'})`);
+                deliverOrderTelegramNotification(newOrderId, { id: newOrderId, invoice_number: newInvoiceNumber, ...orderData, order_items: orderItemsData }).catch(e => console.warn('Duplicate order TG dispatch:', e));
             }
 
             showToast(`تم إنشاء ونسخ الأوردر بنجاح! رقم الفاتورة الجديد: #${newInvoiceNumber}`, 'success');

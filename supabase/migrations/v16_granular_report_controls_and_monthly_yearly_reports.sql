@@ -936,12 +936,18 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- توحيد معرف المجموعة ومعالجة مجموعات السوبر جروب (-100...)
+    IF chat_id LIKE '-%' AND chat_id NOT LIKE '-100%' AND LENGTH(chat_id) >= 8 THEN
+        chat_id := '-100' || SUBSTRING(chat_id FROM 2);
+    END IF;
+
     formatted_message := '🔔 <b>' || replace(replace(replace(NEW.title, '&', '&amp;'), '<', '&lt;'), '>', '&gt;') || '</b>' || E'\n' ||
                          '━━━━━━━━━━━━' || E'\n' ||
                          replace(replace(replace(NEW.body, '&', '&amp;'), '<', '&lt;'), '>', '&gt;') || E'\n\n' ||
                          '⏰ <i>' || TO_CHAR(NOW() AT TIME ZONE 'Africa/Cairo', 'YYYY-MM-DD HH12:MI') || 
                          CASE WHEN EXTRACT(HOUR FROM NOW() AT TIME ZONE 'Africa/Cairo') >= 12 THEN ' م' ELSE ' ص' END || '</i>';
 
+    -- إرسال الإشعار إلى شات الأوردرات
     PERFORM net.http_post(
         url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
         body := jsonb_build_object(
