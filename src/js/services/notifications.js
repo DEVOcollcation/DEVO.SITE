@@ -294,6 +294,13 @@ function setupRealtimeSubscription() {
             let toastType = 'warning';
             if (newNotif.type === 'out_of_stock') toastType = 'error';
             else if (newNotif.type === 'order_created') toastType = 'success';
+            else if (newNotif.type === 'system_backup_completed') {
+                toastType = 'info';
+                // تأكيد رفع ملف النسخة الاحتياطية وإرساله كمستند مرفق إلى تليجرام
+                import('../pages/admin/backup_restore.js').then(m => {
+                    m.executeCloudAutoBackup(false).catch(e => console.warn('Background auto backup sync:', e));
+                }).catch(e => {});
+            }
             
             showToast(`🚨 ${newNotif.title}\n${newNotif.body}`, toastType);
 

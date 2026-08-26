@@ -820,7 +820,35 @@ BEGIN
                          '🌐 <b>النظام:</b> DEVO Collection v2.5.0' || E'\n\n' ||
                          '🔗 <a href="' || v_public_url || '">اضغط هنا لتنزيل النسخة المباشرة من السحابة (.json)</a>';
 
-            -- إرسال ملف الـ JSON المرفق مباشرة مع الكابشن ورابط التنزيل المباشر إلى جروب النسخ الاحتياطي
+            -- إدراج سجل الملف في جدول storage.objects
+            BEGIN
+                INSERT INTO storage.objects (
+                    id,
+                    bucket_id,
+                    name,
+                    owner,
+                    created_at,
+                    updated_at,
+                    last_accessed_at,
+                    metadata
+                ) VALUES (
+                    gen_random_uuid(),
+                    'system_backups',
+                    v_filename,
+                    NULL,
+                    now(),
+                    now(),
+                    now(),
+                    jsonb_build_object(
+                        'mimetype', 'application/json',
+                        'size', v_file_size_bytes,
+                        'cacheControl', 'max-age=3600'
+                    )
+                ) ON CONFLICT (bucket_id, name) DO NOTHING;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END;
+
+            -- إرسال ملف الـ JSON المرفق مباشرة مع الكابشن ورابط التنزيل إلى جروب النسخ الاحتياطي
             PERFORM net.http_post(
                 url := 'https://api.telegram.org/bot' || v_bot_token || '/sendDocument',
                 body := jsonb_build_object(
