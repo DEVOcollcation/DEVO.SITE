@@ -1,6 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
+import { retrySingleTelegramNotification, retryFailedTelegramNotifications } from '../../services/notifications.js';
 
 let allNotifications = [];
 let activeFilter = 'all'; // 'all', 'unread', 'archived'
@@ -38,6 +39,20 @@ function setupWindowBindings() {
     window.sendMonthlyReportToTelegramNow = sendMonthlyReportToTelegramNow;
     window.sendYearlyReportToTelegramNow = sendYearlyReportToTelegramNow;
     window.sendBackupToTelegramNow = sendBackupToTelegramNow;
+    window.retrySingleTelegramNotification = async (id) => {
+        const res = await retrySingleTelegramNotification(id);
+        if (res.success) {
+            showToast(res.message, 'success');
+            await fetchNotifications();
+        } else {
+            showToast(res.message, 'error');
+        }
+    };
+    window.retryFailedTelegramNotifications = async () => {
+        await retryFailedTelegramNotifications();
+        await fetchNotifications();
+        showToast('تمت محاولة إعادة إرسال الإشعارات المعلقة', 'info');
+    };
 }
 
 // 1. جلب الإشعارات بالكامل من قاعدة البيانات
@@ -136,6 +151,27 @@ function renderNotifications() {
             </a>`;
         }
 
+        // شارة وحالة الإرسال للتليجرام مع زر إعادة المحاولة الفورية في حال التعثر
+        let telegramBadgeHtml = '';
+        if (n.telegram_status === 'failed') {
+            telegramBadgeHtml = `
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded flex items-center gap-1" title="${n.telegram_last_error || 'فشل الإرسال'}">
+                        <i class="ph ph-warning-circle"></i> تعذر إرسال التليجرام
+                    </span>
+                    <button onclick="retrySingleTelegramNotification('${n.id}')" class="px-2 py-0.5 bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/30 rounded text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer" title="إعادة المحاولة الآن">
+                        <i class="ph ph-arrows-clockwise text-xs"></i> إعادة المحاولة
+                    </button>
+                </div>
+            `;
+        } else if (n.telegram_status === 'sent') {
+            telegramBadgeHtml = `
+                <span class="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded flex items-center gap-1" title="تم الإرسال بنجاح إلى تليجرام">
+                    <i class="ph ph-check-circle"></i> تليجرام ✅
+                </span>
+            `;
+        }
+
         return `
             <div class="border p-4 rounded-xl shadow-sm flex items-start gap-4 transition-all ${cardBg}" id="notify-card-${n.id}">
                 <!-- الأيقونة التعبيرية -->
@@ -146,6 +182,7 @@ function renderNotifications() {
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="font-bold text-sm text-white">${n.title}</span>
                         ${unreadIndicator}
+                        ${telegramBadgeHtml}
                         <span class="text-[10px] text-devo-muted mr-auto font-mono">${dateStr}</span>
                     </div>
                     <p class="text-xs text-devo-muted leading-relaxed whitespace-pre-wrap">${n.body}</p>

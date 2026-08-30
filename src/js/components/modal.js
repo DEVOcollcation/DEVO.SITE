@@ -23,7 +23,7 @@ export function confirmDialog(options = {}) {
     return new Promise((resolve) => {
         // 1. Create Backdrop
         const backdrop = document.createElement('div');
-        backdrop.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[300] flex items-center justify-center opacity-0 transition-opacity duration-300 p-4';
+        backdrop.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[200000] flex items-center justify-center opacity-0 transition-opacity duration-300 p-4 devo-custom-backdrop';
         
         // 2. Define colors based on action type
         const iconColor = isDestructive ? 'text-devo-error bg-devo-error/10' : 'text-devo-orange bg-devo-orange/10';
@@ -127,7 +127,7 @@ export function promptDialog(options = {}) {
 
     return new Promise((resolve) => {
         const backdrop = document.createElement('div');
-        backdrop.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[300] flex items-center justify-center opacity-0 transition-opacity duration-300 p-4';
+        backdrop.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[200000] flex items-center justify-center opacity-0 transition-opacity duration-300 p-4 devo-custom-backdrop';
 
         const formattedMessage = message ? message.replace(/\n/g, '<br>') : '';
 

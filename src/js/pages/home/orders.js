@@ -463,11 +463,16 @@ window.viewOrderDetails = async (id) => {
     const modal = document.getElementById('order-details-modal');
     modal.classList.remove('hidden');
     setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    history.pushState({ modalId: 'order-details-modal' }, '', window.location.href);
 };
 
-window.closeOrderDetailsModal = () => {
+window.closeOrderDetailsModal = (skipHistory = false) => {
     const modal = document.getElementById('order-details-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
     modal.classList.add('opacity-0');
+    if (!skipHistory && history.state && history.state.modalId === 'order-details-modal') {
+        history.back();
+    }
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
@@ -562,11 +567,16 @@ window.confirmEditOrder = (id) => {
     const modal = document.getElementById('edit-warning-modal');
     modal.classList.remove('hidden');
     setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    history.pushState({ modalId: 'edit-warning-modal' }, '', window.location.href);
 };
 
-window.closeEditWarningModal = () => {
+window.closeEditWarningModal = (skipHistory = false) => {
     const modal = document.getElementById('edit-warning-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
     modal.classList.add('opacity-0');
+    if (!skipHistory && history.state && history.state.modalId === 'edit-warning-modal') {
+        history.back();
+    }
     setTimeout(() => modal.classList.add('hidden'), 300);
     orderToEdit = null;
 };

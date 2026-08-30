@@ -107,23 +107,83 @@ export async function initNavbar() {
 
     // الاستماع لحركة الرجوع والتقدم بالمتصفح بشكل مركزي وتوحيد المنطق
     window.addEventListener('popstate', async (event) => {
-        // 1. أولاً: التحقق من روابط وتفاصيل الموديل (Deep linking / details modal)
-        const urlParams = new URLSearchParams(window.location.search);
-        const modelId = urlParams.get('model');
-        const modal = document.getElementById('model-viewer-modal');
-        
-        if (modal) {
+        // 1. أولاً: التحقق من أي نافذة منبثقة مفتوحة وإغلاقها فورياً عند ضغط زر الرجوع (Back)
+        const openCustomBackdrop = document.querySelector('.devo-custom-backdrop');
+        if (openCustomBackdrop) {
+            const cancelBtn = openCustomBackdrop.querySelector('#devo-cancel-btn, #devo-prompt-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.click();
+                return;
+            }
+        }
+
+        const invoiceModal = document.getElementById('invoice-modal');
+        if (invoiceModal && !invoiceModal.classList.contains('hidden')) {
+            if (typeof window.finishOrderAndRedirect === 'function') {
+                window.finishOrderAndRedirect(true);
+            } else {
+                invoiceModal.classList.add('hidden');
+            }
+            return;
+        }
+
+        const orderDetailsModal = document.getElementById('order-details-modal');
+        if (orderDetailsModal && !orderDetailsModal.classList.contains('hidden')) {
+            if (typeof window.closeOrderDetailsModal === 'function') {
+                window.closeOrderDetailsModal(true);
+            } else {
+                orderDetailsModal.classList.add('hidden');
+            }
+            return;
+        }
+
+        const editWarningModal = document.getElementById('edit-warning-modal');
+        if (editWarningModal && !editWarningModal.classList.contains('hidden')) {
+            if (typeof window.closeEditWarningModal === 'function') {
+                window.closeEditWarningModal(true);
+            } else {
+                editWarningModal.classList.add('hidden');
+            }
+            return;
+        }
+
+        const confirmModal = document.getElementById('confirm-modal');
+        if (confirmModal && !confirmModal.classList.contains('hidden')) {
+            if (typeof window.closeConfirmModal === 'function') {
+                window.closeConfirmModal(true);
+            } else {
+                confirmModal.classList.add('hidden');
+            }
+            return;
+        }
+
+        const modelModal = document.getElementById('model-viewer-modal');
+        if (modelModal) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const modelId = urlParams.get('model');
             if (modelId) {
                 if (typeof window.openModelViewer === 'function') {
                     window.openModelViewer(modelId, true);
                 }
                 return;
-            } else if (!modal.classList.contains('hidden')) {
+            } else if (!modelModal.classList.contains('hidden')) {
                 if (typeof window.closeModelViewer === 'function') {
                     window.closeModelViewer(true);
                 }
                 return;
             }
+        }
+
+        // إغلاق قائمة الموبايل إذا كانت مفتوحة
+        const mobileMenu = document.getElementById('mobile-menu');
+        if (mobileMenu && !mobileMenu.classList.contains('translate-x-full')) {
+            mobileMenu.classList.add('translate-x-full');
+            const icon = document.querySelector('#mobile-menu-btn i');
+            if (icon) {
+                icon.classList.add('ph-list');
+                icon.classList.remove('ph-x');
+            }
+            return;
         }
 
         // 2. ثانياً: معالجة التنقل وحماية الخروج من الموقع وتأكيد الخروج من الباركود

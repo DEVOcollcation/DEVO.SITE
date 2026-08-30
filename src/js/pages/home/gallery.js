@@ -23,6 +23,40 @@ let localCart = [];
 let currentPage = 1;
 const itemsPerPage = 25;
 let currentFilteredModels = [];
+let globalColorsMap = {};
+
+export function getResolvedColorName(inv, colorId = null) {
+    const cId = String(colorId || inv?.color_id || '');
+    
+    // 1. فحص كائن اللون المباشر
+    if (inv?.colors) {
+        if (typeof inv.colors === 'object') {
+            if (Array.isArray(inv.colors) && inv.colors[0]?.name) return inv.colors[0].name;
+            if (inv.colors.name) return inv.colors.name;
+        }
+    }
+    if (inv?.color_name && inv.color_name !== 'لون' && inv.color_name !== 'غير محدد') {
+        return inv.color_name;
+    }
+    
+    // 2. فحص خريطة الألوان العامة
+    if (cId && globalColorsMap[cId]) {
+        return globalColorsMap[cId];
+    }
+    
+    // 3. محاولة البحث داخل allModels
+    if (cId && allModels.length > 0) {
+        for (const m of allModels) {
+            const found = m.model_inventory?.find(i => String(i.color_id) === cId);
+            if (found) {
+                if (found.colors?.name) return found.colors.name;
+                if (Array.isArray(found.colors) && found.colors[0]?.name) return found.colors[0].name;
+            }
+        }
+    }
+    
+    return (inv?.color_name && inv.color_name !== 'لون') ? inv.color_name : 'غير محدد';
+}
 
 export function checkIsWorker() {
     if (typeof window !== 'undefined' && window.isVisitor === false) {
@@ -106,18 +140,29 @@ async function fetchGalleryModels() {
 
     // 🔄 2. التحديث الصامت في الخلفية من Supabase لتنقيح وحفظ البيانات الحديثة 🔄
     try {
-        const { data, error } = await supabase
-            .from('models')
-            .select(`
-                *,
-                categories(name),
-                classes(name, class_sizes(sizes(name))),
-                model_sizes(sizes(name)),
-                model_inventory(color_id, available_series, colors(name)),
-                model_images(image_url)
-            `)
-            .eq('is_active', true)
-            .order('created_at', { ascending: false });
+        const [{ data, error }, { data: colorsList }] = await Promise.all([
+            supabase
+                .from('models')
+                .select(`
+                    *,
+                    categories(name),
+                    classes(name, class_sizes(sizes(name))),
+                    model_sizes(sizes(name)),
+                    model_inventory(color_id, available_series, colors(name)),
+                    model_images(image_url)
+                `)
+                .eq('is_active', true)
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('colors')
+                .select('id, name')
+        ]);
+
+        if (colorsList) {
+            colorsList.forEach(c => {
+                globalColorsMap[String(c.id)] = c.name;
+            });
+        }
 
         if (error) {
             console.error('[Gallery] Supabase fetch error:', error);
@@ -781,7 +826,7 @@ function generateColorsHTML(model, sizesCount) {
         const ownedQty = getOwnedQtyForColor(model.id, inv.color_id);
         const available = dbAvailable + ownedQty;
         const isOut = available === 0;
-        const colorName = inv.colors?.name || 'لون';
+        const colorName = getResolvedColorName(inv);
         
         if (!isWorkerActive) {
             return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-gray rounded-xl mb-1.5 transition-all"><span class="text-white text-xs sm:text-sm font-bold">${colorName}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
@@ -905,7 +950,7 @@ window.addSetToCart = (event, modelId) => {
         const trueAvailable = dbAvailable + ownedQty;
 
         if (trueAvailable <= 0) {
-            skippedColors.push(inv.colors?.name || 'لون');
+            skippedColors.push(getResolvedColorName(inv));
             return;
         }
 
@@ -914,7 +959,7 @@ window.addSetToCart = (event, modelId) => {
         
         const spaceLeft = trueAvailable - currentQty;
         if (spaceLeft <= 0) {
-            skippedColors.push(inv.colors?.name || 'لون');
+            skippedColors.push(getResolvedColorName(inv));
             return;
         }
 
@@ -927,7 +972,7 @@ window.addSetToCart = (event, modelId) => {
                 modelId: model.id,
                 colorId: inv.color_id,
                 modelName: model.name,
-                colorName: inv.colors?.name || 'لون',
+                colorName: getResolvedColorName(inv),
                 price: model.price,
                 image: mainImg,
                 qty: qtyToAdd,
@@ -1028,7 +1073,7 @@ window.addToCart = (event, modelId, colorId) => {
             modelId: model.id,
             colorId: inv.color_id,
             modelName: model.name,
-            colorName: inv.colors?.name || 'لون',
+            colorName: getResolvedColorName(inv),
             price: model.price,
             image: mainImg,
             qty: qty,
@@ -1061,7 +1106,23 @@ window.addToCart = (event, modelId, colorId) => {
 function loadLocalCart() {
     const saved = localStorage.getItem('devo_cart');
     if (saved) {
-        try { localCart = JSON.parse(saved); } catch(e) { localCart = []; }
+        try { 
+            localCart = JSON.parse(saved); 
+            // 🛡️ فحص وإصلاح أسماء الألوان تلقائياً لمنع أي 'لون' أو 'غير محدد'
+            let hasRepaired = false;
+            localCart.forEach(item => {
+                if (!item.colorName || item.colorName === 'لون' || item.colorName === 'غير محدد') {
+                    const resolved = getResolvedColorName(null, item.colorId);
+                    if (resolved && resolved !== 'لون' && resolved !== 'غير محدد') {
+                        item.colorName = resolved;
+                        hasRepaired = true;
+                    }
+                }
+            });
+            if (hasRepaired) {
+                localStorage.setItem('devo_cart', JSON.stringify(localCart));
+            }
+        } catch(e) { localCart = []; }
     } else {
         localCart = [];
     }

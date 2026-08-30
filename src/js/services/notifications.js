@@ -35,6 +35,7 @@ export async function initNotifications() {
     if (webNotificationsEnabled) {
         await fetchUnreadNotifications();
         setupRealtimeSubscription();
+        startTelegramRetrySupervisor();
 
         if (!isAuthStateListenerSet) {
             isAuthStateListenerSet = true;
@@ -559,170 +560,166 @@ export function updateAppBadge(count) {
 }
 
 // ============================================================
-// 📱 إرسال وتأكيد وصول إشعار الأوردر على تليجرام مع إعادة المحاولة ومعالجة الأخطاء
+// 📱 طبقة معالجة الفشل وإعادة المحاولة الذكية بدون تكرار (Telegram Retry Layer)
 // ============================================================
-export async function deliverOrderTelegramNotification(orderId, orderData = null) {
+let isRetryingTelegram = false;
+let retrySupervisorInterval = null;
+
+function escapeTgHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// إعادة إرسال إشعار محدد مع فحص حظر التكرار (Idempotency)
+export async function retrySingleTelegramNotification(notificationId) {
     try {
+        if (!notificationId) return { success: false, message: 'معرف الإشعار غير صحيح' };
+
+        // 1. جلب الإشعار والتحقق من حالته
+        const { data: notif, error: fetchErr } = await supabase
+            .from('system_notifications')
+            .select('*')
+            .eq('id', notificationId)
+            .maybeSingle();
+
+        if (fetchErr || !notif) {
+            return { success: false, message: 'تعذر العثور على بيانات الإشعار' };
+        }
+
+        // 2. التحقق من حظر التكرار: إذا تم إرساله بنجاح مسبقاً نرفض التكرار
+        if (notif.telegram_status === 'sent') {
+            console.log(`ℹ️ Notification ${notificationId} was already sent to Telegram at ${notif.telegram_sent_at}`);
+            return { success: true, message: 'الإشعار تم إرساله مسبقاً بالفعل' };
+        }
+
+        // 3. جلب إعدادات تليجرام
         const { data: settings } = await supabase
             .from('home_settings')
             .select('*')
             .in('setting_key', ['telegram_enabled', 'telegram_bot_token', 'telegram_chat_id']);
 
-        if (!settings) return;
+        const isEnabled = settings?.find(s => s.setting_key === 'telegram_enabled')?.setting_value !== 'false';
+        const botToken = settings?.find(s => s.setting_key === 'telegram_bot_token')?.setting_value?.trim();
+        let chatId = settings?.find(s => s.setting_key === 'telegram_chat_id')?.setting_value?.trim();
 
-        const isEnabled = settings.find(s => s.setting_key === 'telegram_enabled')?.setting_value !== 'false';
-        const botToken = settings.find(s => s.setting_key === 'telegram_bot_token')?.setting_value?.trim();
-        let chatId = settings.find(s => s.setting_key === 'telegram_chat_id')?.setting_value?.trim();
-
-        if (!isEnabled || !botToken || !chatId) return;
-
-        // Fetch complete order details if not fully provided
-        let order = orderData;
-        if (!order || !order.customer_name || !order.order_items) {
-            const { data: fetchedOrder } = await supabase
-                .from('orders')
-                .select(`
-                    *,
-                    system_users!worker_id (full_name),
-                    order_items (
-                        *,
-                        models (name, factory_code, classes (class_sizes (size_id)), model_sizes (size_id)),
-                        colors (name)
-                    )
-                `)
-                .eq('id', orderId)
-                .maybeSingle();
-            if (fetchedOrder) order = fetchedOrder;
+        if (!isEnabled || !botToken || !chatId) {
+            return { success: false, message: 'خدمة تليجرام غير مفعلة أو بيانات الربط غير مكتملة' };
         }
 
-        if (!order) return;
-
-        // Calculate series and pieces
-        let totalSeries = 0;
-        let totalPieces = 0;
-        let itemsSummary = '';
-
-        if (order.order_items && Array.isArray(order.order_items)) {
-            order.order_items.forEach((item, idx) => {
-                const q = item.quantity || item.qty || 0;
-                const szCount = (item.models?.classes?.class_sizes?.length > 0 ? item.models.classes.class_sizes.length : item.models?.model_sizes?.length) || item.sizes_count || 1;
-                const pcs = q * szCount;
-                totalSeries += q;
-                totalPieces += pcs;
-
-                if (idx < 4) {
-                    const mName = item.models?.name || item.model_name || 'موديل';
-                    const cName = item.colors?.name || item.color_name || 'لون';
-                    itemsSummary += `\n▫️ ${mName} (${cName}) • <b>${q} سيري</b> (${pcs} ق)`;
-                }
-            });
-            if (order.order_items.length > 4) {
-                itemsSummary += `\n▫️ <i>وغيرها (${order.order_items.length - 4} أصناف أخرى)...</i>`;
-            }
+        // معالجة السوبر جروب (-100...)
+        if (chatId.startsWith('-') && !chatId.startsWith('-100') && chatId.length >= 8) {
+            chatId = '-100' + chatId.slice(1);
         }
 
-        const invNum = order.invoice_number || (orderId ? String(orderId).slice(0, 8) : 'جديد');
-        const custName = order.customer_name || 'عميل نقدي';
-        const phone1 = order.phone_1 || '-';
-        const phone2 = order.phone_2 ? ` / ${order.phone_2}` : '';
-        const address = order.address || 'غير محدد';
-        const total = parseFloat(order.total_price || 0).toLocaleString('ar-EG');
-        const deposit = parseFloat(order.deposit || 0).toLocaleString('ar-EG');
-        const remaining = (parseFloat(order.total_price || 0) - parseFloat(order.deposit || 0)).toLocaleString('ar-EG');
-        const cashier = order.system_users?.full_name || order.assigned_admin_name || 'DEVO';
-        const notes = order.notes ? `\n📝 <b>ملاحظات:</b> ${order.notes}` : '';
-        const cairoTime = new Date().toLocaleString('ar-EG');
+        // 4. تجهيز الرسالة الموجزة الآمنة
+        const title = escapeTgHtml(notif.title || 'أوردر جديد');
+        const body = escapeTgHtml(notif.body || '');
+        const dateStr = new Date(notif.created_at || Date.now()).toLocaleString('ar-EG');
+        const formattedMessage = `🔔 <b>${title}</b>\n━━━━━━━━━━━━\n${body}\n\n⏰ <i>${dateStr}</i>`;
 
-        const htmlMessage = 
-`🚨 <b>أوردر جديد قد وصل!</b>
-━━━━━━━━━━━━
-🧾 <b>رقم الأوردر:</b> #${invNum}
-👤 <b>اسم العميل:</b> ${custName}
-📞 <b>رقم الهاتف:</b> <code>${phone1}${phone2}</code>
-📍 <b>العنوان:</b> ${address}
-💵 <b>إجمالي المبلغ:</b> <b>${total} ج.م</b>
-📥 <b>المدفوع (عربون):</b> ${deposit} ج.م
-⏳ <b>المتبقي:</b> ${remaining} ج.م
-📦 <b>الكمية:</b> <b>${totalSeries} سيري</b> (${totalPieces} قطعة)
-👤 <b>الكاشير:</b> ${cashier}${itemsSummary}${notes}
-━━━━━━━━━━━━
-⏰ <i>${cairoTime}</i>`;
+        // 5. محاولة الإرسال
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: formattedMessage,
+                parse_mode: 'HTML'
+            }),
+            keepalive: true
+        });
 
-        const plainTextMessage = 
-`🚨 أوردر جديد قد وصل!
-━━━━━━━━━━━━
-🧾 رقم الأوردر: #${invNum}
-👤 اسم العميل: ${custName}
-📞 رقم الهاتف: ${phone1}${phone2}
-📍 العنوان: ${address}
-💵 إجمالي المبلغ: ${total} ج.م (عربون: ${deposit} ج.م • متبقي: ${remaining} ج.م)
-📦 الكمية: ${totalSeries} سيري (${totalPieces} قطعة)
-👤 الكاشير: ${cashier}
-━━━━━━━━━━━━
-⏰ ${cairoTime}`;
+        const resData = await res.json();
 
-        // Attempt delivery with automatic retries, supergroup migration handling, and plain text fallback
-        let targetChatId = chatId;
-        let attempts = 0;
-        const maxAttempts = 3;
+        if (res.ok && resData.ok) {
+            // تحديث حالة النجاح في قاعدة البيانات وتثبيت وقت الإرسال
+            await supabase
+                .from('system_notifications')
+                .update({
+                    telegram_status: 'sent',
+                    telegram_sent_at: new Date().toISOString(),
+                    telegram_attempts: (notif.telegram_attempts || 0) + 1,
+                    telegram_last_error: null
+                })
+                .eq('id', notificationId);
 
-        while (attempts < maxAttempts) {
-            attempts++;
-            try {
-                const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: targetChatId,
-                        text: htmlMessage,
-                        parse_mode: 'HTML'
-                    })
-                });
+            console.log(`✅ Telegram notification ${notificationId} retried and delivered successfully`);
+            return { success: true, message: 'تم إرسال الإشعار لتليجرام بنجاح' };
+        } else {
+            // تحديث حالة الفشل وسبب الخطأ
+            const errMsg = resData.description || 'فشل استجابة تليجرام';
+            await supabase
+                .from('system_notifications')
+                .update({
+                    telegram_status: 'failed',
+                    telegram_attempts: (notif.telegram_attempts || 0) + 1,
+                    telegram_last_error: errMsg
+                })
+                .eq('id', notificationId);
 
-                const resData = await res.json();
-                if (res.ok && resData.ok) {
-                    console.log(`✅ Telegram order notification delivered successfully on attempt ${attempts}`);
-                    return true;
-                }
+            return { success: false, message: errMsg };
+        }
+    } catch (e) {
+        console.error('Error in retrySingleTelegramNotification:', e);
+        return { success: false, message: e.message || 'خطأ غير متوقع بالاتصال' };
+    }
+}
 
-                console.warn(`⚠️ Telegram dispatch attempt ${attempts} failed:`, resData);
+// مراقب دوري لفحص الإشعارات الفاشلة وإعادة إرسالها تلقائياً بدون تكرار
+export async function retryFailedTelegramNotifications() {
+    if (isRetryingTelegram) return;
+    isRetryingTelegram = true;
 
-                // 1. معالجة ترقية الجروب إلى Supergroup (-100...)
-                const newMigratedId = resData.parameters?.migrate_to_chat_id;
-                if (newMigratedId || resData.description?.includes('upgraded to a supergroup chat') || (resData.description?.includes('chat not found') && !targetChatId.startsWith('-100'))) {
-                    targetChatId = String(newMigratedId || ('-100' + targetChatId.replace(/^-/, '')));
-                    await supabase.from('home_settings').upsert({
-                        setting_key: 'telegram_chat_id',
-                        setting_value: targetChatId
-                    }, { onConflict: 'setting_key' });
-                    continue;
-                }
+    try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        
+        // جلب الإشعارات التي تعذر إرسالها خلال آخر 24 ساعة ولم تتجاوز 3 محاولات
+        const { data: failedNotifications, error } = await supabase
+            .from('system_notifications')
+            .select('*')
+            .eq('telegram_status', 'failed')
+            .lt('telegram_attempts', 3)
+            .gte('created_at', oneDayAgo)
+            .order('created_at', { ascending: true })
+            .limit(10);
 
-                // 2. معالجة أخطاء تحليل الـ HTML والتبديل للنص العادي
-                if (resData.description?.includes("can't parse entities") || resData.description?.includes("Bad Request: can't parse")) {
-                    const fallbackRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: targetChatId,
-                            text: plainTextMessage
-                        })
-                    });
-                    const fallbackData = await fallbackRes.json();
-                    if (fallbackRes.ok && fallbackData.ok) {
-                        console.log('✅ Telegram notification delivered via PlainText fallback');
-                        return true;
-                    }
-                }
+        if (error || !failedNotifications || failedNotifications.length === 0) {
+            return;
+        }
 
-                // Wait 1 second before retrying
-                await new Promise(r => setTimeout(r, 1000));
-            } catch (netErr) {
-                console.error(`Telegram network attempt ${attempts} error:`, netErr);
-                await new Promise(r => setTimeout(r, 1200));
-            }
+        console.log(`🔄 Retrying ${failedNotifications.length} failed Telegram notifications...`);
+
+        for (const notif of failedNotifications) {
+            await retrySingleTelegramNotification(notif.id);
+            // مهلة نصف ثانية بين الرسائل لتجنب قيود تليجرام
+            await new Promise(r => setTimeout(r, 500));
         }
     } catch (err) {
-        console.error('Error in deliverOrderTelegramNotification:', err);
+        console.warn('Error during Telegram retry supervisor cycle:', err);
+    } finally {
+        isRetryingTelegram = false;
     }
+}
+
+// تشغيل المراقب الذكي في الخلفية
+export function startTelegramRetrySupervisor() {
+    if (retrySupervisorInterval) clearInterval(retrySupervisorInterval);
+    // تشغيل دوري كل دقيقتين
+    retrySupervisorInterval = setInterval(() => {
+        retryFailedTelegramNotifications();
+    }, 120000);
+
+    // إعادة الفحص فور عودة اتصال الإنترنت بالجهاز
+    window.addEventListener('online', () => {
+        console.log('🌐 Network restored, checking pending Telegram notifications...');
+        retryFailedTelegramNotifications();
+    });
+
+    // تشغيل فحص أولي بعد 5 ثوانٍ من فتح الموقع
+    setTimeout(() => {
+        retryFailedTelegramNotifications();
+    }, 5000);
 }

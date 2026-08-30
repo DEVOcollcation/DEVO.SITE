@@ -4,7 +4,6 @@ import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js'; 
 import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
 import { resolveImageUrl, bindImageToCache } from '../../services/offline_store.js';
-import { deliverOrderTelegramNotification } from '../../services/notifications.js';
 
 let currentUser = null;
 let cartItems = [];
@@ -152,7 +151,7 @@ async function loadAndRenderCart() {
     const modelIds = [...new Set(cartItems.map(i => i.modelId))];
 
     const [{ data: dbInventory }, { data: dbModels }] = await Promise.all([
-        supabase.from('model_inventory').select('model_id, color_id, available_series').in('model_id', modelIds),
+        supabase.from('model_inventory').select('model_id, color_id, available_series, colors(name)').in('model_id', modelIds),
         supabase.from('models').select('id, is_active').in('id', modelIds)
     ]);
 
@@ -160,6 +159,21 @@ async function loadAndRenderCart() {
     cachedDbInventory = dbInventory || [];
     cachedDbModels = dbModels || [];
     cachedOriginalOrderData = originalOrderData;
+
+    // 🛡️ إصلاح أسماء الألوان تلقائياً بالسلة من بيانات السيرفر
+    let cartModified = false;
+    cartItems.forEach(item => {
+        if (!item.colorName || item.colorName === 'لون' || item.colorName === 'غير محدد') {
+            const invMatch = cachedDbInventory.find(i => String(i.model_id) === String(item.modelId) && String(i.color_id) === String(item.colorId));
+            if (invMatch?.colors?.name) {
+                item.colorName = invMatch.colors.name;
+                cartModified = true;
+            }
+        }
+    });
+    if (cartModified) {
+        saveCart();
+    }
 
     renderCartItems(cachedDbInventory, cachedDbModels, cachedOriginalOrderData);
     updateFloatingCart();
@@ -636,16 +650,24 @@ async function handleCheckout(e) {
             }
         }
 
-        const orderItemsData = cartItems.map(item => ({
-            model_id: item.modelId,
-            color_id: item.colorId,
-            qty: item.qty,
-            model_name: item.modelName,
-            price: item.price * (item.sizesCount || 1),
-            total: item.qty * (item.sizesCount || 1) * item.price,
-            sizes_count: item.sizesCount || 1,
-            piece_price: item.price
-        }));
+        const orderItemsData = cartItems.map(item => {
+            let colName = item.colorName;
+            if (!colName || colName === 'لون' || colName === 'غير محدد') {
+                const invMatch = cachedDbInventory.find(i => String(i.model_id) === String(item.modelId) && String(i.color_id) === String(item.colorId));
+                if (invMatch?.colors?.name) colName = invMatch.colors.name;
+            }
+            return {
+                model_id: item.modelId,
+                color_id: item.colorId,
+                color_name: (colName && colName !== 'لون') ? colName : '',
+                qty: item.qty,
+                model_name: item.modelName,
+                price: item.price * (item.sizesCount || 1),
+                total: item.qty * (item.sizesCount || 1) * item.price,
+                sizes_count: item.sizesCount || 1,
+                piece_price: item.price
+            };
+        });
 
         const { data: rpcData, error: rpcError } = await supabase.rpc('process_order_transaction', {
             p_order_id: editingOrderId || null,
@@ -677,8 +699,6 @@ async function handleCheckout(e) {
             await logOrderAction(orderIdToPrint, 'edited_in_cart', `تم تعديل أصناف الأوردر وإعادة حفظه من السلة بواسطة (${userName})`);
         } else {
             await logOrderAction(orderIdToPrint, 'created', `تم إنشاء الأوردر بواسطة (${userName})`);
-            // إرسال وتأكيد وصول الإشعار اللحظي لتليجرام بالخلفية مع معالجة الأخطاء
-            deliverOrderTelegramNotification(orderIdToPrint, { ...finalOrderObj, order_items: orderItemsData }).catch(e => console.warn('Background TG dispatch:', e));
         }
 
         if (window.refreshWorkerOrders) {
@@ -722,10 +742,13 @@ window.confirmRemoveFromCart = async (index) => {
     }
 };
 
-window.closeConfirmModal = () => {
+window.closeConfirmModal = (skipHistory = false) => {
     const modal = document.getElementById('confirm-modal');
-    if(modal) {
+    if (modal && !modal.classList.contains('hidden')) {
         modal.classList.add('opacity-0');
+        if (!skipHistory && history.state && history.state.modalId === 'confirm-modal') {
+            history.back();
+        }
         setTimeout(() => modal.classList.add('hidden'), 300);
     }
     itemToDeleteIndex = null;
@@ -861,14 +884,18 @@ async function showInvoiceModal(order, items) {
     if (modal) {
         modal.classList.remove('hidden');
         setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        history.pushState({ modalId: 'invoice-modal' }, '', window.location.href);
     }
     localStorage.removeItem('devo_edit_order_data_cache');
 }
 
-window.finishOrderAndRedirect = () => {
+window.finishOrderAndRedirect = (skipHistory = false) => {
     const modal = document.getElementById('invoice-modal');
-    if (modal) {
+    if (modal && !modal.classList.contains('hidden')) {
         modal.classList.add('opacity-0');
+        if (!skipHistory && history.state && history.state.modalId === 'invoice-modal') {
+            history.back();
+        }
         setTimeout(() => {
             modal.classList.add('hidden');
             window.switchSiteView('view-gallery');
