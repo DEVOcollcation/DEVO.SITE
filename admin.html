@@ -4457,7 +4457,7 @@
                 <h4 class="text-white font-bold text-sm border-b border-devo-gray pb-2 mb-3">خيارات التصميم والتحكم</h4>
                 
                 <p class="text-[11px] text-devo-muted leading-relaxed">
-                    سيتم توليد باركود لـ <span id="bulk-barcode-count" class="text-devo-orange font-bold">0</span> موديل تم اختيارها.
+                    سيتم توليد باركود لـ <span id="bulk-barcode-count" class="text-devo-orange font-bold">0</span> موديل تم اختيارها (<span id="bulk-barcode-total-labels-estimate" class="text-white font-bold">0 ملصق</span>).
                 </p>
 
                 <!-- قسم قوالب التصميم -->
@@ -4550,21 +4550,21 @@
                         <div>
                             <label class="block text-[11px] font-bold text-devo-muted mb-1">طريقة تحديد عدد النسخ</label>
                             <select id="bulk-barcode-qty-mode" onchange="window.toggleBarcodeQtyInput(); window.updateBarcodePreview();" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-[11px] text-white focus:border-devo-orange outline-none cursor-pointer">
-                                <option value="fixed">عدد نسخ ثابت</option>
-                                <option value="by_color">تلقائي (حسب عدد ألوان الموديل)</option>
+                                <option value="fixed">عدد نسخ ثابت (لكل موديل)</option>
+                                <option value="by_color">تلقائي (حسب ألوان الموديل)</option>
                             </select>
                         </div>
                         <div id="bulk-barcode-fixed-qty-container">
-                            <label class="block text-[11px] font-bold text-devo-muted mb-1">عدد النسخ لكل ملصق</label>
-                            <input type="number" id="bulk-barcode-fixed-qty" value="1" min="1" max="100" oninput="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
+                            <label id="bulk-barcode-qty-label" class="block text-[11px] font-bold text-devo-muted mb-1">عدد النسخ لكل موديل</label>
+                            <input type="number" id="bulk-barcode-fixed-qty" value="1" min="1" max="100" oninput="window.updateBarcodePreview(); if(window.updateBarcodeEstimatedCount) window.updateBarcodeEstimatedCount();" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none text-center">
                         </div>
                     </div>
 
-                    <div>
+                    <div id="bulk-barcode-color-dist-container" class="hidden">
                         <label class="block text-[11px] font-bold text-devo-muted mb-1">طريقة توزيع الألوان على الملصقات</label>
-                        <select id="bulk-barcode-color-dist" onchange="updateBarcodePreview()" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-[11px] text-white focus:border-devo-orange outline-none cursor-pointer">
+                        <select id="bulk-barcode-color-dist" onchange="window.updateBarcodePreview(); if(window.updateBarcodeEstimatedCount) window.updateBarcodeEstimatedCount();" class="w-full bg-devo-black border border-devo-gray rounded-lg px-2.5 py-2 text-[11px] text-white focus:border-devo-orange outline-none cursor-pointer">
+                            <option value="separate">نسخة منفصلة لكل لون (طباعة ملصق خاص بكل لون)</option>
                             <option value="all_together">عرض جميع الألوان معاً على كل النسخ</option>
-                            <option value="separate">نسخة منفصلة لكل لون (طباعة لون واحد على كل ملصق)</option>
                         </select>
                     </div>
 

@@ -543,19 +543,71 @@ function loadScript(url) {
     });
 }
 
-// دالة إخفاء/تفعيل مدخلات عدد النسخ الثابت
+// دالة إخفاء/تفعيل مدخلات عدد النسخ وتوزيع الألوان
 window.toggleBarcodeQtyInput = () => {
-    const qtyMode = document.getElementById('bulk-barcode-qty-mode').value;
+    const qtyMode = document.getElementById('bulk-barcode-qty-mode')?.value || 'fixed';
     const container = document.getElementById('bulk-barcode-fixed-qty-container');
-    if (container) {
-        const input = container.querySelector('input');
-        if (qtyMode === 'fixed') {
-            container.classList.remove('opacity-50', 'pointer-events-none');
-            if (input) input.disabled = false;
-        } else {
-            container.classList.add('opacity-50', 'pointer-events-none');
-            if (input) input.disabled = true;
+    const label = document.getElementById('bulk-barcode-qty-label');
+    const colorDistContainer = document.getElementById('bulk-barcode-color-dist-container');
+    const input = container?.querySelector('input');
+
+    if (qtyMode === 'fixed') {
+        if (container) container.classList.remove('opacity-50', 'pointer-events-none', 'hidden');
+        if (input) input.disabled = false;
+        if (label) label.textContent = 'عدد النسخ لكل موديل';
+        if (colorDistContainer) colorDistContainer.classList.add('hidden');
+    } else {
+        if (container) container.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
+        if (input) input.disabled = false;
+        if (label) label.textContent = 'عدد النسخ لكل لون';
+        if (colorDistContainer) colorDistContainer.classList.remove('hidden');
+    }
+
+    window.updateBarcodeEstimatedCount();
+};
+
+// دالة حساب وعرض إجمالي عدد الملصقات المتوقعة بدقة
+window.updateBarcodeEstimatedCount = () => {
+    const estimateEl = document.getElementById('bulk-barcode-total-labels-estimate');
+    if (!estimateEl) return;
+
+    const qtyMode = document.getElementById('bulk-barcode-qty-mode')?.value || 'fixed';
+    const fixedQty = parseInt(document.getElementById('bulk-barcode-fixed-qty')?.value, 10) || 1;
+    const skipZeroStock = document.getElementById('bulk-barcode-skip-zero-stock-colors')?.checked ?? true;
+
+    const selectedModels = barcodeAllModels.filter(m => selectedBarcodeModelIds.has(m.id));
+    if (selectedModels.length === 0) {
+        estimateEl.textContent = '0 ملصق';
+        return;
+    }
+
+    let totalStickers = 0;
+    selectedModels.forEach(m => {
+        let colorsCount = 1;
+        const hasInventoryEntries = m.model_inventory && m.model_inventory.length > 0;
+        if (hasInventoryEntries) {
+            let items = m.model_inventory;
+            if (skipZeroStock) {
+                items = items.filter(inv => (inv.available_series || 0) > 0);
+            }
+            const uniqueColors = new Set(items.map(inv => (inv.colors && inv.colors.name) || colorsMap[inv.color_id] || '').filter(Boolean));
+            if (uniqueColors.size === 0 && skipZeroStock) {
+                return; // تم تخطي الموديل لنفاد رصيد جميع ألوانه
+            }
+            colorsCount = Math.max(1, uniqueColors.size);
         }
+
+        if (qtyMode === 'fixed') {
+            totalStickers += Math.max(1, fixedQty);
+        } else {
+            totalStickers += colorsCount * Math.max(1, fixedQty);
+        }
+    });
+
+    if (qtyMode === 'fixed') {
+        estimateEl.textContent = `${totalStickers} ملصق (${fixedQty} لكل موديل)`;
+    } else {
+        estimateEl.textContent = `${totalStickers} ملصق (حسب ألوان الموديلات)`;
     }
 };
 
@@ -576,7 +628,8 @@ window.updateBarcodePreview = () => {
     const showSizes = document.getElementById('bulk-barcode-show-sizes').checked;
     const showPrice = document.getElementById('bulk-barcode-show-price').checked;
     const showColors = document.getElementById('bulk-barcode-show-colors').checked;
-    const colorDist = document.getElementById('bulk-barcode-color-dist').value;
+    const qtyMode = document.getElementById('bulk-barcode-qty-mode')?.value || 'fixed';
+    const colorDist = document.getElementById('bulk-barcode-color-dist')?.value;
 
     // ضبط أبعاد كرت المعاينة
     const previewCard = document.getElementById('barcode-preview-card');
@@ -608,7 +661,7 @@ window.updateBarcodePreview = () => {
     if (prevColors) {
         prevColors.style.display = showColors ? 'block' : 'none';
         prevColors.style.fontSize = `${fontDetails}px`;
-        if (colorDist === 'separate') {
+        if (qtyMode === 'by_color' && colorDist === 'separate') {
             prevColors.textContent = 'أحمر (مثال لون منفرد)';
         } else {
             prevColors.textContent = 'أحمر، أسود، أزرق';
@@ -661,6 +714,8 @@ window.updateBarcodePreview = () => {
             qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(sampleValue)}`;
         }
     }
+
+    window.updateBarcodeEstimatedCount();
 };
 
 window.openBulkBarcodeModal = async () => {
@@ -789,29 +844,22 @@ window.generateAndPrintBulkBarcodes = () => {
             value: formattedCodeVal
         };
 
-        if (qtyMode === 'by_color') {
-            const copiesCount = colorsList.length;
-            if (colorDist === 'separate') {
-                colorsList.forEach(color => {
-                    labelsToPrint.push({
-                        ...baseLabel,
-                        colorStr: showColors ? color : ''
-                    });
+        if (qtyMode === 'fixed') {
+            // تكرار بعدد نسخ ثابت لكل موديل (وليس بعدد ألوان الموديل)
+            const copiesCount = Math.max(1, fixedQty);
+            const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
+            for (let i = 0; i < copiesCount; i++) {
+                labelsToPrint.push({
+                    ...baseLabel,
+                    colorStr: allColorsJoined
                 });
-            } else {
-                const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
-                for (let i = 0; i < copiesCount; i++) {
-                    labelsToPrint.push({
-                        ...baseLabel,
-                        colorStr: allColorsJoined
-                    });
-                }
             }
         } else {
-            const copiesCount = Math.max(1, fixedQty);
+            // تكرار تلقائي حسب ألوان الموديل
+            const copiesPerColor = Math.max(1, fixedQty);
             if (colorDist === 'separate') {
                 colorsList.forEach(color => {
-                    for (let i = 0; i < copiesCount; i++) {
+                    for (let i = 0; i < copiesPerColor; i++) {
                         labelsToPrint.push({
                             ...baseLabel,
                             colorStr: showColors ? color : ''
@@ -820,7 +868,8 @@ window.generateAndPrintBulkBarcodes = () => {
                 });
             } else {
                 const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
-                for (let i = 0; i < copiesCount; i++) {
+                const totalCopies = colorsList.length * copiesPerColor;
+                for (let i = 0; i < totalCopies; i++) {
                     labelsToPrint.push({
                         ...baseLabel,
                         colorStr: allColorsJoined
