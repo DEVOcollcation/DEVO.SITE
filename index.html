@@ -6,9 +6,9 @@
     <title>DEVO | المعرض</title>
     <link rel="icon" type="image/png" href="./src/assets/icons/dv.png">
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <link rel="stylesheet" href="./src/css/tailwind.css">
+    <link rel="stylesheet" href="./src/vendor/phosphor/style.css">
+    <script src="./src/vendor/html5-qrcode/html5-qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest-index.json">
     <meta name="mobile-web-app-capable" content="yes">
@@ -128,41 +128,7 @@
             } catch(e) { console.error('Theme early load error:', e); }
         })();
     </script>
-    <script>
-        const withOpacity = (variableName, fallback) => {
-            return ({ opacityValue }) => {
-                if (opacityValue !== undefined) {
-                    return `color-mix(in srgb, var(${variableName}, ${fallback}) calc(100% * ${opacityValue}), transparent)`;
-                }
-                return `var(${variableName}, ${fallback})`;
-            };
-        };
 
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        devo: {
-                            black: withOpacity('--devo-black', '#0a0a0a'),
-                            dark: withOpacity('--devo-dark', '#171717'),
-                            gray: withOpacity('--devo-gray', '#262626'),
-                            grayHover: withOpacity('--devo-gray-hover', '#404040'),
-                            orange: withOpacity('--devo-orange', '#f97316'),
-                            orangeHover: withOpacity('--devo-orange-hover', '#ea580c'),
-                            text: withOpacity('--devo-text', '#f5f5f5'),
-                            muted: withOpacity('--devo-muted', '#a3a3a3'),
-                            success: withOpacity('--devo-success', '#10b981'),
-                            error: withOpacity('--devo-error', '#ef4444'),
-                            warning: withOpacity('--devo-warning', '#f59e0b'),
-                            info: withOpacity('--devo-info', '#3b82f6')
-                        }
-                    },
-                    fontFamily: { sans: ['Tajawal', 'sans-serif'] },
-                    boxShadow: { 'devo-float': 'var(--shadow-devo-float, 0 10px 40px -10px rgba(0,0,0,0.8))' }
-                }
-            }
-        }
-    </script>
     <style>
         body { font-family: 'Tajawal', sans-serif; }
         ::-webkit-scrollbar { width: 6px; }

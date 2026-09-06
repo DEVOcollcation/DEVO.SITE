@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v11.2';
+const CACHE_VERSION = 'v12.0';
 const STATIC_CACHE = `devo-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = 'devo-images-v3';
 
@@ -7,6 +7,24 @@ const staticAssets = [
   './index.html',
   './admin.html',
   './auth.html',
+  './src/css/tailwind.css',
+  './src/vendor/phosphor/style.css',
+  './src/vendor/phosphor/regular/style.css',
+  './src/vendor/phosphor/regular/Phosphor.woff2',
+  './src/vendor/phosphor/fill/style.css',
+  './src/vendor/phosphor/fill/Phosphor-Fill.woff2',
+  './src/vendor/phosphor/bold/style.css',
+  './src/vendor/phosphor/bold/Phosphor-Bold.woff2',
+  './src/vendor/phosphor/duotone/style.css',
+  './src/vendor/phosphor/duotone/Phosphor-Duotone.woff2',
+  './src/vendor/phosphor/light/style.css',
+  './src/vendor/phosphor/light/Phosphor-Light.woff2',
+  './src/vendor/phosphor/thin/style.css',
+  './src/vendor/phosphor/thin/Phosphor-Thin.woff2',
+  './src/vendor/xlsx/xlsx.full.min.js',
+  './src/vendor/html5-qrcode/html5-qrcode.min.js',
+  './src/vendor/barcode/JsBarcode.all.min.js',
+  './src/vendor/barcode/qrcode.min.js',
   './src/assets/icons/dv.png',
   './src/assets/icons/pwa-192.jpg',
   './src/assets/icons/pwa-512.jpg',

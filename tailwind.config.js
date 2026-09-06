@@ -1,34 +1,45 @@
 /** @type {import('tailwindcss').Config} */
+
+const withOpacity = (variableName, fallback) => {
+  return ({ opacityValue }) => {
+    if (opacityValue !== undefined) {
+      return `color-mix(in srgb, var(${variableName}, ${fallback}) calc(${opacityValue} * 100%), transparent)`;
+    }
+    return `var(${variableName}, ${fallback})`;
+  };
+};
+
 module.exports = {
   // Define where Tailwind should look for utility classes
   content: [
     "./index.html",
     "./admin.html",
+    "./auth.html",
     "./src/js/**/*.js"
   ],
   theme: {
     extend: {
       colors: {
         devo: {
-          // Base Dark Theme Colors
-          black: '#0a0a0a',       // Main application background
-          dark: '#171717',        // Surface color (Cards, Modals)
-          gray: '#262626',        // Borders, dividers, and disabled states
-          grayHover: '#404040',   // Hover states for dark elements
+          // Base Dark Theme Colors (driven by CSS custom properties with fallbacks)
+          black: withOpacity('--devo-black', '#0a0a0a'),
+          dark: withOpacity('--devo-dark', '#171717'),
+          gray: withOpacity('--devo-gray', '#262626'),
+          grayHover: withOpacity('--devo-gray-hover', '#404040'),
           
           // Brand Colors
-          orange: '#f97316',      // Primary brand color
-          orangeHover: '#ea580c', // Darker orange for button hover states
+          orange: withOpacity('--devo-orange', '#f97316'),
+          orangeHover: withOpacity('--devo-orange-hover', '#ea580c'),
           
           // Typography Colors
-          text: '#f5f5f5',        // Primary text (Off-white for better readability)
-          muted: '#a3a3a3',       // Secondary text, placeholders, and inactive icons
+          text: withOpacity('--devo-text', '#f5f5f5'),
+          muted: withOpacity('--devo-muted', '#a3a3a3'),
           
           // Semantic Colors (For Toasts, Modals, and Status indicators)
-          success: '#10b981',     // Emerald 500 - Success states
-          error: '#ef4444',       // Red 500 - Destructive actions/Errors
-          warning: '#f59e0b',     // Amber 500 - Warnings/Alerts
-          info: '#3b82f6'         // Blue 500 - Informational messages
+          success: withOpacity('--devo-success', '#10b981'),
+          error: withOpacity('--devo-error', '#ef4444'),
+          warning: withOpacity('--devo-warning', '#f59e0b'),
+          info: withOpacity('--devo-info', '#3b82f6')
         }
       },
       fontFamily: {
@@ -37,10 +48,9 @@ module.exports = {
       },
       boxShadow: {
         // Custom elegant shadow for floating elements (Modals, Toasts)
-        'devo-float': '0 10px 40px -10px rgba(0,0,0,0.8)',
+        'devo-float': 'var(--shadow-devo-float, 0 10px 40px -10px rgba(0,0,0,0.8))',
       }
     },
-    
   },
   plugins: [],
 }

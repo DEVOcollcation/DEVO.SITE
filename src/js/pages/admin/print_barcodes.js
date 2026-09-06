@@ -508,10 +508,10 @@ function getModelSizesString(m) {
 // دالة تحميل مكتبات التشفير ديناميكياً
 async function loadPrintingLibraries() {
     if (typeof JsBarcode === 'undefined') {
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js');
+        await loadScript('./src/vendor/barcode/JsBarcode.all.min.js');
     }
     if (typeof QRCode === 'undefined') {
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js');
+        await loadScript('./src/vendor/barcode/qrcode.min.js');
     }
 }
 
@@ -983,8 +983,8 @@ window.generateAndPrintBulkBarcodes = () => {
             display: ${showPrice ? 'block' : 'none'};
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js"></script>
+    <script src="./src/vendor/barcode/JsBarcode.all.min.js"></script>
+    <script src="./src/vendor/barcode/qrcode.min.js"></script>
 </head>
 <body>
     <div id="labels-container"></div>

@@ -220,10 +220,40 @@ function processRealtimeModelsQueue() {
     }, 800);
 }
 
+let adminModelsRealtimeChannel = null;
+let isReconnectingAdminModels = false;
+let adminInvDebounceTimer = null;
+const pendingAdminInvModelIds = new Set();
+let isReconcilingAdminModels = false;
+
+// دالة التجميع والتفريغ الذكي لتحديثات المخزون في لوحة الأدمن (تمنع تجميد المتصفح)
+function scheduleAdminInvFlush() {
+    if (adminInvDebounceTimer) clearTimeout(adminInvDebounceTimer);
+    adminInvDebounceTimer = setTimeout(() => {
+        if (pendingAdminInvModelIds.size === 0) return;
+        const targetIds = Array.from(pendingAdminInvModelIds);
+        pendingAdminInvModelIds.clear();
+
+        updateAdminStats(); // تشغيل الحسابات مرة واحدة فقط للدفعة بالكامل
+
+        targetIds.forEach(modelId => {
+            const m = allModels.find(mod => mod.id === modelId);
+            if (m) {
+                const card = document.getElementById(`admin-model-card-${modelId}`);
+                if (card) card.outerHTML = generateModelCardHTML(m);
+                if (currentOpenModelId === modelId) updateLiveModalInventory(m);
+            }
+        });
+    }, 60);
+}
+
 function setupAdminRealtimeTracker() {
-    supabase.channel('admin_models_tracker')
+    if (adminModelsRealtimeChannel) {
+        try { supabase.removeChannel(adminModelsRealtimeChannel); } catch (e) {}
+    }
+
+    adminModelsRealtimeChannel = supabase.channel('admin_models_tracker')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, (payload) => {
-            
             if (payload.eventType === 'DELETE') {
                 allModels = allModels.filter(m => m.id !== payload.old.id);
                 updateAdminStats();
@@ -248,19 +278,33 @@ function setupAdminRealtimeTracker() {
                 processRealtimeModelsQueue();
             }
         })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
-            const mIndex = allModels.findIndex(m => m.id === payload.new.model_id);
-            if (mIndex > -1) {
-                const iIndex = allModels[mIndex].model_inventory.findIndex(i => i.color_id === payload.new.color_id);
-                if (iIndex > -1) {
-                    allModels[mIndex].model_inventory[iIndex].available_series = payload.new.available_series;
-                    updateAdminStats(); 
-                    
-                    const card = document.getElementById(`admin-model-card-${payload.new.model_id}`);
-                    if (card) card.outerHTML = generateModelCardHTML(allModels[mIndex]);
+        // 🚨 استقبال كافة أحداث المخزون (INSERT, UPDATE, DELETE) بدون فقدان أي صنف 🚨
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'model_inventory' }, (payload) => {
+            const eventType = payload.eventType;
+            const targetModelId = eventType === 'DELETE' ? payload.old.model_id : payload.new.model_id;
+            const mIndex = allModels.findIndex(m => m.id === targetModelId);
+            if (mIndex === -1) return;
 
-                    if (currentOpenModelId === payload.new.model_id) updateLiveModalInventory(allModels[mIndex]);
+            const model = allModels[mIndex];
+            if (!model.model_inventory) model.model_inventory = [];
+
+            if (eventType === 'DELETE') {
+                model.model_inventory = model.model_inventory.filter(i => i.color_id !== payload.old.color_id);
+                pendingAdminInvModelIds.add(targetModelId);
+                scheduleAdminInvFlush();
+            } else if (eventType === 'UPDATE' || eventType === 'INSERT') {
+                const iIndex = model.model_inventory.findIndex(i => i.color_id === payload.new.color_id);
+                if (iIndex > -1) {
+                    model.model_inventory[iIndex].available_series = payload.new.available_series;
+                } else {
+                    model.model_inventory.push({
+                        color_id: payload.new.color_id,
+                        available_series: payload.new.available_series,
+                        colors: { id: payload.new.color_id, name: 'لون', color_code: '#888888' }
+                    });
                 }
+                pendingAdminInvModelIds.add(targetModelId);
+                scheduleAdminInvFlush();
             }
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stock_movements' }, async (payload) => {
@@ -268,11 +312,95 @@ function setupAdminRealtimeTracker() {
                 const { data: colorData } = await supabase.from('colors').select('name').eq('id', payload.new.color_id).single();
                 payload.new.colors = { name: colorData?.name || 'غير معروف' };
                 currentModelMovements.unshift(payload.new);
-                currentModelMovements = cleanUpMovements(currentModelMovements); // تطبيق التنظيف لحظياً
+                currentModelMovements = cleanUpMovements(currentModelMovements);
                 window.applyHistoryFilters(); 
             }
         })
-        .subscribe();
+        .subscribe((status) => {
+            console.log('[Admin Models Realtime Status]:', status);
+            if (status === 'SUBSCRIBED') {
+                isReconnectingAdminModels = false;
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                if (!isReconnectingAdminModels) {
+                    isReconnectingAdminModels = true;
+                    setTimeout(() => {
+                        console.log('[Admin Models Realtime] Reconnecting channel...');
+                        setupAdminRealtimeTracker();
+                        reconcileAdminInventory();
+                    }, 3000);
+                }
+            }
+        });
+}
+
+// رادار استيقاظ الأجهزة والمطابقة الفورية (Admin Auto-Reconciliation)
+async function reconcileAdminInventory() {
+    if (isReconcilingAdminModels || allModels.length === 0) return;
+    isReconcilingAdminModels = true;
+    try {
+        const { data: latestInv, error } = await supabase
+            .from('model_inventory')
+            .select('model_id, color_id, available_series');
+
+        if (error || !latestInv) return;
+
+        const invMap = new Map();
+        latestInv.forEach(row => {
+            invMap.set(`${row.model_id}_${row.color_id}`, row.available_series);
+        });
+
+        const changedModelIds = new Set();
+        allModels.forEach(model => {
+            if (model.model_inventory) {
+                model.model_inventory.forEach(inv => {
+                    const key = `${model.id}_${inv.color_id}`;
+                    const serverVal = invMap.get(key);
+                    if (serverVal !== undefined && serverVal !== inv.available_series) {
+                        inv.available_series = serverVal;
+                        changedModelIds.add(model.id);
+                    }
+                });
+            }
+        });
+
+        if (changedModelIds.size > 0) {
+            console.log(`[Admin Models Reconcile] Synced ${changedModelIds.size} models after wakeup/reconnect.`);
+            updateAdminStats();
+            changedModelIds.forEach(modelId => {
+                const m = allModels.find(mod => mod.id === modelId);
+                if (m) {
+                    const card = document.getElementById(`admin-model-card-${modelId}`);
+                    if (card) card.outerHTML = generateModelCardHTML(m);
+                    if (currentOpenModelId === modelId) updateLiveModalInventory(m);
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[Admin Models Reconcile Exception]:', e);
+    } finally {
+        isReconcilingAdminModels = false;
+    }
+}
+
+// استماع استيقاظ الشاشة وعودة الإنترنت
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            reconcileAdminInventory();
+        }
+    });
+}
+if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+        reconcileAdminInventory();
+    });
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            console.log('[Admin Models] Restored from Back-Forward Cache (bfcache). Reconnecting Realtime...');
+            setupAdminRealtimeTracker();
+            reconcileAdminInventory();
+        }
+    });
 }
 
 function resolveImageUrl(url) {

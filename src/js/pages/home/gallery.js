@@ -207,19 +207,122 @@ function populateCategoryFilter() {
 }
 
 // ==========================================
-// 🌟 2. الرادار اللحظي الشامل (Insert, Update, Delete) 🌟
+// 🌟 2. الرادار اللحظي الشامل والفائق (High-Throughput Batched Realtime) 🌟
 // ==========================================
+let galleryRealtimeChannel = null;
+let isReconnectingGallery = false;
+let galleryInvDebounceTimer = null;
+const pendingGalleryInvModels = new Set();
+const realtimeGalleryModelsQueue = { inserts: new Set(), updates: new Set() };
+let realtimeGalleryModelsTimeout = null;
+let isReconcilingGallery = false;
+
+// دالة التجميع والتفريغ الذكي للمخزون (تمنع التهنيج عند معالجة فواتير 50 صنف)
+function scheduleGalleryInvFlush() {
+    if (galleryInvDebounceTimer) clearTimeout(galleryInvDebounceTimer);
+    galleryInvDebounceTimer = setTimeout(() => {
+        if (pendingGalleryInvModels.size === 0) return;
+        const targetIds = Array.from(pendingGalleryInvModels);
+        pendingGalleryInvModels.clear();
+
+        targetIds.forEach(modelId => {
+            const m = allModels.find(mod => String(mod.id) === String(modelId));
+            if (m) {
+                putCachedModel(m);
+                patchGalleryCardDOM(m);
+                updateModelViewerDOM(m.id);
+            }
+        });
+
+        // إذا كان هناك فلتر رصيد نشط، نقوم بتحديث الفلاتر مرة واحدة للدفعة كاملة
+        const stockFilter = document.getElementById('gal-stock')?.value;
+        if (stockFilter && stockFilter !== 'all') {
+            applyGalleryFilters();
+        }
+    }, 60);
+}
+
+// دالة معالجة دفعات تحديث الموديلات
+function processRealtimeGalleryModelsQueue() {
+    if (realtimeGalleryModelsTimeout) clearTimeout(realtimeGalleryModelsTimeout);
+    realtimeGalleryModelsTimeout = setTimeout(async () => {
+        const inserts = new Set(realtimeGalleryModelsQueue.inserts);
+        const updates = new Set(realtimeGalleryModelsQueue.updates);
+        realtimeGalleryModelsQueue.inserts.clear();
+        realtimeGalleryModelsQueue.updates.clear();
+        realtimeGalleryModelsTimeout = null;
+
+        const idsToFetch = [...inserts, ...updates];
+        if (idsToFetch.length === 0) return;
+
+        try {
+            let fetchedModels = [];
+            const chunkSize = 40;
+            for (let i = 0; i < idsToFetch.length; i += chunkSize) {
+                const chunk = idsToFetch.slice(i, i + chunkSize);
+                const { data, error } = await supabase
+                    .from('models')
+                    .select(`
+                        *, categories(name), classes(name, class_sizes(sizes(name))),
+                        model_sizes(sizes(name)), model_inventory(color_id, available_series, colors(name)), model_images(image_url)
+                    `)
+                    .in('id', chunk);
+
+                if (!error && data) {
+                    fetchedModels = [...fetchedModels, ...data];
+                }
+            }
+
+            let needsFilter = false;
+            fetchedModels.forEach(fullModel => {
+                if (!fullModel.is_active) {
+                    allModels = allModels.filter(m => String(m.id) !== String(fullModel.id));
+                    deleteCachedModel(fullModel.id);
+                    const card = document.getElementById(`gallery-card-${fullModel.id}`);
+                    if (card) card.remove();
+                    checkAndCloseModal(fullModel.id, 'تم تعطيل هذا الموديل ولم يعد متاحاً.');
+                    needsFilter = true;
+                    return;
+                }
+
+                putCachedModel(fullModel);
+                if (fullModel.model_images?.[0]?.image_url) {
+                    cacheImageBlob(fullModel.model_images[0].image_url, fullModel.id);
+                }
+
+                const index = allModels.findIndex(m => String(m.id) === String(fullModel.id));
+                if (index > -1) {
+                    allModels[index] = fullModel;
+                    patchGalleryCardDOM(fullModel);
+                    updateModelViewerDOM(fullModel.id);
+                } else {
+                    allModels.unshift(fullModel);
+                    needsFilter = true;
+                }
+            });
+
+            if (needsFilter) {
+                populateCategoryFilter();
+                applyGalleryFilters();
+            }
+        } catch (err) {
+            console.error('[Gallery] Batched models fetch error:', err);
+        }
+    }, 600);
+}
+
 function setupGalleryRealtime() {
-    supabase.channel('public_gallery_sync')
+    if (galleryRealtimeChannel) {
+        try { supabase.removeChannel(galleryRealtimeChannel); } catch (e) {}
+    }
+
+    galleryRealtimeChannel = supabase.channel('public_gallery_sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, (payload) => {
-            
-            // 🚨 حالة الحذف المباشر (DELETE) 🚨
             if (payload.eventType === 'DELETE') {
                 const targetId = payload.old.id;
                 allModels = allModels.filter(m => m.id !== targetId);
                 deleteCachedModel(targetId);
                 
-                // أنيميشن ناعم لحذف الكارت إن وجد
                 const card = document.getElementById(`gallery-card-${targetId}`);
                 if (card) {
                     card.style.transition = 'all 0.35s ease';
@@ -234,83 +337,131 @@ function setupGalleryRealtime() {
                 return;
             }
 
-            // 🌟 الحل السحري (Race Condition Fix): 
-            // ننتظر 800 ملي ثانية لكي تكتمل عمليات مسح وإعادة إدخال الألوان والصور في قاعدة البيانات
-            setTimeout(async () => {
-                const { data: fullModel, error } = await supabase
-                    .from('models')
-                    .select(`
-                        *, categories(name), classes(name, class_sizes(sizes(name))),
-                        model_sizes(sizes(name)), model_inventory(color_id, available_series, colors(name)), model_images(image_url)
-                    `)
-                    .eq('id', payload.new.id)
-                    .single();
-
-                if (error || !fullModel) return;
-
-                if (payload.eventType === 'INSERT') {
-                    if (fullModel.is_active) {
-                        if (!allModels.find(m => String(m.id) === String(fullModel.id))) {
-                            allModels.unshift(fullModel);
-                            putCachedModel(fullModel);
-                            if (fullModel.model_images?.[0]?.image_url) {
-                                cacheImageBlob(fullModel.model_images[0].image_url, fullModel.id);
-                            }
-                            applyGalleryFilters();
-                        }
-                    }
-                } 
-                else if (payload.eventType === 'UPDATE') {
-                    if (!fullModel.is_active) {
-                        allModels = allModels.filter(m => String(m.id) !== String(fullModel.id));
-                        deleteCachedModel(fullModel.id);
-                        
-                        const card = document.getElementById(`gallery-card-${fullModel.id}`);
-                        if (card) {
-                            card.style.transition = 'all 0.35s ease';
-                            card.style.opacity = '0';
-                            card.style.transform = 'scale(0.92)';
-                            setTimeout(() => { applyGalleryFilters(); }, 350);
-                        } else {
-                            applyGalleryFilters();
-                        }
-
-                        checkAndCloseModal(fullModel.id, 'تم تعطيل هذا الموديل ولم يعد متاحاً.');
-                    } else {
-                        const index = allModels.findIndex(m => String(m.id) === String(fullModel.id));
-                        putCachedModel(fullModel);
-                        if (fullModel.model_images?.[0]?.image_url) {
-                            cacheImageBlob(fullModel.model_images[0].image_url, fullModel.id);
-                        }
-
-                        if (index > -1) {
-                            allModels[index] = fullModel;
-                            patchGalleryCardDOM(fullModel);
-                            updateModelViewerDOM(fullModel.id);
-                        } else {
-                            // كان معطلاً وأصبح نشطاً (إضافة جديدة للمعرض)
-                            allModels.unshift(fullModel);
-                            applyGalleryFilters();
-                        }
-                    }
+            if (payload.eventType === 'INSERT') {
+                realtimeGalleryModelsQueue.inserts.add(payload.new.id);
+                processRealtimeGalleryModelsQueue();
+            } else if (payload.eventType === 'UPDATE') {
+                if (!realtimeGalleryModelsQueue.inserts.has(payload.new.id)) {
+                    realtimeGalleryModelsQueue.updates.add(payload.new.id);
                 }
-            }, 800);
-        })
-        
-        // 🚨 حالة تعديل المخزون المباشر 🚨
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
-            const modelIndex = allModels.findIndex(m => String(m.id) === String(payload.new.model_id));
-            if (modelIndex > -1) {
-                const invIndex = allModels[modelIndex].model_inventory?.findIndex(i => String(i.color_id) === String(payload.new.color_id));
-                if (invIndex > -1) {
-                    allModels[modelIndex].model_inventory[invIndex].available_series = payload.new.available_series;
-                    putCachedModel(allModels[modelIndex]);
-                    patchGalleryCardDOM(allModels[modelIndex]);
-                    updateModelViewerDOM(payload.new.model_id);
-                }
+                processRealtimeGalleryModelsQueue();
             }
         })
-        .subscribe();
+        
+        // 🚨 معالجة كافة أحداث المخزون (INSERT, UPDATE, DELETE) بدون فقدان أي صنف 🚨
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'model_inventory' }, (payload) => {
+            const eventType = payload.eventType;
+            const targetModelId = eventType === 'DELETE' ? payload.old.model_id : payload.new.model_id;
+            const modelIndex = allModels.findIndex(m => String(m.id) === String(targetModelId));
+            if (modelIndex === -1) return;
+
+            const model = allModels[modelIndex];
+            if (!model.model_inventory) model.model_inventory = [];
+
+            if (eventType === 'DELETE') {
+                model.model_inventory = model.model_inventory.filter(i => String(i.color_id) !== String(payload.old.color_id));
+                pendingGalleryInvModels.add(targetModelId);
+                scheduleGalleryInvFlush();
+            } else if (eventType === 'UPDATE' || eventType === 'INSERT') {
+                const invIndex = model.model_inventory.findIndex(i => String(i.color_id) === String(payload.new.color_id));
+                if (invIndex > -1) {
+                    model.model_inventory[invIndex].available_series = payload.new.available_series;
+                } else {
+                    const colorName = globalColorsMap[String(payload.new.color_id)] || 'لون';
+                    model.model_inventory.push({
+                        color_id: payload.new.color_id,
+                        available_series: payload.new.available_series,
+                        colors: { name: colorName }
+                    });
+                }
+                pendingGalleryInvModels.add(targetModelId);
+                scheduleGalleryInvFlush();
+            }
+        })
+        .subscribe((status) => {
+            console.log('[Gallery Realtime Status]:', status);
+            if (status === 'SUBSCRIBED') {
+                isReconnectingGallery = false;
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                if (!isReconnectingGallery) {
+                    isReconnectingGallery = true;
+                    setTimeout(() => {
+                        console.log('[Gallery Realtime] Reconnecting channel...');
+                        setupGalleryRealtime();
+                        reconcileGalleryInventory();
+                    }, 3000);
+                }
+            }
+        });
+}
+
+// رادار استيقاظ الأجهزة وعودة الاتصال (Auto-Reconciliation)
+async function reconcileGalleryInventory() {
+    if (isReconcilingGallery || allModels.length === 0) return;
+    isReconcilingGallery = true;
+    try {
+        const { data: latestInv, error } = await supabase
+            .from('model_inventory')
+            .select('model_id, color_id, available_series');
+
+        if (error || !latestInv) return;
+
+        const invMap = new Map();
+        latestInv.forEach(row => {
+            invMap.set(`${row.model_id}_${row.color_id}`, row.available_series);
+        });
+
+        const changedIds = new Set();
+        allModels.forEach(model => {
+            if (model.model_inventory) {
+                model.model_inventory.forEach(inv => {
+                    const key = `${model.id}_${inv.color_id}`;
+                    const serverVal = invMap.get(key);
+                    if (serverVal !== undefined && serverVal !== inv.available_series) {
+                        inv.available_series = serverVal;
+                        changedIds.add(model.id);
+                    }
+                });
+            }
+        });
+
+        if (changedIds.size > 0) {
+            console.log(`[Gallery Reconcile] Synced ${changedIds.size} models after wakeup/reconnect.`);
+            changedIds.forEach(id => {
+                const m = allModels.find(mod => String(mod.id) === String(id));
+                if (m) {
+                    putCachedModel(m);
+                    patchGalleryCardDOM(m);
+                    updateModelViewerDOM(m.id);
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[Gallery Reconcile Exception]:', e);
+    } finally {
+        isReconcilingGallery = false;
+    }
+}
+
+// الاستماع لأحداث استيقاظ الشاشة وعودة الإنترنت
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            reconcileGalleryInventory();
+        }
+    });
+}
+if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+        reconcileGalleryInventory();
+    });
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            console.log('[Gallery] Restored from Back-Forward Cache (bfcache). Reconnecting Realtime...');
+            setupGalleryRealtime();
+            reconcileGalleryInventory();
+        }
+    });
 }
 
 // دالة حماية: إغلاق نافذة الموديل إذا تم إخفاؤه أو حذفه

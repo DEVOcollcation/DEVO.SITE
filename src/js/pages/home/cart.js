@@ -42,15 +42,31 @@ export function initCart() {
 // ==========================================
 // 🌟 1. الرادار اللحظي للسلة
 // ==========================================
+let cartRenderDebounceTimer = null;
+function scheduleCartRender() {
+    if (cartRenderDebounceTimer) clearTimeout(cartRenderDebounceTimer);
+    cartRenderDebounceTimer = setTimeout(() => {
+        if (!document.getElementById('view-cart')?.classList.contains('hidden')) {
+            renderCartFromCacheOrFetch();
+        }
+    }, 80);
+}
+
 function setupCartRealtime() {
-    if (cartRealtimeChannel) return;
+    if (cartRealtimeChannel) {
+        try { supabase.removeChannel(cartRealtimeChannel); } catch(e) {}
+    }
     
     cartRealtimeChannel = supabase.channel('cart_realtime_sync')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'model_inventory' }, (payload) => {
-            const { model_id, color_id, available_series } = payload.new;
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'model_inventory' }, (payload) => {
+            const isDelete = payload.eventType === 'DELETE';
+            const model_id = isDelete ? payload.old.model_id : payload.new.model_id;
+            const color_id = isDelete ? payload.old.color_id : payload.new.color_id;
+            const available_series = isDelete ? 0 : payload.new.available_series;
+
             const itemInCart = cartItems.find(i => String(i.modelId) === String(model_id) && String(i.colorId) === String(color_id));
             
-            if (itemInCart && !editingOrderId) { // لا نزعج المستخدم بالرادار أثناء التعديل المباشر
+            if (itemInCart && !editingOrderId) {
                 if (available_series === 0) {
                     showToast(`⚠️ الموديل (${itemInCart.modelName}) الموجود بسلتك قد نفذت كميته للتو!`, 'error');
                 } else if (itemInCart.qty > available_series) {
@@ -65,9 +81,7 @@ function setupCartRealtime() {
                     cachedDbInventory.push({ model_id, color_id, available_series });
                 }
 
-                if (!document.getElementById('view-cart')?.classList.contains('hidden')) {
-                    renderCartFromCacheOrFetch();
-                }
+                scheduleCartRender();
             }
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, (payload) => {
@@ -81,19 +95,22 @@ function setupCartRealtime() {
                 if (itemInCart) {
                     showToast(`⚠️ الموديل (${itemInCart.modelName}) لم يعد متاحاً للطلب! يرجى إزالته من السلة.`, 'error');
                     
-                    // تحديث الكاش للموديلات
                     const cachedModel = cachedDbModels.find(m => String(m.id) === String(targetId));
                     if (cachedModel) {
                         cachedModel.is_active = false;
                     }
                     
-                    if (!document.getElementById('view-cart')?.classList.contains('hidden')) {
-                        renderCartFromCacheOrFetch();
-                    }
+                    scheduleCartRender();
                 }
             }
         })
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setTimeout(() => {
+                    setupCartRealtime();
+                }, 3000);
+            }
+        });
 }
 
 // ==========================================
