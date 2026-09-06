@@ -1,4 +1,4 @@
-import { findModelByCode } from './gallery.js';
+import { findModelByCode } from './gallery.js?v=9.2';
 import { showToast } from '../../components/toast.js';
 import { supabase } from '../../config/supabase.js';
 
@@ -191,6 +191,16 @@ export function initBarcode() {
             }
         }
     };
+
+    // إذا كانت الصفحة الحالية بالفعل هي الباركود عند التحميل أو عمل ريفريش، ابدأ المسح تلقائياً
+    const barcodeViewEl = document.getElementById('view-barcode');
+    if (window.currentView === 'view-barcode' || (barcodeViewEl && !barcodeViewEl.classList.contains('hidden'))) {
+        setTimeout(() => {
+            if (!isScannerRunning) {
+                startScanning();
+            }
+        }, 250);
+    }
 }
 
 async function startScanning() {
@@ -299,14 +309,15 @@ async function stopScanning() {
     }
 }
 
-function onScanSuccess(decodedText) {
+async function onScanSuccess(decodedText) {
     if (isScannerLocked) return;
     isScannerLocked = true;
 
     playBeepSound();
 
     const code = decodedText.trim();
-    const model = findModelByCode(code, matchType);
+    const lookupFn = window.findModelByCode || findModelByCode;
+    const model = await lookupFn(code, matchType);
 
     if (model) {
         showToast(`تم مسح الباركود بنجاح. الموديل: ${model.name}`, 'success');
@@ -320,7 +331,7 @@ function onScanSuccess(decodedText) {
     }
 }
 
-function handleManualCodeSubmit() {
+async function handleManualCodeSubmit() {
     const manualInput = document.getElementById('barcode-manual-input');
     if (!manualInput) return;
 
@@ -329,12 +340,20 @@ function handleManualCodeSubmit() {
         return showToast("يرجى إدخال كود الموديل للبحث", "warning");
     }
 
-    const model = findModelByCode(code, matchType);
-    if (model) {
-        showToast(`تم العثور على الموديل: ${model.name}`, 'success');
-        window.openModelViewer(model.id);
-    } else {
-        showToast(`كود الموديل (${code}) غير موجود بالمعرض`, 'error');
+    const btn = document.getElementById('btn-submit-manual-code');
+    if (btn) btn.disabled = true;
+
+    try {
+        const lookupFn = window.findModelByCode || findModelByCode;
+        const model = await lookupFn(code, matchType);
+        if (model) {
+            showToast(`تم العثور على الموديل: ${model.name}`, 'success');
+            window.openModelViewer(model.id);
+        } else {
+            showToast(`كود الموديل (${code}) غير موجود بالمعرض`, 'error');
+        }
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 

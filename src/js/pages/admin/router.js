@@ -91,16 +91,73 @@ const views = document.querySelectorAll('.view-section');
 const navLinks = document.querySelectorAll('.nav-link');
 const pageTitle = document.getElementById('page-title');
 
-function switchView(targetId, titleElement, subTabParam = null) {
+function resolveInitialAdminView() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('admin_model')) {
+        return { targetId: 'view-models', subTab: null };
+    }
+
+    const hashStr = (window.location.hash || '').replace('#', '').trim();
+    if (hashStr) {
+        let viewPart = hashStr;
+        let subTab = null;
+        if (hashStr.includes('?')) {
+            const parts = hashStr.split('?');
+            viewPart = parts[0];
+            const hashParams = new URLSearchParams(parts[1]);
+            subTab = hashParams.get('tab');
+        }
+
+        const el = document.getElementById(viewPart);
+        if (el && el.classList.contains('view-section')) {
+            return { targetId: viewPart, subTab };
+        }
+    }
+
+    try {
+        const savedView = localStorage.getItem('devo_active_admin_view');
+        const savedSubTab = localStorage.getItem('devo_active_admin_subtab');
+        if (savedView) {
+            const el = document.getElementById(savedView);
+            if (el && el.classList.contains('view-section')) {
+                return { targetId: savedView, subTab: savedSubTab };
+            }
+        }
+    } catch (e) {}
+
+    return { targetId: 'view-dashboard', subTab: null };
+}
+
+function switchView(targetId, titleElement = null, subTabParam = null, skipHistory = false) {
     // 🌟 فحص أمني: منع المشرف من الدخول لصفحات المالك حتى لو طلبها مباشرة 🌟
     if (OWNER_ONLY_VIEWS.includes(targetId) && currentUserContext && currentUserContext.role !== 'owner') {
         showToast('عفواً، هذه الصفحة مخصصة لمالك النظام فقط!', 'error');
         const dashLink = document.querySelector('[data-target="view-dashboard"]');
-        switchView('view-dashboard', dashLink);
+        switchView('view-dashboard', dashLink, null, skipHistory);
         return;
     }
 
     window.currentAdminView = targetId;
+    window.currentAdminSubTab = subTabParam;
+
+    // حفظ الصفحة في الذاكرة المحلية
+    try {
+        localStorage.setItem('devo_active_admin_view', targetId);
+        if (subTabParam) {
+            localStorage.setItem('devo_active_admin_subtab', subTabParam);
+        } else {
+            localStorage.removeItem('devo_active_admin_subtab');
+        }
+    } catch (e) {}
+
+    // تحديث الرابط بالـ hash لضمان استرجاع الصفحة بالريفريش
+    const hashFragment = subTabParam ? `${targetId}?tab=${subTabParam}` : targetId;
+    const targetUrl = window.location.pathname + window.location.search + '#' + hashFragment;
+    if (!skipHistory) {
+        history.pushState({ adminView: targetId, subTab: subTabParam }, '', targetUrl);
+    } else {
+        history.replaceState({ adminView: targetId, subTab: subTabParam }, '', targetUrl);
+    }
 
     // 1. Hide all views
     views.forEach(view => {
@@ -163,6 +220,16 @@ function switchView(targetId, titleElement, subTabParam = null) {
     const targetView = document.getElementById(targetId);
     if (targetView) {
         targetView.classList.remove('hidden');
+    }
+
+    // البحث التلقائي عن رابط القائمة إذا لم يتم تمريره
+    if (!titleElement) {
+        if (subTabParam) {
+            titleElement = document.querySelector(`.nav-link[data-target="${targetId}"][data-report-tab="${subTabParam}"]`);
+        }
+        if (!titleElement) {
+            titleElement = document.querySelector(`.nav-link[data-target="${targetId}"]`);
+        }
     }
 
     // 4. Highlight active link and update Topbar title
@@ -429,17 +496,54 @@ async function initRouter() {
         logoutUser(); 
     });
 
-    // 🌟 الإصلاح: فحص الرابط العميق قبل فتح الداشبورد 🌟
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('admin_model')) {
-        // إذا كان هناك رابط موديل، افتح صفحة الموديلات
-        const modelsLink = document.querySelector('[data-target="view-models"]');
-        if (modelsLink) switchView('view-models', modelsLink);
-    } else {
-        // غير ذلك، افتح الداشبورد كالمعتاد
-        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
-        if (defaultLink) switchView('view-dashboard', defaultLink);
+    // الاستماع لتغييرات المتصفح (الرجوع والتقدم) في لوحة التحكم
+    window.addEventListener('popstate', () => {
+        const route = resolveInitialAdminView();
+        let link = null;
+        if (route.subTab) {
+            link = document.querySelector(`.nav-link[data-target="${route.targetId}"][data-report-tab="${route.subTab}"]`);
+        }
+        if (!link) {
+            link = document.querySelector(`.nav-link[data-target="${route.targetId}"]`);
+        }
+        switchView(route.targetId, link, route.subTab, true);
+    });
+
+    window.addEventListener('hashchange', () => {
+        const route = resolveInitialAdminView();
+        let link = null;
+        if (route.subTab) {
+            link = document.querySelector(`.nav-link[data-target="${route.targetId}"][data-report-tab="${route.subTab}"]`);
+        }
+        if (!link) {
+            link = document.querySelector(`.nav-link[data-target="${route.targetId}"]`);
+        }
+        if (route.targetId !== window.currentAdminView || route.subTab !== window.currentAdminSubTab) {
+            switchView(route.targetId, link, route.subTab, true);
+        }
+    });
+
+    window.switchAdminView = switchView;
+
+    // 🌟 فتح الصفحة المحددة أو المحفوظة عند التحميل أو الريفريش 🌟
+    const initialRoute = resolveInitialAdminView();
+    let targetViewId = initialRoute.targetId;
+    let targetSubTab = initialRoute.subTab;
+
+    if (OWNER_ONLY_VIEWS.includes(targetViewId) && currentUserContext?.role !== 'owner') {
+        targetViewId = 'view-dashboard';
+        targetSubTab = null;
     }
+
+    let defaultLink = null;
+    if (targetSubTab) {
+        defaultLink = document.querySelector(`.nav-link[data-target="${targetViewId}"][data-report-tab="${targetSubTab}"]`);
+    }
+    if (!defaultLink) {
+        defaultLink = document.querySelector(`.nav-link[data-target="${targetViewId}"]`);
+    }
+
+    switchView(targetViewId, defaultLink, targetSubTab, true);
 }
 
 // ==========================================

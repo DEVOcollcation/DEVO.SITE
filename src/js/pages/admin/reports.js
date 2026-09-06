@@ -90,6 +90,15 @@ export function switchReportTab(tabName) {
 
     // Reapply filters for active tab
     applyActiveTabFilters();
+
+    // مزامنة التبويب في الـ Hash والتخزين المحلي لضمان بقائه عند الريفريش
+    try {
+        localStorage.setItem('devo_active_admin_subtab', tabName);
+        if (window.currentAdminView === 'view-reports') {
+            const newHash = `#view-reports?tab=${tabName}`;
+            history.replaceState({ adminView: 'view-reports', subTab: tabName }, '', window.location.pathname + window.location.search + newHash);
+        }
+    } catch (e) {}
 }
 
 // ==========================================

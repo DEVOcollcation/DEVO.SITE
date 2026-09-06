@@ -15,7 +15,7 @@ import {
     removeImagesForModel 
 } from '../../services/offline_store.js';
 
-let allModels = [];
+let allModels = (typeof window !== 'undefined' && window.allGalleryModels) ? window.allGalleryModels : [];
 let currentCategories = new Set();
 let currentUser = null;
 let isWorker = false;
@@ -127,6 +127,7 @@ async function fetchGalleryModels() {
         const cachedData = await getAllCachedModels();
         if (cachedData && cachedData.length > 0 && allModels.length === 0) {
             allModels = cachedData;
+            if (typeof window !== 'undefined') window.allGalleryModels = allModels;
             populateCategoryFilter();
             applyGalleryFilters();
         }
@@ -172,6 +173,7 @@ async function fetchGalleryModels() {
         if (data) {
             const previousModels = allModels;
             allModels = data;
+            if (typeof window !== 'undefined') window.allGalleryModels = allModels;
 
             // حفظ أحدث نسخة في IndexedDB بالخلفية
             saveAllCachedModels(data);
@@ -1145,9 +1147,78 @@ function updateFloatingCart() {
     }
 }
 
-export function findModelByCode(code, matchType = 'both') {
+function normalizeCodeString(str) {
+    if (!str) return '';
+    const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    return str.toString().trim().replace(/[٠-٩]/g, d => arabicDigits.indexOf(d));
+}
+
+function searchInModelsList(models, cleanCode, explicitType, matchType) {
+    if (!models || models.length === 0) return null;
+
+    // 🌟 الطريقة الجديدة: تعتمد على سابقة الكود (F للمصنع و S للسيستم) 🌟
+    if (explicitType === 'system') {
+        // سابقة S: البحث في كود السيستم أو ID
+        return models.find(m => {
+            const sys = m.system_code ? m.system_code.toString().toLowerCase().trim() : '';
+            const id = m.id ? m.id.toString().toLowerCase().trim() : '';
+            return sys === cleanCode || id === cleanCode;
+        });
+    }
+
+    if (explicitType === 'factory') {
+        // سابقة F: البحث في كود المصنع
+        return models.find(m => {
+            const fac = m.factory_code ? m.factory_code.toString().toLowerCase().trim() : '';
+            return fac === cleanCode;
+        });
+    }
+
+    // 🌟 الطريقة القديمة: كود خام بدون سابقة (يعتمد على إعدادات النظام) 🌟
+    if (matchType === 'factory') {
+        // أولوية لكود المصنع
+        const facMatch = models.find(m => {
+            const fac = m.factory_code ? m.factory_code.toString().toLowerCase().trim() : '';
+            return fac === cleanCode;
+        });
+        if (facMatch) return facMatch;
+
+        // ثم كاحتياط كود السيستم أو ID
+        return models.find(m => {
+            const sys = m.system_code ? m.system_code.toString().toLowerCase().trim() : '';
+            const id = m.id ? m.id.toString().toLowerCase().trim() : '';
+            return sys === cleanCode || id === cleanCode;
+        });
+    }
+
+    if (matchType === 'system') {
+        // أولوية لكود السيستم أو ID
+        const sysMatch = models.find(m => {
+            const sys = m.system_code ? m.system_code.toString().toLowerCase().trim() : '';
+            const id = m.id ? m.id.toString().toLowerCase().trim() : '';
+            return sys === cleanCode || id === cleanCode;
+        });
+        if (sysMatch) return sysMatch;
+
+        // ثم كاحتياط كود المصنع
+        return models.find(m => {
+            const fac = m.factory_code ? m.factory_code.toString().toLowerCase().trim() : '';
+            return fac === cleanCode;
+        });
+    }
+
+    // كلاهما (both): فحص كود المصنع أو السيستم أو ID
+    return models.find(m => {
+        const fac = m.factory_code ? m.factory_code.toString().toLowerCase().trim() : '';
+        const sys = m.system_code ? m.system_code.toString().toLowerCase().trim() : '';
+        const id = m.id ? m.id.toString().toLowerCase().trim() : '';
+        return fac === cleanCode || sys === cleanCode || id === cleanCode;
+    });
+}
+
+export async function findModelByCode(code, matchType = 'both') {
     if (!code) return null;
-    let rawStr = code.trim();
+    let rawStr = normalizeCodeString(code);
     let cleanCode = rawStr.toLowerCase();
     let explicitType = null; // 'system' | 'factory' | null
 
@@ -1166,14 +1237,12 @@ export function findModelByCode(code, matchType = 'both') {
             } else if (urlObj.searchParams.has('model') || urlObj.searchParams.has('id')) {
                 cleanCode = (urlObj.searchParams.get('model') || urlObj.searchParams.get('id')).toLowerCase();
             }
-        } catch(e) {
-            // fallback if URL parsing fails
-        }
+        } catch(e) {}
     }
 
     cleanCode = cleanCode.replace(/^["']|["']$/g, '').trim();
 
-    // 2. Check for explicit prefix in the code string (S5000 vs F5000, as well as legacy SYS- / FAC-)
+    // 2. التحقق من السابقة الصريحة للكود (F للمصنع و S للسيستم)
     if (!explicitType) {
         if (/^(sys-|system-|s-)/i.test(cleanCode)) {
             explicitType = 'system';
@@ -1190,29 +1259,84 @@ export function findModelByCode(code, matchType = 'both') {
         }
     }
 
-    // 3. Match against allModels based on explicitType
-    return allModels.find(m => {
-        const sysCode = m.system_code ? m.system_code.toString().toLowerCase().trim() : '';
-        const facCode = m.factory_code ? m.factory_code.toString().toLowerCase().trim() : '';
-        const modelId = m.id ? m.id.toString().toLowerCase().trim() : '';
+    cleanCode = normalizeCodeString(cleanCode).toLowerCase();
+
+    // 3. البحث في مصفوفة الموديلات في الذاكرة
+    let models = (allModels && allModels.length > 0) ? allModels : (typeof window !== 'undefined' ? window.allGalleryModels : null);
+    let match = searchInModelsList(models, cleanCode, explicitType, matchType);
+    if (match) return match;
+
+    // 4. إذا لم يتم العثور عليه، فحص كاش IndexedDB
+    try {
+        const cached = await getAllCachedModels();
+        if (cached && cached.length > 0) {
+            allModels = cached;
+            if (typeof window !== 'undefined') window.allGalleryModels = cached;
+            match = searchInModelsList(cached, cleanCode, explicitType, matchType);
+            if (match) return match;
+        }
+    } catch(e) {}
+
+    // 5. استعلام فوري من Supabase مباشرة في حال عدم وجود الموديل محلياً
+    try {
+        let query = supabase.from('models').select(`
+            *,
+            categories(name),
+            classes(name, class_sizes(sizes(name))),
+            model_sizes(sizes(name)),
+            model_inventory(color_id, available_series, colors(name)),
+            model_images(image_url)
+        `).eq('is_active', true);
 
         if (explicitType === 'system') {
-            return sysCode === cleanCode || modelId === cleanCode;
+            query = query.or(`system_code.eq.${cleanCode},id.eq.${cleanCode}`);
         } else if (explicitType === 'factory') {
-            return facCode === cleanCode;
+            query = query.eq('factory_code', cleanCode);
+        } else if (matchType === 'factory') {
+            query = query.eq('factory_code', cleanCode);
+        } else if (matchType === 'system') {
+            query = query.or(`system_code.eq.${cleanCode},id.eq.${cleanCode}`);
         } else {
-            // Legacy / Unprefixed barcode fallback (Backward compatible with all existing printed barcodes)
-            const isSystemMatch = sysCode && sysCode === cleanCode;
-            const isFactoryMatch = facCode && facCode === cleanCode;
-            const isIdMatch = modelId && modelId === cleanCode;
+            query = query.or(`factory_code.eq.${cleanCode},system_code.eq.${cleanCode},id.eq.${cleanCode}`);
+        }
 
-            if (matchType === 'system') {
-                return isSystemMatch || isFactoryMatch || isIdMatch;
-            } else if (matchType === 'factory') {
-                return isFactoryMatch || isSystemMatch || isIdMatch;
-            } else {
-                return isFactoryMatch || isSystemMatch || isIdMatch;
+        const { data: dbModels } = await query;
+        if (dbModels && dbModels.length > 0) {
+            const found = dbModels[0];
+            if (!allModels.find(m => m.id === found.id)) {
+                allModels.unshift(found);
+                if (typeof window !== 'undefined') window.allGalleryModels = allModels;
+            }
+            return found;
+        }
+
+        // احتياط إضافي: إذا لم يتم العثور عليه وكان نوع المطابقة محدد بمصنع أو سيستم، جرب البحث في كل الأكواد
+        if (matchType !== 'both' && !explicitType) {
+            const { data: fallbackModels } = await supabase.from('models').select(`
+                *,
+                categories(name),
+                classes(name, class_sizes(sizes(name))),
+                model_sizes(sizes(name)),
+                model_inventory(color_id, available_series, colors(name)),
+                model_images(image_url)
+            `).eq('is_active', true).or(`factory_code.eq.${cleanCode},system_code.eq.${cleanCode},id.eq.${cleanCode}`);
+
+            if (fallbackModels && fallbackModels.length > 0) {
+                const found = fallbackModels[0];
+                if (!allModels.find(m => m.id === found.id)) {
+                    allModels.unshift(found);
+                    if (typeof window !== 'undefined') window.allGalleryModels = allModels;
+                }
+                return found;
             }
         }
-    });
+    } catch(e) {
+        console.warn('[Barcode] Direct Supabase model query error:', e);
+    }
+
+    return null;
+}
+
+if (typeof window !== 'undefined') {
+    window.findModelByCode = findModelByCode;
 }

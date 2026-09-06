@@ -59,6 +59,22 @@ const statusConfig = {
 export async function initAdminOrdersView() {
     if (isInitialized) return;
 
+    try {
+        const savedOrdersTab = localStorage.getItem('devo_active_admin_orders_tab') || 'active';
+        currentAdminTab = savedOrdersTab;
+        const tabActive = document.getElementById('ao-tab-active');
+        const tabArchived = document.getElementById('ao-tab-archived');
+        if (tabActive && tabArchived) {
+            if (savedOrdersTab === 'active') {
+                tabActive.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
+                tabArchived.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
+            } else {
+                tabActive.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
+                tabArchived.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
+            }
+        }
+    } catch (e) {}
+
     const { session } = getCurrentSession();
     if(session) currentUserProfile = session.user;
 
@@ -323,6 +339,9 @@ function generateOrderRowHTML(o) {
 // ==========================================
 window.switchAdminOrdersTab = (tab) => {
     currentAdminTab = tab;
+    try {
+        localStorage.setItem('devo_active_admin_orders_tab', tab);
+    } catch (e) {}
     const tabActive = document.getElementById('ao-tab-active');
     const tabArchived = document.getElementById('ao-tab-archived');
 

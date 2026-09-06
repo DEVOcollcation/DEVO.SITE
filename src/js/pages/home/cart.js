@@ -898,8 +898,10 @@ window.finishOrderAndRedirect = (skipHistory = false) => {
         }
         setTimeout(() => {
             modal.classList.add('hidden');
-            window.switchSiteView('view-gallery');
+            window.switchSiteView('view-barcode');
         }, 300);
+    } else {
+        window.switchSiteView('view-barcode');
     }
 };
 

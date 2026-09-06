@@ -45,6 +45,38 @@ export async function initNavbar() {
         return Promise.resolve(confirm(message));
     };
 
+    // دالة مساعدة لتحديد الصفحة الافتراضية عند التحميل أو عمل ريفريش
+    function resolveInitialSiteView() {
+        if (localStorage.getItem('devo_edit_order_data')) {
+            return 'view-cart';
+        }
+
+        const validViews = ['view-home', 'view-gallery', 'view-barcode', 'view-cart', 'view-orders'];
+        const aliasMap = {
+            'home': 'view-home',
+            'gallery': 'view-gallery',
+            'barcode': 'view-barcode',
+            'cart': 'view-cart',
+            'orders': 'view-orders'
+        };
+
+        const hash = (window.location.hash || '').replace('#', '').trim().toLowerCase();
+        let target = aliasMap[hash] || (validViews.includes(hash) ? hash : null);
+
+        if (!target) {
+            try {
+                const saved = (localStorage.getItem('devo_active_site_view') || '').trim().toLowerCase();
+                target = aliasMap[saved] || (validViews.includes(saved) ? saved : null);
+            } catch (e) {}
+        }
+
+        if (window.isVisitor && target && target !== 'view-home' && target !== 'view-gallery') {
+            target = 'view-home';
+        }
+
+        return target || 'view-home';
+    }
+
     // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
     window.switchSiteView = async (targetId, skipHistory = false) => {
         // تأكيد الخروج من صفحة الباركود إلا إذا كان الهدف هو السلة
@@ -55,9 +87,18 @@ export async function initNavbar() {
             }
         }
 
-        // دفع الصفحة الجديدة في سجل المتصفح
+        // حفظ الصفحة الحالية في التخزين المحلي لضمان استرجاعها عند الريفريش
+        try {
+            localStorage.setItem('devo_active_site_view', targetId);
+        } catch (e) {}
+
+        const hashUrl = window.location.pathname + window.location.search + '#' + targetId;
+
+        // دفع الصفحة الجديدة في سجل المتصفح وتحديث الـ hash
         if (!skipHistory) {
-            history.pushState({ view: targetId }, '', window.location.pathname + window.location.search);
+            history.pushState({ view: targetId }, '', hashUrl);
+        } else {
+            history.replaceState({ view: targetId }, '', hashUrl);
         }
 
         window.currentView = targetId;
@@ -100,6 +141,13 @@ export async function initNavbar() {
         // تنبيه بتغيير الصفحة للتحكم في الكاميرا والباركود
         if (typeof window.onViewChanged === 'function') {
             window.onViewChanged(targetId);
+        }
+
+        // تحديث فوري للسلة أو الأوردرات عند التبديل
+        if (targetId === 'view-cart' && typeof window.refreshCartView === 'function') {
+            window.refreshCartView();
+        } else if (targetId === 'view-orders' && typeof window.refreshWorkerOrders === 'function') {
+            window.refreshWorkerOrders();
         }
     };
 
@@ -201,8 +249,9 @@ export async function initNavbar() {
                     history.back();
                 } else {
                     // إلغاء الخروج وإعادة دفع حالة الصفحة الحالية لتثبيت الصفحة
-                    history.pushState({ view: window.currentView || 'view-home' }, '', window.location.pathname + window.location.search);
-                    window.switchSiteView(window.currentView || 'view-home', true);
+                    const cur = window.currentView || 'view-home';
+                    history.pushState({ view: cur }, '', window.location.pathname + window.location.search + '#' + cur);
+                    window.switchSiteView(cur, true);
                 }
             } else if (targetView) {
                 if (window.currentView === 'view-barcode' && targetView !== 'view-cart') {
@@ -211,7 +260,7 @@ export async function initNavbar() {
                         window.switchSiteView(targetView, true);
                     } else {
                         // إلغاء الخروج وإعادة دفع حالة الباركود لتثبيت الصفحة
-                        history.pushState({ view: 'view-barcode' }, '', window.location.pathname + window.location.search);
+                        history.pushState({ view: 'view-barcode' }, '', window.location.pathname + window.location.search + '#view-barcode');
                     }
                 } else {
                     window.switchSiteView(targetView, true);
@@ -219,17 +268,26 @@ export async function initNavbar() {
             }
         } else {
             // حالة احتياطية لحماية الموقع
-            history.pushState({ view: 'view-home' }, '', window.location.pathname + window.location.search);
-            window.switchSiteView('view-home', true);
+            const cur = window.currentView || 'view-home';
+            history.pushState({ view: cur }, '', window.location.pathname + window.location.search + '#' + cur);
+            window.switchSiteView(cur, true);
+        }
+    });
+
+    // الاستماع لتغيير الـ Hash مباشرة من الرابط
+    window.addEventListener('hashchange', () => {
+        const targetView = resolveInitialSiteView();
+        if (targetView && targetView !== window.currentView) {
+            window.switchSiteView(targetView, true);
         }
     });
 
     // التنشيط الأولي للشاشة الافتراضية مع إعداد حماية الرجوع للخلف (exit-trap)
-    const initialView = localStorage.getItem('devo_edit_order_data') ? 'view-cart' : 'view-home';
+    const initialView = resolveInitialSiteView();
     
     window.currentView = initialView;
     history.replaceState({ view: 'exit-trap' }, '', window.location.pathname + window.location.search);
-    history.pushState({ view: initialView }, '', window.location.pathname + window.location.search);
+    history.pushState({ view: initialView }, '', window.location.pathname + window.location.search + '#' + initialView);
     
     window.switchSiteView(initialView, true);
 }

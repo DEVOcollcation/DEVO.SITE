@@ -17,6 +17,13 @@ export async function initOrdersView() {
         document.getElementById(id)?.addEventListener('input', renderOrders);
     });
 
+    try {
+        const savedTab = localStorage.getItem('devo_active_orders_tab') || 'active';
+        if (savedTab && savedTab !== currentTab) {
+            window.switchOrdersTab(savedTab);
+        }
+    } catch (e) {}
+
     await fetchMyOrders();
     setupOrdersRealtime(); // 🌟 تفعيل الرادار اللحظي للموظف 🌟
 }
@@ -134,6 +141,9 @@ function setupOrdersRealtime() {
 
 window.switchOrdersTab = (tab) => {
     currentTab = tab;
+    try {
+        localStorage.setItem('devo_active_orders_tab', tab);
+    } catch (e) {}
     document.getElementById('tab-orders-active').className = tab === 'active' 
         ? 'px-4 py-2 text-sm font-bold text-devo-orange border-b-2 border-devo-orange transition-all' 
         : 'px-4 py-2 text-sm font-bold text-devo-muted hover:text-white border-b-2 border-transparent transition-all';
