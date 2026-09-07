@@ -2689,9 +2689,32 @@
             </div>
 
             <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm flex-1 flex flex-col min-h-[350px]">
-                <div class="p-3 bg-devo-black border-b border-devo-gray flex justify-between items-center shrink-0">
-                    <span class="text-sm font-bold text-white">إجمالي المطابق: <span id="barcode-results-count" class="text-devo-orange">0</span> موديل</span>
-                    <span class="text-xs text-devo-info bg-devo-info/10 border border-devo-info/20 px-3 py-1.5 rounded-lg">المحدد: <span id="barcode-selected-count" class="font-bold text-sm">0</span></span>
+                <div class="p-3 bg-devo-black border-b border-devo-gray flex flex-wrap justify-between items-center gap-3 shrink-0">
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm font-bold text-white">إجمالي المطابق: <span id="barcode-results-count" class="text-devo-orange font-bold">0</span> موديل</span>
+                        <span class="text-xs text-devo-info bg-devo-info/10 border border-devo-info/20 px-3 py-1.5 rounded-lg">المحدد: <span id="barcode-selected-count" class="font-bold text-sm">0</span></span>
+                    </div>
+
+                    <!-- شريط الترتيب السريع للجدول -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-devo-muted font-bold flex items-center gap-1 whitespace-nowrap">
+                            <i class="ph ph-arrows-down-up text-devo-orange"></i> ترتيب الجدول:
+                        </span>
+                        <select id="barcode-table-sort-select" onchange="handleBarcodeTableSortChange(this.value)" class="bg-devo-dark border border-devo-gray text-white text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-devo-orange cursor-pointer">
+                            <option value="factory_asc">كود المصنع (تصاعدي 1 ← 9)</option>
+                            <option value="factory_desc">كود المصنع (تنازلي 9 ← 1)</option>
+                            <option value="system_asc">كود السيستم (تصاعدي 1 ← 9)</option>
+                            <option value="system_desc">كود السيستم (تنازلي 9 ← 1)</option>
+                            <option value="name_asc">اسم الموديل (أ - ي)</option>
+                            <option value="name_desc">اسم الموديل (ي - أ)</option>
+                            <option value="price_asc">السعر (من الأقل للأعلى)</option>
+                            <option value="price_desc">السعر (من الأعلى للأقل)</option>
+                            <option value="stock_desc">المخزون (الأكثر للأقل)</option>
+                            <option value="stock_asc">المخزون (الأقل للأكثر)</option>
+                            <option value="date_desc">تاريخ الإضافة (الأحدث أولاً)</option>
+                            <option value="date_asc">تاريخ الإضافة (الأقدم أولاً)</option>
+                        </select>
+                    </div>
                 </div>
                 
                 <div class="overflow-y-auto flex-1 custom-scrollbar">
@@ -2699,14 +2722,16 @@
                         <thead class="bg-devo-black/95 backdrop-blur-sm sticky top-0 z-10 text-devo-muted text-xs border-b border-devo-gray">
                             <tr>
                                 <th class="p-3 w-12 text-center border-l border-devo-gray/30"><input type="checkbox" id="barcode-select-all" onchange="toggleBarcodeSelectAll(this)" class="accent-devo-orange w-4 h-4 cursor-pointer" title="تحديد/إلغاء تحديد كل النتائج"></th>
-                                <th class="p-3">الكود والموديل</th>
+                                <th class="p-3 text-center">كود المصنع</th>
+                                <th class="p-3 text-center">كود السيستم</th>
+                                <th class="p-3">اسم الموديل</th>
                                 <th class="p-3 text-center">السعر</th>
                                 <th class="p-3 text-center">التصنيف / المخزون</th>
                                 <th class="p-3 text-center">الحالة</th>
                             </tr>
                         </thead>
                         <tbody id="barcode-table-body" class="divide-y divide-devo-gray text-white">
-                            <tr><td colspan="5" class="p-10 text-center text-devo-muted"><i class="ph ph-spinner animate-spin text-3xl"></i> جاري التحميل...</td></tr>
+                            <tr><td colspan="7" class="p-10 text-center text-devo-muted"><i class="ph ph-spinner animate-spin text-3xl"></i> جاري التحميل...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -4460,7 +4485,26 @@
                             <option value="factory">كود المصنع (Factory)</option>
                             <option value="system">كود السيستم (System)</option>
                         </select>
-                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-devo-muted mb-1 flex items-center gap-1">
+                        <i class="ph ph-arrows-down-up text-devo-orange"></i> ترتيب الملصقات عند الطباعة
+                    </label>
+                    <select id="bulk-barcode-sort-order" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-xs text-white focus:border-devo-orange outline-none cursor-pointer">
+                        <option value="table">نفس ترتيب الجدول الحالي (المعروض بالجدول)</option>
+                        <option value="factory_asc">كود المصنع (تصاعدي 1 ← 9)</option>
+                        <option value="factory_desc">كود المصنع (تنازلي 9 ← 1)</option>
+                        <option value="system_asc">كود السيستم (تصاعدي 1 ← 9)</option>
+                        <option value="system_desc">كود السيستم (تنازلي 9 ← 1)</option>
+                        <option value="name_asc">اسم الموديل (أ - ي)</option>
+                        <option value="name_desc">اسم الموديل (ي - أ)</option>
+                        <option value="price_asc">السعر (من الأقل للأعلى)</option>
+                        <option value="price_desc">السعر (من الأعلى للأقل)</option>
+                        <option value="stock_desc">المخزون (الأكثر للأقل)</option>
+                        <option value="date_desc">تاريخ الإضافة (الأحدث أولاً)</option>
+                        <option value="date_asc">تاريخ الإضافة (الأقدم أولاً)</option>
+                    </select>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">

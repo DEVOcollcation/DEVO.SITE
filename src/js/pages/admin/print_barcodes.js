@@ -10,6 +10,168 @@ let colorsMap = {};
 
 let barcodeCurrentPage = 1;
 const barcodeItemsPerPage = 50;
+let currentBarcodeSortKey = 'factory_asc';
+
+// Natural / alphanumeric comparison function that sorts numbers properly (e.g. 2 before 10)
+function compareCodeOrText(valA, valB, dir = 'asc') {
+    const strA = (valA ?? '').toString().trim();
+    const strB = (valB ?? '').toString().trim();
+
+    if (!strA && !strB) return 0;
+    if (!strA) return dir === 'asc' ? 1 : -1;
+    if (!strB) return dir === 'asc' ? -1 : 1;
+
+    // Check if numeric (extracting standard prefixes if present)
+    const cleanA = strA.replace(/^(FAC-|SYS-|F|S)/i, '').trim();
+    const cleanB = strB.replace(/^(FAC-|SYS-|F|S)/i, '').trim();
+    const numA = Number(cleanA);
+    const numB = Number(cleanB);
+
+    if (!isNaN(numA) && !isNaN(numB) && cleanA !== '' && cleanB !== '') {
+        return dir === 'asc' ? numA - numB : numB - numA;
+    }
+
+    const cmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+    return dir === 'asc' ? cmp : -cmp;
+}
+
+function sortModelsList(list, sortKey) {
+    if (!list || list.length === 0) return;
+    list.sort((a, b) => {
+        switch (sortKey) {
+            case 'factory_asc':
+                return compareCodeOrText(a.factory_code, b.factory_code, 'asc');
+            case 'factory_desc':
+                return compareCodeOrText(a.factory_code, b.factory_code, 'desc');
+            case 'system_asc':
+                return compareCodeOrText(a.system_code, b.system_code, 'asc');
+            case 'system_desc':
+                return compareCodeOrText(a.system_code, b.system_code, 'desc');
+            case 'name_asc':
+                return (a.name || '').localeCompare(b.name || '', 'ar');
+            case 'name_desc':
+                return (b.name || '').localeCompare(a.name || '', 'ar');
+            case 'price_asc':
+                return (a.price || 0) - (b.price || 0);
+            case 'price_desc':
+                return (b.price || 0) - (a.price || 0);
+            case 'stock_desc': {
+                const stockA = a.model_inventory?.reduce((s, i) => s + (i.available_series || 0), 0) || 0;
+                const stockB = b.model_inventory?.reduce((s, i) => s + (i.available_series || 0), 0) || 0;
+                return stockB - stockA;
+            }
+            case 'stock_asc': {
+                const stockA = a.model_inventory?.reduce((s, i) => s + (i.available_series || 0), 0) || 0;
+                const stockB = b.model_inventory?.reduce((s, i) => s + (i.available_series || 0), 0) || 0;
+                return stockA - stockB;
+            }
+            case 'date_desc':
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            case 'date_asc':
+                return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+            default:
+                return 0;
+        }
+    });
+}
+
+function updateTableHeaderSortIndicators(sortKey) {
+    const table = document.getElementById('barcode-table');
+    if (!table) return;
+    const headers = table.querySelectorAll('thead th');
+    if (!headers || headers.length === 0) return;
+
+    headers.forEach(th => {
+        th.removeAttribute('data-sort-dir');
+        const ind = th.querySelector('.sort-indicator');
+        if (ind) {
+            ind.innerHTML = ' ⇅';
+            ind.className = 'sort-indicator mr-1 text-[10px] opacity-40 transition-opacity inline-block';
+        }
+    });
+
+    let targetCol = -1;
+    let dir = 'asc';
+    if (sortKey.startsWith('factory_')) {
+        targetCol = 1;
+        dir = sortKey.endsWith('desc') ? 'desc' : 'asc';
+    } else if (sortKey.startsWith('system_')) {
+        targetCol = 2;
+        dir = sortKey.endsWith('desc') ? 'desc' : 'asc';
+    } else if (sortKey.startsWith('name_')) {
+        targetCol = 3;
+        dir = sortKey.endsWith('desc') ? 'desc' : 'asc';
+    } else if (sortKey.startsWith('price_')) {
+        targetCol = 4;
+        dir = sortKey.endsWith('desc') ? 'desc' : 'asc';
+    } else if (sortKey.startsWith('stock_')) {
+        targetCol = 5;
+        dir = sortKey.endsWith('desc') ? 'desc' : 'asc';
+    }
+
+    if (targetCol >= 0 && headers[targetCol]) {
+        const activeTh = headers[targetCol];
+        activeTh.setAttribute('data-sort-dir', dir);
+        const ind = activeTh.querySelector('.sort-indicator');
+        if (ind) {
+            ind.className = 'sort-indicator mr-1 text-[10px] text-devo-orange opacity-100 inline-block font-bold';
+            ind.innerHTML = dir === 'asc' ? ' ▲' : ' ▼';
+        }
+    }
+}
+
+window.handleBarcodeTableSortChange = (sortKey) => {
+    currentBarcodeSortKey = sortKey;
+    sortModelsList(filteredBarcodeModels, sortKey);
+    sortModelsList(barcodeAllModels, sortKey);
+    barcodeCurrentPage = 1;
+    renderBarcodePage();
+    updateTableHeaderSortIndicators(sortKey);
+};
+
+// Bind to global table sorter for barcode-table
+window.customSortHandlers = window.customSortHandlers || {};
+window.customSortHandlers['barcode-table'] = (colIndex, direction) => {
+    let sortKey = '';
+    switch (colIndex) {
+        case 1: // كود المصنع
+            sortKey = direction === 'asc' ? 'factory_asc' : 'factory_desc';
+            break;
+        case 2: // كود السيستم
+            sortKey = direction === 'asc' ? 'system_asc' : 'system_desc';
+            break;
+        case 3: // اسم الموديل
+            sortKey = direction === 'asc' ? 'name_asc' : 'name_desc';
+            break;
+        case 4: // السعر
+            sortKey = direction === 'asc' ? 'price_asc' : 'price_desc';
+            break;
+        case 5: // التصنيف / المخزون
+            sortKey = direction === 'asc' ? 'stock_asc' : 'stock_desc';
+            break;
+        case 6: // الحالة
+            filteredBarcodeModels.sort((a, b) => {
+                const actA = a.is_active ? 1 : 0;
+                const actB = b.is_active ? 1 : 0;
+                return direction === 'asc' ? actA - actB : actB - actA;
+            });
+            barcodeCurrentPage = 1;
+            renderBarcodePage();
+            return;
+        default:
+            return;
+    }
+
+    if (sortKey) {
+        currentBarcodeSortKey = sortKey;
+        const sortSelect = document.getElementById('barcode-table-sort-select');
+        if (sortSelect) sortSelect.value = sortKey;
+        sortModelsList(filteredBarcodeModels, sortKey);
+        sortModelsList(barcodeAllModels, sortKey);
+        barcodeCurrentPage = 1;
+        renderBarcodePage();
+    }
+};
 
 export async function initPrintBarcodesView() {
     if (isBarcodeInitialized) return;
@@ -172,7 +334,7 @@ export async function fetchBarcodeFilterOptions() {
 
 export async function fetchBarcodeModels() {
     const tbody = document.getElementById('barcode-table-body');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري تحميل كل الموديلات...</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري تحميل كل الموديلات...</td></tr>`;
 
     let allFetchedData = [];
     let from = 0;
@@ -342,6 +504,10 @@ window.applyBarcodeFilters = () => {
         return isMatch;
     });
 
+    if (currentBarcodeSortKey) {
+        sortModelsList(filteredBarcodeModels, currentBarcodeSortKey);
+    }
+
     selectedBarcodeModelIds.clear();
     filteredBarcodeModels.forEach(m => selectedBarcodeModelIds.add(m.id));
     
@@ -391,7 +557,7 @@ function renderBarcodePage() {
 
     if (filteredBarcodeModels.length === 0) {
         if(masterCb) { masterCb.checked = false; masterCb.disabled = true; }
-        if(tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-devo-muted">لا توجد نتائج مطابقة للبحث</td></tr>`;
+        if(tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-10 text-center text-devo-muted">لا توجد نتائج مطابقة للبحث</td></tr>`;
         if (paginationContainer) paginationContainer.innerHTML = '';
         return;
     }
@@ -419,9 +585,14 @@ function renderBarcodePage() {
                 <td class="p-3 text-center border-l border-devo-gray/30">
                     <input type="checkbox" value="${m.id}" onchange="toggleSingleBarcodeCheck(this)" class="barcode-item-cb accent-devo-orange w-4 h-4 cursor-pointer" ${selectedBarcodeModelIds.has(m.id) ? 'checked' : ''}>
                 </td>
+                <td class="p-3 text-center font-mono font-bold text-devo-orange text-xs whitespace-nowrap">
+                    ${m.factory_code || '-'}
+                </td>
+                <td class="p-3 text-center font-mono font-bold text-sky-400 text-xs whitespace-nowrap">
+                    ${m.system_code || '-'}
+                </td>
                 <td class="p-3">
-                    <p class="text-[10px] text-devo-muted font-mono tracking-wider">${m.factory_code || m.system_code}</p>
-                    <p class="font-bold text-white text-xs mt-0.5">${m.name}</p>
+                    <p class="font-bold text-white text-xs">${m.name || '-'}</p>
                 </td>
                 <td class="p-3 text-center font-black text-devo-orange text-sm">${m.price}</td>
                 <td class="p-3 text-center text-xs text-devo-muted">
@@ -779,8 +950,23 @@ window.generateAndPrintBulkBarcodes = () => {
     const fixedQty = parseInt(document.getElementById('bulk-barcode-fixed-qty').value, 10) || 1;
     const colorDist = document.getElementById('bulk-barcode-color-dist').value;
 
-    // Get selected models data
-    const selectedModels = barcodeAllModels.filter(m => selectedBarcodeModelIds.has(m.id));
+    const printSortOrder = document.getElementById('bulk-barcode-sort-order')?.value || 'table';
+
+    // Get selected models data preserving the exact current table order
+    let selectedModels = filteredBarcodeModels.filter(m => selectedBarcodeModelIds.has(m.id));
+    
+    // Include any selected models that might have been filtered out of filteredBarcodeModels
+    const includedSet = new Set(selectedModels.map(m => m.id));
+    barcodeAllModels.forEach(m => {
+        if (selectedBarcodeModelIds.has(m.id) && !includedSet.has(m.id)) {
+            selectedModels.push(m);
+        }
+    });
+
+    // Apply print sort order if specified (or keep table order if 'table')
+    if (printSortOrder && printSortOrder !== 'table') {
+        sortModelsList(selectedModels, printSortOrder);
+    }
 
     if (selectedModels.length === 0) return showToast('الموديلات المحددة غير متوفرة', 'error');
 
@@ -1225,6 +1411,9 @@ window.loadBarcodeTemplate = () => {
     document.getElementById('bulk-barcode-color-dist').value = template.colorDist || 'all_together';
     document.getElementById('bulk-barcode-show-colors').checked = template.showColors !== false;
     document.getElementById('bulk-barcode-skip-zero-stock-colors').checked = template.skipZeroStockColors !== false;
+    if (document.getElementById('bulk-barcode-sort-order')) {
+        document.getElementById('bulk-barcode-sort-order').value = template.printSortOrder || 'table';
+    }
 
     // Toggle qty input state
     window.toggleBarcodeQtyInput();
@@ -1255,6 +1444,7 @@ window.saveBarcodeTemplate = () => {
         name: templateName,
         codeType: document.getElementById('bulk-barcode-type').value,
         valueSource: document.getElementById('bulk-barcode-value-source').value,
+        printSortOrder: document.getElementById('bulk-barcode-sort-order')?.value || 'table',
         paperW: parseFloat(document.getElementById('bulk-barcode-paper-w').value) || 4,
         paperH: parseFloat(document.getElementById('bulk-barcode-paper-h').value) || 5,
         fontName: parseInt(document.getElementById('bulk-barcode-font-size-name').value, 10) || 11,

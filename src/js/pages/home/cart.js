@@ -856,11 +856,15 @@ async function showInvoiceModal(order, items) {
                 const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
                 const pieces = item.quantity * sizesCount;
                 const piecePrice = item.price_per_series / sizesCount;
+                const factoryCode = item.models?.factory_code || item.models?.system_code || '';
                 
                 const row = `
                     <tr class="text-xs sm:text-sm">
                         <td class="border border-gray-300 p-1 sm:p-2 text-center">${idx + 1}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 font-bold">${item.models?.name || 'موديل'}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold">
+                            ${item.models?.name || 'موديل'}
+                            ${factoryCode ? `<span class="text-gray-500 font-mono text-xs mr-1 font-normal">(${factoryCode})</span>` : ''}
+                        </td>
                         <td class="border border-gray-300 p-1 sm:p-2 text-center text-gray-600">${item.colors?.name || 'لون'}</td>
                         <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${pieces}</td>
                         <td class="border border-gray-300 p-1 sm:p-2 text-center">${piecePrice}</td>
@@ -873,12 +877,16 @@ async function showInvoiceModal(order, items) {
             // Fallback if order_items are not fetched
             items.forEach((item, idx) => {
                 const cachedItem = JSON.parse(localStorage.getItem('devo_edit_order_data_cache') || '[]').find(i => i.modelId === item.model_id && i.colorId === item.color_id);
+                const factoryCode = item.factory_code || item.models?.factory_code || cachedItem?.factory_code || cachedItem?.factoryCode || item.models?.system_code || '';
                 const pieces = item.pieces || item.quantity * (item.sizesCount || 1) || item.qty * (item.sizesCount || 1);
                 const priceVal = item.price || item.price_per_series;
                 const row = `
                     <tr class="text-xs sm:text-sm">
                         <td class="border border-gray-300 p-1 sm:p-2">${idx + 1}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 font-bold">${cachedItem?.modelName || item.model_name || 'موديل'}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold">
+                            ${cachedItem?.modelName || item.model_name || 'موديل'}
+                            ${factoryCode ? `<span class="text-gray-500 font-mono text-xs mr-1 font-normal">(${factoryCode})</span>` : ''}
+                        </td>
                         <td class="border border-gray-300 p-1 sm:p-2 text-gray-600">${cachedItem?.colorName || item.color_name || 'لون'}</td>
                         <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${pieces}</td>
                         <td class="border border-gray-300 p-1 sm:p-2 text-center">${priceVal}</td>

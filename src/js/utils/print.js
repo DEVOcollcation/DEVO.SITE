@@ -31,7 +31,7 @@ export function printOrderCustomerInvoice(o) {
     
     o.order_items.forEach(item => {
         const modelId = item.model_id;
-        const code = item.models?.system_code || item.models?.factory_code || '';
+        const code = item.models?.factory_code || item.models?.system_code || '';
         const colorName = item.colors?.name || '-';
         const qty = Number(item.quantity) || 0;
         
@@ -99,7 +99,7 @@ export function printOrderCustomerInvoice(o) {
         <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px;">
             <div><b>رقم:</b> <span style="color:red; font-family:monospace; font-size:16px;">${o.invoice_number}</span></div>
             <div>التاريخ: ${new Date(o.created_at).toLocaleDateString('ar-EG')}</div>
-            <div>الكاشير: ${o.system_users?.full_name || 'غير معروف'}</div>
+            <div>سيلز: ${o.system_users?.full_name || 'غير معروف'}</div>
         </div>
         <div style="background: #f3f4f6; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; font-size: 12px;"><b>العميل:</b> ${o.customer_name} &nbsp;|&nbsp; <b>العنوان:</b> ${o.address || '-'} &nbsp;|&nbsp; <b>هاتف:</b> <span dir="ltr">${o.phone_1}</span></div>
         <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; border: 1px solid black;">

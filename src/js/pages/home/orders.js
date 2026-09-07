@@ -349,11 +349,14 @@ window.viewOrderDetails = async (id) => {
 
         const colorWithQty = `${qty} ${colorName}`;
 
+        const factoryCode = item.models?.factory_code || item.models?.system_code || '';
+
         const piecePrice = item.price_per_series / sizesCount;
 
         if (!groupedItems[modelId]) {
             groupedItems[modelId] = {
                 modelName: item.models?.name,
+                factoryCode: factoryCode,
                 colorsList: [colorWithQty],
                 totalQty: qty,
                 totalPieces: pieces, 
@@ -370,7 +373,10 @@ window.viewOrderDetails = async (id) => {
 
     let itemsHtml = Object.values(groupedItems).map(item => `
         <tr class="border-b border-devo-gray last:border-0">
-            <td class="py-3 text-white text-sm font-bold">${item.modelName}</td>
+            <td class="py-3">
+                <div class="text-white text-sm font-bold">${item.modelName}</div>
+                ${item.factoryCode ? `<div class="text-[11px] text-devo-orange font-mono font-bold mt-0.5">كود: ${item.factoryCode}</div>` : ''}
+            </td>
             <td class="py-3 text-devo-info text-xs leading-relaxed max-w-[120px]">${item.colorsList.join('، ')}</td>
             <td class="py-3 text-white font-black text-center">
                 <span class="text-lg">${item.totalQty} سيريه</span><br>
