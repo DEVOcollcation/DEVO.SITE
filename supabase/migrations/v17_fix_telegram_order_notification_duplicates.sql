@@ -98,7 +98,6 @@ BEGIN
         END;
     END IF;
 
-    -- ب) إرسال البث المخصص (Custom Broadcast)
     IF (NEW.type = 'custom_broadcast') THEN
         DECLARE
             v_tg_target text;

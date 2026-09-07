@@ -1318,7 +1318,7 @@ async function handleConfirmSave() {
                 priceUpdates.push({
                     id: item.modelId,
                     price: item.newPrice,
-                    updated_at: new Date()
+                    updated_at: new Date().toISOString()
                 });
                 allMovementsToInsert.push({
                     model_id: item.modelId,
@@ -1345,6 +1345,8 @@ async function handleConfirmSave() {
                     if (existingInvId) {
                         inventoryUpdates.push({
                             id: existingInvId,
+                            model_id: item.modelId,
+                            color_id: targetColorId,
                             available_series: dbSeriesVal
                         });
                     } else {
@@ -1370,18 +1372,27 @@ async function handleConfirmSave() {
             }
         }
 
-        // Step E: Execute Bulk Operations in Batches of 200 with Progress Feedback
+        // Step E: Execute Bulk Operations with Progress Feedback
         if (priceUpdates.length > 0) {
-            const totalBatches = Math.ceil(priceUpdates.length / 200);
-            for (let i = 0; i < priceUpdates.length; i += 200) {
-                const batchNum = Math.floor(i / 200) + 1;
+            const batchSize = 25;
+            const totalBatches = Math.ceil(priceUpdates.length / batchSize);
+            for (let i = 0; i < priceUpdates.length; i += batchSize) {
+                const batchNum = Math.floor(i / batchSize) + 1;
                 const percent = Math.round(55 + (i / priceUpdates.length) * 15);
                 updateProgress(`جاري تحديث أسعار الموديلات (الدفعة ${batchNum} من ${totalBatches} - ${priceUpdates.length} سعر)...`, percent);
                 await new Promise(r => setTimeout(r, 20));
 
-                const chunk = priceUpdates.slice(i, i + 200);
-                const { error } = await supabase.from('models').upsert(chunk, { onConflict: 'id' });
-                if (error) throw error;
+                const chunk = priceUpdates.slice(i, i + batchSize);
+                const results = await Promise.all(
+                    chunk.map(p => 
+                        supabase.from('models')
+                            .update({ price: p.price, updated_at: p.updated_at })
+                            .eq('id', p.id)
+                    )
+                );
+                for (const res of results) {
+                    if (res.error) throw res.error;
+                }
             }
         }
 
