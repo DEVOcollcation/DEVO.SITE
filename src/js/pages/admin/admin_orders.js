@@ -78,6 +78,11 @@ export async function initAdminOrdersView() {
     const { session } = getCurrentSession();
     if(session) currentUserProfile = session.user;
 
+    // 🔍 DEBUG: فحص بيانات المستخدم المحملة
+    console.log('🔍 [DEBUG] initAdminOrdersView - currentUserProfile:', JSON.stringify(currentUserProfile));
+    console.log('🔍 [DEBUG] role:', currentUserProfile?.role);
+    console.log('🔍 [DEBUG] isOwnerOrAdmin:', currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin');
+
     const filterInputs = [
         'ao-search-invoice',
         'ao-search-customer',
@@ -273,9 +278,12 @@ function generateOrderRowHTML(o) {
         ? 'تم تسجيل هذا الأوردر ولا يمكن تعديله نهائياً'
         : (o.is_locked ? 'الأوردر مقفل أو قيد التعديل حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله');
 
+    // 🔍 DEBUG: فحص صلاحيات إنشاء زرار التعديل
+    console.log('🔍 [DEBUG] generateOrderRowHTML - order:', o.invoice_number, '| isOwnerOrAdmin:', isOwnerOrAdmin, '| isEditable:', isEditable, '| status:', o.status, '| is_locked:', o.is_locked);
+
     const editBtnHtml = isOwnerOrAdmin
         ? (isEditable 
-            ? `<button onclick="openEditOrderChoices('${o.id}')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors" title="تعديل الأوردر"><i class="ph ph-pencil-simple text-lg"></i></button>`
+            ? `<button onclick="openEditOrderChoices('${o.id}')" class="p-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded transition-colors cursor-pointer" title="تعديل الأوردر"><i class="ph ph-pencil-simple text-lg"></i></button>`
             : `<button disabled class="p-1.5 bg-devo-gray/30 text-devo-muted rounded cursor-not-allowed opacity-50" title="${editLockTitle}"><i class="ph ph-lock text-lg text-devo-muted"></i></button>`)
         : '';
 
@@ -1189,34 +1197,94 @@ window.customSortHandlers['admin-orders-table'] = (colIndex, direction) => {
 // =========================================================================
 
 window.openEditOrderChoices = async (orderId) => {
-    currentEditingOrderId = orderId;
-    const freshOrder = await fetchFullOrderById(orderId);
-    const o = freshOrder || allAdminOrders.find(x => x.id === orderId);
-    if (!o) return;
+    console.log('🔍 [DEBUG] openEditOrderChoices called with orderId:', orderId);
+    console.log('🔍 [DEBUG] allAdminOrders.length:', allAdminOrders.length);
+    console.log('🔍 [DEBUG] currentUserProfile:', JSON.stringify(currentUserProfile));
+    try {
+        let o = allAdminOrders.find(x => String(x.id) === String(orderId));
+        console.log('🔍 [DEBUG] found order in allAdminOrders:', o ? `YES (status=${o.status}, is_locked=${o.is_locked})` : 'NO');
+        if (!o) {
+            console.log('🔍 [DEBUG] fetching order from DB...');
+            o = await fetchFullOrderById(orderId);
+            console.log('🔍 [DEBUG] fetched from DB:', o ? 'YES' : 'NO');
+        }
 
-    if (o.status === 'registered') {
-        currentEditingOrderId = null;
-        return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
+        if (!o) {
+            showToast('تعذر العثور على بيانات الأوردر المحدد', 'error');
+            return;
+        }
+
+        if (o.status === 'registered') {
+            currentEditingOrderId = null;
+            return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
+        }
+
+        currentEditingOrderId = o.id;
+        console.log('🔍 [DEBUG] currentEditingOrderId set to:', currentEditingOrderId);
+
+        // إعادة تعيين خطوات المودال
+        const stepSelect = document.getElementById('eoc-step-select');
+        const stepAssign = document.getElementById('eoc-step-assign');
+        console.log('🔍 [DEBUG] stepSelect found:', !!stepSelect, '| stepAssign found:', !!stepAssign);
+        if (stepSelect) stepSelect.classList.remove('hidden');
+        if (stepAssign) stepAssign.classList.add('hidden');
+
+        // عرض رقم الفاتورة في العنوان
+        const numEl = document.getElementById('eoc-order-number');
+        if (numEl) numEl.textContent = `(#${o.invoice_number || ''})`;
+
+        // إظهار المودال فوراً بسلاسة
+        const modal = document.getElementById('edit-order-choices-modal');
+        console.log('🔍 [DEBUG] modal element found:', !!modal);
+        if (modal) {
+            console.log('🔍 [DEBUG] modal classes BEFORE:', modal.className);
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            console.log('🔍 [DEBUG] modal classes AFTER:', modal.className);
+            console.log('🔍 [DEBUG] computed display:', window.getComputedStyle(modal).display);
+            console.log('🔍 [DEBUG] computed zIndex:', window.getComputedStyle(modal).zIndex);
+            console.log('🔍 [DEBUG] computed opacity:', window.getComputedStyle(modal).opacity);
+            console.log('🔍 [DEBUG] computed visibility:', window.getComputedStyle(modal).visibility);
+            requestAnimationFrame(() => {
+                modal.classList.remove('opacity-0');
+                console.log('🔍 [DEBUG] after rAF - opacity:', window.getComputedStyle(modal).opacity);
+                const card = modal.firstElementChild;
+                if (card) {
+                    card.classList.remove('scale-95');
+                    card.classList.add('scale-100');
+                }
+            });
+        } else {
+            console.error('🚨 [DEBUG] edit-order-choices-modal NOT FOUND IN DOM!');
+        }
+
+        // تحديث الأوردر في الخلفية لضمان أحدث البيانات دون تجميد الواجهة
+        fetchFullOrderById(orderId).then(fresh => {
+            if (fresh) {
+                const idx = allAdminOrders.findIndex(x => String(x.id) === String(orderId));
+                if (idx > -1) allAdminOrders[idx] = fresh;
+            }
+        }).catch(err => console.warn('Background order fetch error:', err));
+    } catch (e) {
+        console.error('Error opening edit order choices:', e);
+        showToast('حدث خطأ أثناء فتح خيارات التعديل: ' + e.message, 'error');
     }
-
-    // إعادة تعيين خطوات المودال
-    document.getElementById('eoc-step-select').classList.remove('hidden');
-    document.getElementById('eoc-step-assign').classList.add('hidden');
-    
-    // عرض رقم الفاتورة في العنوان
-    document.getElementById('eoc-order-number').textContent = `(#${o.invoice_number})`;
-
-    // إظهار المودال
-    const modal = document.getElementById('edit-order-choices-modal');
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.remove('opacity-0'), 10);
 };
 
 window.closeEditOrderChoices = (keepOrderContext = false) => {
     const modal = document.getElementById('edit-order-choices-modal');
+    if (!modal) return;
+
     modal.classList.add('opacity-0');
+    const card = modal.firstElementChild;
+    if (card) {
+        card.classList.remove('scale-100');
+        card.classList.add('scale-95');
+    }
+
     setTimeout(() => {
         modal.classList.add('hidden');
+        modal.classList.remove('flex');
         if (!keepOrderContext) {
             currentEditingOrderId = null;
         }
@@ -1261,8 +1329,18 @@ window.showAssignWorkerStep = async () => {
 // --- الخيار الأول: التعديل المحلي ---
 window.triggerLocalEdit = async () => {
     if (!currentEditingOrderId) return;
-    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
-    if (!o) return;
+    let o = allAdminOrders.find(x => String(x.id) === String(currentEditingOrderId));
+    if (!o) {
+        showToast('تعذر العثور على بيانات الأوردر للتعديل', 'error');
+        return;
+    }
+
+    if (!o.order_items || o.order_items.length === 0) {
+        const fresh = await fetchFullOrderById(o.id);
+        if (fresh && fresh.order_items) {
+            o = fresh;
+        }
+    }
 
     if (o.status === 'registered') {
         return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
@@ -1341,9 +1419,14 @@ window.triggerLocalEdit = async () => {
 // 🌟 نسخ الأوردر كفاتورة جديدة (Duplicate Order) 🌟
 // ==========================================
 window.duplicateAdminOrder = async (orderId) => {
-    const freshOrder = await fetchFullOrderById(orderId);
-    const o = freshOrder || allAdminOrders.find(x => x.id === orderId);
-    if (!o) return;
+    let o = allAdminOrders.find(x => String(x.id) === String(orderId));
+    if (!o || !o.order_items || o.order_items.length === 0) {
+        o = await fetchFullOrderById(orderId) || o;
+    }
+    if (!o) {
+        showToast('تعذر العثور على بيانات الأوردر للنسخ', 'error');
+        return;
+    }
 
     closeEditOrderChoices(true);
 
@@ -2277,8 +2360,14 @@ window.saveLocalOrderEdits = async (orderId) => {
 // --- الخيار الثاني: التعديل بالمعرض (السلة) ---
 window.triggerCartEdit = async () => {
     if (!currentEditingOrderId) return;
-    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
-    if (!o) return;
+    let o = allAdminOrders.find(x => String(x.id) === String(currentEditingOrderId));
+    if (!o || !o.order_items || o.order_items.length === 0) {
+        o = await fetchFullOrderById(currentEditingOrderId) || o;
+    }
+    if (!o) {
+        showToast('تعذر العثور على بيانات الأوردر', 'error');
+        return;
+    }
 
     if (o.status === 'registered') {
         return showToast('عفواً، لا يمكن تعديل هذا الأوردر لأنه في حالة (تم التسجيل)!', 'error');
@@ -2351,8 +2440,11 @@ window.executeOrderAssignment = async () => {
     const workerId = document.getElementById('eoc-worker-select').value;
     if (!workerId) return showToast('يرجى اختيار الموظف أولاً', 'warning');
 
-    const o = allAdminOrders.find(x => x.id === currentEditingOrderId);
-    if (!o) return;
+    const o = allAdminOrders.find(x => String(x.id) === String(currentEditingOrderId));
+    if (!o) {
+        showToast('تعذر العثور على بيانات الأوردر للإسناد', 'error');
+        return;
+    }
 
     showToast('جاري إسناد الأوردر...', 'info');
 

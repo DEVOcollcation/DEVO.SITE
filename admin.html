@@ -4857,85 +4857,6 @@
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- MODAL: خيارات تعديل الأوردر -->
-<!-- ============================================================ -->
-<div id="edit-order-choices-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-3xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
-        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-pencil-simple text-devo-orange"></i> خيارات تعديل وإدارة الأوردر <span id="eoc-order-number" class="text-devo-muted font-mono text-sm"></span></h3>
-            <button onclick="closeEditOrderChoices()" class="text-devo-muted hover:text-white transition-colors cursor-pointer">
-                <i class="ph ph-x text-2xl"></i>
-            </button>
-        </div>
-        
-        <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar flex-1">
-            <!-- الخطوة الأولى: اختيار نوع التعديل أو النسخ -->
-            <div id="eoc-step-select" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <!-- تعديل محلي -->
-                <button onclick="triggerLocalEdit()" class="bg-devo-black border border-devo-gray hover:border-devo-orange p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
-                    <i class="ph ph-note-pencil text-3xl text-devo-orange group-hover:scale-110 transition-transform"></i>
-                    <div>
-                        <h4 class="text-white font-bold text-sm">تعديل محلي في نفس النافذة</h4>
-                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">تعديل بيانات العميل أو كميات الأصناف وحذفها مباشرة من هنا دون مغادرة الصفحة.</p>
-                    </div>
-                </button>
-
-                <!-- نسخ الأوردر كفاتورة جديدة -->
-                <button onclick="triggerDuplicateFromChoices()" class="bg-devo-black border border-devo-gray hover:border-cyan-500 p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
-                    <i class="ph ph-copy text-3xl text-cyan-400 group-hover:scale-110 transition-transform"></i>
-                    <div>
-                        <h4 class="text-white font-bold text-sm">نسخ الأوردر كفاتورة جديدة (Duplicate)</h4>
-                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">نسخ كافة الأصناف والكميات لإنشاء فاتورة جديدة دون أي تعديل على هذا الأوردر.</p>
-                    </div>
-                </button>
-
-                <!-- تعديل في المعرض -->
-                <button onclick="triggerCartEdit()" class="bg-devo-black border border-devo-gray hover:border-devo-orange p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
-                    <i class="ph ph-shopping-cart text-3xl text-devo-success group-hover:scale-110 transition-transform"></i>
-                    <div>
-                        <h4 class="text-white font-bold text-sm">تعديل في المعرض (السلة)</h4>
-                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">تحميل الأصناف للسلة بالصفحة الرئيسية للإضافة من المعرض أو التعديل الكامل وإعادة الحفظ.</p>
-                    </div>
-                </button>
-
-                <!-- تعيين موظف آخر -->
-                <button onclick="showAssignWorkerStep()" class="bg-devo-black border border-devo-gray hover:border-devo-orange p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
-                    <i class="ph ph-user-gear text-3xl text-devo-info group-hover:scale-110 transition-transform"></i>
-                    <div>
-                        <h4 class="text-white font-bold text-sm">إسناد لمشرف أو عامل آخر</h4>
-                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">تعيين موظف آخر ليقوم بتعديل هذا الأوردر من صفحته المخصصة بالمعرض.</p>
-                    </div>
-                </button>
-            </div>
-
-            <!-- الخطوة الثانية: اختيار الموظف للإسناد -->
-            <div id="eoc-step-assign" class="hidden space-y-4">
-                <div class="bg-devo-info/10 border border-devo-info/20 p-4 rounded-xl text-xs text-devo-info leading-relaxed flex items-start gap-2">
-                    <i class="ph ph-info text-lg shrink-0 mt-0.5"></i>
-                    <span>عند إسناد الأوردر للموظف المحدد، سيظهر في صفحة الأوردرات الخاصة به في الصفحة الرئيسية للموقع ليتمكن من تعديله وإعادة حفظه.</span>
-                </div>
-                
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-bold text-devo-muted">اختر الموظف أو المشرف:</label>
-                    <select id="eoc-worker-select" class="w-full bg-devo-black border border-devo-gray rounded-xl p-3 text-white outline-none focus:border-devo-orange text-sm cursor-pointer">
-                        <option value="">-- اختر الموظف --</option>
-                    </select>
-                </div>
-
-                <div class="flex gap-3 pt-2">
-                    <button onclick="executeOrderAssignment()" class="flex-1 bg-devo-orange hover:bg-devo-orangeHover text-white py-3 rounded-xl font-bold transition-all shadow-md flex justify-center items-center gap-2 text-sm">
-                        <i class="ph ph-check-circle text-lg"></i> تأكيد التعيين والإسناد
-                    </button>
-                    <button onclick="showSelectChoicesStep()" class="bg-devo-gray hover:bg-white/10 text-white px-5 py-3 rounded-xl font-bold transition-colors text-sm">
-                        رجوع
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 
 <div id="color-excel-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex justify-center items-center p-4 opacity-0 transition-opacity duration-300">
         <div class="bg-devo-dark border border-devo-gray w-full max-w-2xl rounded-2xl shadow-devo-float transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]">
@@ -5018,7 +4939,88 @@
     </div>
 </footer>
 
-</main> <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
+</main>
+
+<!-- ============================================================ -->
+<!-- MODAL: خيارات تعديل الأوردر (خارج main لتجنب stacking context) -->
+<!-- ============================================================ -->
+<div id="edit-order-choices-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[9999] hidden items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-3xl flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="ph ph-pencil-simple text-devo-orange"></i> خيارات تعديل وإدارة الأوردر <span id="eoc-order-number" class="text-devo-muted font-mono text-sm"></span></h3>
+            <button onclick="closeEditOrderChoices()" class="text-devo-muted hover:text-white transition-colors cursor-pointer">
+                <i class="ph ph-x text-2xl"></i>
+            </button>
+        </div>
+        
+        <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar flex-1">
+            <!-- الخطوة الأولى: اختيار نوع التعديل أو النسخ -->
+            <div id="eoc-step-select" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- تعديل محلي -->
+                <button onclick="triggerLocalEdit()" class="bg-devo-black border border-devo-gray hover:border-devo-orange p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
+                    <i class="ph ph-note-pencil text-3xl text-devo-orange group-hover:scale-110 transition-transform"></i>
+                    <div>
+                        <h4 class="text-white font-bold text-sm">تعديل محلي في نفس النافذة</h4>
+                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">تعديل بيانات العميل أو كميات الأصناف وحذفها مباشرة من هنا دون مغادرة الصفحة.</p>
+                    </div>
+                </button>
+
+                <!-- نسخ الأوردر كفاتورة جديدة -->
+                <button onclick="triggerDuplicateFromChoices()" class="bg-devo-black border border-devo-gray hover:border-cyan-500 p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
+                    <i class="ph ph-copy text-3xl text-cyan-400 group-hover:scale-110 transition-transform"></i>
+                    <div>
+                        <h4 class="text-white font-bold text-sm">نسخ الأوردر كفاتورة جديدة (Duplicate)</h4>
+                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">نسخ كافة الأصناف والكميات لإنشاء فاتورة جديدة دون أي تعديل على هذا الأوردر.</p>
+                    </div>
+                </button>
+
+                <!-- تعديل في المعرض -->
+                <button onclick="triggerCartEdit()" class="bg-devo-black border border-devo-gray hover:border-devo-orange p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
+                    <i class="ph ph-shopping-cart text-3xl text-devo-success group-hover:scale-110 transition-transform"></i>
+                    <div>
+                        <h4 class="text-white font-bold text-sm">تعديل في المعرض (السلة)</h4>
+                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">تحميل الأصناف للسلة بالصفحة الرئيسية للإضافة من المعرض أو التعديل الكامل وإعادة الحفظ.</p>
+                    </div>
+                </button>
+
+                <!-- تعيين موظف آخر -->
+                <button onclick="showAssignWorkerStep()" class="bg-devo-black border border-devo-gray hover:border-devo-orange p-5 rounded-2xl text-right flex flex-col gap-3 transition-all hover:scale-[1.02] shadow-sm group cursor-pointer">
+                    <i class="ph ph-user-gear text-3xl text-devo-info group-hover:scale-110 transition-transform"></i>
+                    <div>
+                        <h4 class="text-white font-bold text-sm">إسناد لمشرف أو عامل آخر</h4>
+                        <p class="text-devo-muted text-xs mt-1.5 leading-relaxed">تعيين موظف آخر ليقوم بتعديل هذا الأوردر من صفحته المخصصة بالمعرض.</p>
+                    </div>
+                </button>
+            </div>
+
+            <!-- الخطوة الثانية: اختيار الموظف للإسناد -->
+            <div id="eoc-step-assign" class="hidden space-y-4">
+                <div class="bg-devo-info/10 border border-devo-info/20 p-4 rounded-xl text-xs text-devo-info leading-relaxed flex items-start gap-2">
+                    <i class="ph ph-info text-lg shrink-0 mt-0.5"></i>
+                    <span>عند إسناد الأوردر للموظف المحدد، سيظهر في صفحة الأوردرات الخاصة به في الصفحة الرئيسية للموقع ليتمكن من تعديله وإعادة حفظه.</span>
+                </div>
+                
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-bold text-devo-muted">اختر الموظف أو المشرف:</label>
+                    <select id="eoc-worker-select" class="w-full bg-devo-black border border-devo-gray rounded-xl p-3 text-white outline-none focus:border-devo-orange text-sm cursor-pointer">
+                        <option value="">-- اختر الموظف --</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-3 pt-2">
+                    <button onclick="executeOrderAssignment()" class="flex-1 bg-devo-orange hover:bg-devo-orangeHover text-white py-3 rounded-xl font-bold transition-all shadow-md flex justify-center items-center gap-2 text-sm">
+                        <i class="ph ph-check-circle text-lg"></i> تأكيد التعيين والإسناد
+                    </button>
+                    <button onclick="showSelectChoicesStep()" class="bg-devo-gray hover:bg-white/10 text-white px-5 py-3 rounded-xl font-bold transition-colors text-sm">
+                        رجوع
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container" class="fixed bottom-6 left-6 z-[99999] flex flex-col gap-3 pointer-events-none"></div>
     <script src="./src/vendor/xlsx/xlsx.full.min.js"></script>
     <script type="module" src="./src/js/pages/admin/router.js"></script>
     <script type="module" src="./src/js/pages/admin/definitions.js"></script>
