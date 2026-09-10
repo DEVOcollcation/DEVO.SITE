@@ -51,11 +51,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         initGallery()
     ]);
     
-    // تشغيل السلة والأوردرات والباركود فقط لفريق العمل والمديرين
+    // تشغيل الباركود للجميع (الزوار + فريق العمل) للاستعلام عن الموديلات
+    initBarcode();
+
+    // تشغيل السلة والأوردرات فقط لفريق العمل والمديرين
     if (!window.isVisitor) {
         initCart();
         await initOrdersView();
-        initBarcode();
 
         if (localStorage.getItem('devo_edit_order_data')) {
             if (window.switchSiteView) window.switchSiteView('view-cart');

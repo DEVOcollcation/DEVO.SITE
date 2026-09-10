@@ -70,7 +70,7 @@ export async function initNavbar() {
             } catch (e) {}
         }
 
-        if (window.isVisitor && target && target !== 'view-home' && target !== 'view-gallery') {
+        if (window.isVisitor && target && target !== 'view-home' && target !== 'view-gallery' && target !== 'view-barcode') {
             target = 'view-home';
         }
 

@@ -65,9 +65,11 @@ function buildNavLinks(user) {
             { id: 'view-orders', label: 'الأوردرات', action: `switchSiteView('view-orders')`, icon: 'ph-receipt' },
         ];
     } else {
+        // الزوار: الرئيسية + المعرض + الباركود (للاستعلام عن الموديلات)
         return [
             { id: 'view-home', label: 'الرئيسية', action: `switchSiteView('view-home')`, icon: 'ph-house' },
             { id: 'view-gallery', label: 'المعرض', action: `switchSiteView('view-gallery')`, icon: 'ph-images' },
+            { id: 'view-barcode', label: 'الباركود', action: `switchSiteView('view-barcode')`, icon: 'ph-qr-code' },
         ];
     }
 }
