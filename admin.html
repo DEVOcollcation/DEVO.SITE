@@ -216,6 +216,7 @@
             <a href="#" data-target="view-admin-orders" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة الأوردرات">
                 <i class="ph ph-receipt text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">إدارة الأوردرات</span>
+                <span id="sidebar-visitor-orders-badge" class="hidden bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px] font-bold px-1.5 py-0.5 rounded-full mr-auto">0 انتظار</span>
                 <span class="sidebar-tooltip">إدارة الأوردرات</span>
             </a>
             <a href="#" data-target="view-add-batch" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="فواتير الدخل (شحن دفعات رصيد)">
@@ -355,7 +356,7 @@
             <div class="flex items-center gap-4">
                 <h2 class="text-xl font-bold text-white" id="page-title">جاري التحميل...</h2>
 
-                <!-- تبويبات الأوردرات النشطة والأرشيف بالهيدر العلوي -->
+                <!-- تبويبات الأوردرات النشطة والأرشيف وطلبات الزوار بالهيدر العلوي -->
                 <div id="ao-header-tabs" class="hidden items-center gap-1 bg-devo-dark p-1 rounded-xl border border-devo-gray shadow-sm">
                     <button id="ao-tab-active" onclick="switchAdminOrdersTab('active')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer">
                         <i class="ph ph-list-dashes text-sm"></i>
@@ -366,6 +367,11 @@
                         <i class="ph ph-archive text-sm"></i>
                         <span>الأرشيف</span>
                         <span id="ao-badge-archived" class="bg-devo-gray/40 text-devo-muted text-[10px] px-1.5 py-0.5 rounded-full mr-1">0</span>
+                    </button>
+                    <button id="ao-tab-visitors" onclick="switchAdminOrdersTab('visitors')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-clock text-sm"></i>
+                        <span>طلبات الزوار (انتظار)</span>
+                        <span id="ao-badge-visitors" class="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded-full mr-1">0</span>
                     </button>
                 </div>
 
@@ -1307,10 +1313,45 @@
             </div>
         </div>
 
+        <!-- حاوية التبويبات الفرعية لطلبات الزوار (تظهر فقط عند فتح تبويب طلبات الزوار) -->
+        <div id="vo-subtabs-container" class="hidden flex items-center justify-between flex-wrap gap-2.5 bg-devo-dark p-2.5 rounded-xl border border-devo-gray/70">
+            <div class="flex items-center gap-1.5 flex-wrap">
+                <button type="button" id="vo-subtab-pending" onclick="setVisitorOrdersSubTab('pending')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-amber-500 text-black flex items-center gap-1.5 cursor-pointer shadow-sm">
+                    <i class="ph ph-clock text-sm"></i>
+                    <span>قيد الانتظار</span>
+                    <span id="vo-subtab-badge-pending" class="bg-black/20 text-black text-[10px] px-1.5 py-0.5 rounded-full font-black">0</span>
+                </button>
+                <button type="button" id="vo-subtab-archived" onclick="setVisitorOrdersSubTab('archived')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 flex items-center gap-1.5 cursor-pointer">
+                    <i class="ph ph-archive text-sm text-purple-400"></i>
+                    <span>أرشيف طلبات الزوار</span>
+                    <span id="vo-subtab-badge-archived" class="bg-devo-gray/40 text-devo-muted text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+                <button type="button" id="vo-subtab-approved" onclick="setVisitorOrdersSubTab('approved')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 flex items-center gap-1.5 cursor-pointer">
+                    <i class="ph ph-check-circle text-sm text-emerald-400"></i>
+                    <span>المعتمدة (المحولة لأوردرات)</span>
+                    <span id="vo-subtab-badge-approved" class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+                <button type="button" id="vo-subtab-rejected" onclick="setVisitorOrdersSubTab('rejected')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 flex items-center gap-1.5 cursor-pointer">
+                    <i class="ph ph-x-circle text-sm text-rose-400"></i>
+                    <span>المرفوضة</span>
+                    <span id="vo-subtab-badge-rejected" class="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+                <button type="button" id="vo-subtab-all" onclick="setVisitorOrdersSubTab('all')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 flex items-center gap-1.5 cursor-pointer">
+                    <i class="ph ph-list text-sm"></i>
+                    <span>الكل</span>
+                    <span id="vo-subtab-badge-all" class="bg-devo-gray/40 text-devo-muted text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+            </div>
+            <div class="text-[11px] text-devo-muted flex items-center gap-1">
+                <i class="ph ph-info text-devo-orange"></i>
+                <span>الطلبات المعتمدة تُنقل تلقائياً لجدول الأوردرات النشطة</span>
+            </div>
+        </div>
+
         <div class="bg-devo-dark border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
             <div class="overflow-x-auto min-h-[400px]">
                 <table id="admin-orders-table" class="w-full text-right text-sm whitespace-nowrap">
-<thead class="bg-devo-black border-b border-devo-gray text-devo-muted">
+<thead id="ao-table-head" class="bg-devo-black border-b border-devo-gray text-devo-muted">
                         <tr>
                             <th class="p-3 font-medium">رقم الأوردر</th>
                             <th class="p-3 font-medium">التاريخ</th>
@@ -1349,6 +1390,37 @@
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar" id="ao-details-content"></div>
+            </div>
+        </div>
+
+        <!-- مودال تفاصيل وتعديل طلب الزائر (Visitor Order Modal) -->
+        <div id="vo-details-modal" class="fixed inset-0 bg-black/95 backdrop-blur-md z-[250] hidden flex flex-col p-0 opacity-0 transition-opacity duration-300 no-print">
+            <div id="vo-details-modal-box" class="bg-devo-dark w-full h-full flex flex-col overflow-hidden shadow-2xl">
+                <div class="px-4 md:px-6 py-3.5 border-b border-devo-gray flex justify-between items-center bg-devo-black shrink-0">
+                    <div class="flex items-center gap-3">
+                        <h3 class="text-base md:text-lg font-bold text-white flex items-center gap-2">
+                            <i class="ph ph-clock text-amber-400 text-xl"></i>
+                            <span id="vo-modal-header-title">طلب زائر — قائمة الانتظار</span>
+                        </h3>
+                        <span id="vo-modal-status-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">في الانتظار</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="if(window.currentViewingVisitorOrder) printVisitorOrder(window.currentViewingVisitorOrder.id)" class="px-3.5 py-1.5 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer" title="طباعة فاتورة الطلب">
+                            <i class="ph ph-printer text-base"></i>
+                            <span>طباعة الفاتورة</span>
+                        </button>
+                        <button onclick="closeVisitorOrderModal()" class="text-devo-muted hover:text-white px-3.5 py-1.5 rounded-xl bg-devo-gray/40 hover:bg-devo-gray cursor-pointer transition-colors flex items-center gap-1.5 text-xs font-bold" title="إغلاق">
+                            <i class="ph ph-x text-base"></i>
+                            <span>إغلاق</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar" id="vo-details-content">
+                    <!-- Dynamic Content -->
+                </div>
+                <div id="vo-modal-footer" class="p-3 md:px-6 md:py-3.5 border-t border-devo-gray bg-devo-black flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <!-- Dynamic Footer Buttons -->
+                </div>
             </div>
         </div>
 
@@ -5022,7 +5094,7 @@
 
 <div id="toast-container" class="fixed bottom-6 left-6 z-[99999] flex flex-col gap-3 pointer-events-none"></div>
     <script src="./src/vendor/xlsx/xlsx.full.min.js"></script>
-    <script type="module" src="./src/js/pages/admin/router.js"></script>
+    <script type="module" src="./src/js/pages/admin/router.js?v=9.8"></script>
     <script type="module" src="./src/js/pages/admin/definitions.js"></script>
 <script type="module" src="./src/js/pages/admin/bulk_edits.js"></script>
     <script type="module" src="./src/js/components/searchable_select.js"></script>

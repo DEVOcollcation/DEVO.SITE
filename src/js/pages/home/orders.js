@@ -371,6 +371,13 @@ window.viewOrderDetails = async (id) => {
         }
     });
 
+    let totalSeries = 0;
+    let totalPieces = 0;
+    Object.values(groupedItems).forEach(g => {
+        totalSeries += g.totalQty;
+        totalPieces += g.totalPieces;
+    });
+
     let itemsHtml = Object.values(groupedItems).map(item => `
         <tr class="border-b border-devo-gray last:border-0">
             <td class="py-3">
@@ -379,11 +386,11 @@ window.viewOrderDetails = async (id) => {
             </td>
             <td class="py-3 text-devo-info text-xs leading-relaxed max-w-[120px]">${item.colorsList.join('، ')}</td>
             <td class="py-3 text-white font-black text-center">
-                <span class="text-lg">${item.totalQty} سيريه</span><br>
+                <span class="text-lg">${item.totalQty}</span><br>
                 <span class="text-[11px] text-devo-muted font-normal">(${item.totalPieces} قطعة)</span>
             </td>
-            <td class="py-3 text-devo-muted text-center">${item.price}</td>
-            <td class="py-3 text-devo-orange font-black text-left text-lg">${item.totalPrice}</td>
+            <td class="py-3 text-devo-muted text-center font-mono">${item.price}</td>
+            <td class="py-3 text-devo-orange font-black text-left text-lg font-mono">${item.totalPrice}</td>
         </tr>
     `).join('');
 
@@ -454,7 +461,7 @@ window.viewOrderDetails = async (id) => {
                     <tr>
                         <th class="py-2 px-1">الموديل</th>
                         <th class="py-2 px-1">الألوان والكميات</th>
-                        <th class="py-2 px-1 text-center">إجمالي الكمية</th>
+                        <th class="py-2 px-1 text-center">الكمية (سيريه / ق)</th>
                         <th class="py-2 px-1 text-center">السعر للقطعة</th>
                         <th class="py-2 px-1 text-left">الإجمالي</th>
                     </tr>
@@ -464,11 +471,14 @@ window.viewOrderDetails = async (id) => {
         </div>
 
         <div class="bg-devo-black p-4 rounded-xl border border-devo-gray space-y-2 text-sm">
-            <div class="flex justify-between text-devo-muted"><span>الإجمالي الكلي:</span> <span class="text-white font-bold">${o.total_price} ج.م</span></div>
-            <div class="flex justify-between text-devo-muted"><span>العربون المدفوع:</span> <span class="text-devo-success font-bold">${o.deposit} ج.م</span></div>
+            <div class="flex justify-between text-devo-muted"><span>إجمالي الأصناف:</span> <span class="text-white font-bold">${Object.keys(groupedItems).length} صنف</span></div>
+            <div class="flex justify-between text-devo-muted"><span>إجمالي السريات:</span> <span class="text-white font-bold">${totalSeries} سيريه</span></div>
+            <div class="flex justify-between text-devo-muted"><span>إجمالي القطع:</span> <span class="text-white font-bold">${totalPieces.toLocaleString()} قطعة</span></div>
+            <div class="flex justify-between text-devo-muted border-t border-devo-gray/60 pt-2"><span>الإجمالي الكلي:</span> <span class="text-white font-bold font-mono">${Number(o.total_price || 0).toLocaleString()} ج.م</span></div>
+            <div class="flex justify-between text-devo-muted"><span>العربون المدفوع:</span> <span class="text-devo-success font-bold font-mono">${Number(o.deposit || 0).toLocaleString()} ج.م</span></div>
             <div class="flex justify-between border-t border-devo-gray pt-2 mt-2">
                 <span class="text-white font-bold">المتبقي للدفع:</span> 
-                <span class="text-devo-orange font-black text-lg">${remaining} ج.م</span>
+                <span class="text-devo-orange font-black text-lg font-mono">${Number(remaining || 0).toLocaleString()} ج.م</span>
             </div>
         </div>
 

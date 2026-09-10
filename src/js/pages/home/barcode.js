@@ -1,4 +1,4 @@
-import { findModelByCode } from './gallery.js?v=9.2';
+import { findModelByCode } from './gallery.js?v=9.3';
 import { showToast } from '../../components/toast.js';
 import { supabase } from '../../config/supabase.js';
 
@@ -180,7 +180,7 @@ export function initBarcode() {
 
         // If current active view is barcode, resume scanning
         const barcodeView = document.getElementById('view-barcode');
-        if (barcodeView && barcodeView.classList.contains('block')) {
+        if (window.currentView === 'view-barcode' || (barcodeView && !barcodeView.classList.contains('hidden'))) {
             isScannerLocked = false;
             // Clear manual input for next scan
             if (manualInput) {
@@ -252,10 +252,10 @@ async function startScanning() {
         const config = {
             fps: 15,
             qrbox: function(width, height) {
-                // Focus area optimized for both 1D barcodes and 2D QR codes
+                // Focus area optimized for both 1D barcodes and 2D QR codes (min 100x80)
                 return {
-                    width: Math.min(width * 0.9, 360),
-                    height: Math.min(height * 0.65, 260)
+                    width: Math.max(100, Math.min((width || 300) * 0.9, 360)),
+                    height: Math.max(80, Math.min((height || 300) * 0.65, 260))
                 };
             },
             aspectRatio: 1.333333
@@ -294,7 +294,12 @@ async function stopScanning() {
     const laser = document.getElementById('barcode-scanner-laser');
 
     try {
-        await html5QrCode.stop();
+        if (html5QrCode.isScanning) {
+            await html5QrCode.stop().catch(() => {});
+        }
+    } catch (err) {
+        console.warn("Failed to stop Html5Qrcode:", err);
+    } finally {
         isScannerRunning = false;
         isScannerLocked = false;
 
@@ -304,8 +309,6 @@ async function stopScanning() {
             btnToggleScan.classList.replace('hover:bg-red-600', 'hover:bg-devo-orangeHover');
         }
         if (laser) laser.classList.add('hidden');
-    } catch (err) {
-        console.error("Failed to stop Html5Qrcode:", err);
     }
 }
 

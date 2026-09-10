@@ -370,7 +370,7 @@ async function loadViewLogic(targetId, subTab = null) {
             await initPrintBarcodesView();
             break;
         case 'view-admin-orders':
-            const { initAdminOrdersView } = await import('./admin_orders.js?v=8.6');
+            const { initAdminOrdersView } = await import('./admin_orders.js?v=9.8');
             await initAdminOrdersView();
             break;
         case 'view-reports': {
@@ -620,7 +620,7 @@ export async function refreshAllSystemData(options = {}) {
                     break;
                 }
                 case 'view-admin-orders': {
-                    const ordersMod = await import('./admin_orders.js').catch(() => null);
+                    const ordersMod = await import('./admin_orders.js?v=9.8').catch(() => null);
                     if (ordersMod && typeof ordersMod.fetchAdminOrders === 'function') {
                         await ordersMod.fetchAdminOrders();
                     }

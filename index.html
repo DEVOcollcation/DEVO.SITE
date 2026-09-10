@@ -378,6 +378,198 @@
 </div>
 
 
+<!-- ==================== سلة الزائر ==================== -->
+<div id="view-visitor-cart" class="site-view-section hidden animate-fade-in pb-20">
+    <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+
+        <div class="flex justify-between items-center mb-6 border-b border-devo-gray pb-4">
+            <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                <i class="ph ph-shopping-cart text-devo-orange"></i> طلبك
+            </h2>
+            <div class="flex items-center gap-2">
+                <button onclick="switchSiteView('view-gallery')" class="bg-devo-dark border border-devo-gray text-devo-muted hover:text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer">
+                    <i class="ph ph-arrow-right"></i> متابعة التصفح
+                </button>
+            </div>
+        </div>
+
+        <!-- تبويبات سلة الزائر وسجل الطلبات -->
+        <div class="flex items-center gap-2 mb-6 bg-devo-dark p-1.5 rounded-2xl border border-devo-gray/60 w-fit max-w-full">
+            <button type="button" id="tab-btn-vcart-current" onclick="switchVisitorCartSubTab('cart')" class="px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all bg-devo-orange text-white shadow-md cursor-pointer">
+                <i class="ph ph-shopping-cart-simple text-base"></i>
+                <span>سلة الطلب الحالي</span>
+            </button>
+            <button type="button" id="tab-btn-vcart-history" onclick="switchVisitorCartSubTab('history')" class="px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer">
+                <i class="ph ph-clock-counter-clockwise text-base"></i>
+                <span>سجل ومتابعة طلباتي</span>
+                <span id="visitor-orders-history-badge" class="hidden bg-devo-orange text-white text-[10px] px-2 py-0.5 rounded-full font-black">0</span>
+            </button>
+        </div>
+
+        <!-- 1. محتوى السلة الحالية -->
+        <div id="visitor-cart-main-wrapper" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- قائمة المنتجات -->
+            <div class="lg:col-span-2 space-y-4">
+                <div id="visitor-cart-tools-container" class="space-y-3 hidden">
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                            <input type="text" id="visitor-cart-search-input" oninput="filterVisitorCartItems()" placeholder="بحث بكود الموديل أو الاسم داخل السلة..." class="w-full bg-devo-dark border border-devo-gray rounded-xl pr-10 pl-4 py-3 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-sm">
+                        </div>
+                        <button type="button" id="btn-visitor-clear-cart" onclick="clearVisitorCart()" class="bg-devo-error/10 text-devo-error border border-devo-error/30 hover:bg-devo-error hover:text-white px-4 md:px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-all font-bold whitespace-nowrap shadow-sm cursor-pointer" title="إفراغ السلة">
+                            <i class="ph ph-trash text-xl"></i>
+                            <span class="hidden sm:block">إفراغ السلة</span>
+                        </button>
+                    </div>
+
+                    <!-- فلاتر السلة -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 bg-devo-dark border border-devo-gray/60 p-2 rounded-xl text-xs sm:text-sm">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <button type="button" id="btn-vcart-filter-all" onclick="setVisitorCartFilter('all')" class="px-4 py-2 rounded-lg font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer">
+                                <i class="ph ph-list text-base"></i>
+                                <span>الكل</span>
+                            </button>
+                            <button type="button" id="btn-vcart-filter-ok" onclick="setVisitorCartFilter('ok')" class="px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer">
+                                <i class="ph ph-check-circle text-base text-devo-success"></i>
+                                <span>الموديلات السليمة</span>
+                            </button>
+                            <button type="button" id="btn-vcart-filter-error" onclick="setVisitorCartFilter('error')" class="px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer">
+                                <i class="ph ph-warning-circle text-base text-devo-error"></i>
+                                <span>الموديلات التي بها مشاكل</span>
+                                <span id="vcart-error-badge" class="hidden bg-devo-error text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">0</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="visitor-cart-items-container" class="space-y-3"></div>
+            </div>
+
+            <!-- ملخص الطلب + فورم البيانات -->
+            <div class="space-y-6">
+
+                <!-- ملخص -->
+                <div class="bg-devo-dark border border-devo-gray rounded-2xl p-5 shadow-sm">
+                    <h3 class="text-base font-bold text-white mb-3 flex items-center gap-2">
+                        <i class="ph ph-receipt text-devo-orange"></i> ملخص طلبك
+                    </h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between text-devo-muted"><span>عدد الموديلات:</span><span id="v-sum-models" class="text-white font-bold">0</span></div>
+                        <div class="flex justify-between text-devo-muted"><span>إجمالي السريات:</span><span id="v-sum-series" class="text-white font-bold">0</span></div>
+                        <div class="flex justify-between text-lg pt-2 border-t border-devo-gray">
+                            <span class="text-white font-bold">الإجمالي:</span>
+                            <span class="text-devo-orange font-black"><span id="v-sum-price">0</span> ج.م</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بيانات العميل -->
+                <div class="bg-devo-dark border border-devo-orange/30 rounded-2xl p-5 shadow-sm">
+                    <h3 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-user text-devo-orange"></i> بيانات التواصل
+                    </h3>
+                    <p class="text-devo-muted text-xs mb-4">لن يتم خصم أي مخزون حتى يوافق فريقنا على طلبك</p>
+                    <form id="visitor-checkout-form" class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">اسمك / اسم المحل <span class="text-devo-error">*</span></label>
+                            <input type="text" id="vc-name" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">رقم الهاتف <span class="text-devo-error">*</span></label>
+                            <input type="tel" id="vc-phone1" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">رقم إضافي (اختياري)</label>
+                            <input type="tel" id="vc-phone2" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">العنوان بالتفصيل <span class="text-devo-error">*</span></label>
+                            <input type="text" id="vc-address" required placeholder="المحافظة / المدينة / العنوان بالتفصيل..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات (اختياري)</label>
+                            <textarea id="vc-notes" rows="2" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white focus:border-devo-orange outline-none text-sm resize-none"></textarea>
+                        </div>
+                        <div class="bg-devo-orange/10 border border-devo-orange/30 rounded-xl p-3 text-xs text-devo-muted">
+                            <i class="ph ph-info text-devo-orange"></i>
+                            سيتم مراجعة طلبك من فريقنا وسنتواصل معك في أقرب وقت لتأكيده.
+                        </div>
+                        <button type="submit" id="visitor-btn-checkout" class="w-full bg-devo-orange hover:bg-devo-orangeHover text-white font-bold py-3.5 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 mt-2 opacity-50 cursor-not-allowed" disabled>
+                            <span>إرسال الطلب</span>
+                            <i class="ph ph-paper-plane-tilt text-xl"></i>
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 2. محتوى سجل ومتابعة طلبات العميل -->
+        <div id="visitor-history-main-wrapper" class="hidden space-y-6">
+            <!-- شريط الاستعلام -->
+            <div class="bg-devo-dark border border-devo-gray rounded-2xl p-4 sm:p-6 shadow-sm space-y-3">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-magnifying-glass text-devo-orange text-lg"></i>
+                        <span>الاستعلام عن حالة أي طلب</span>
+                    </h3>
+                    <span class="text-xs text-devo-muted">تتبع الطلب بالرقم أو الهاتف فورياً</span>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2.5">
+                    <div class="relative flex-1">
+                        <i class="ph ph-hash absolute right-3.5 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                        <input type="text" id="visitor-order-query-input" onkeydown="if(event.key==='Enter') searchVisitorOrders()" placeholder="أدخل رقم هاتفك (مثال: 01012345678) أو كود الطلب..." class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-3 text-white focus:border-devo-orange outline-none text-sm transition-all shadow-inner">
+                    </div>
+                    <button type="button" id="btn-visitor-query" onclick="searchVisitorOrders()" class="bg-devo-orange hover:bg-devo-orangeHover text-white font-bold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer whitespace-nowrap text-sm">
+                        <span>استعلام</span>
+                        <i class="ph ph-magnifying-glass text-lg"></i>
+                    </button>
+                    <button type="button" onclick="loadVisitorOrdersHistory(true)" class="bg-devo-dark border border-devo-gray hover:border-devo-orange text-devo-muted hover:text-white px-3.5 py-3 rounded-xl transition-all text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap" title="تحديث السجل">
+                        <i class="ph ph-arrows-clockwise text-base"></i>
+                        <span class="hidden sm:inline">تحديث</span>
+                    </button>
+                </div>
+
+                <!-- الأكواد وعمليات البحث المحفوظة للاستعلام السريع -->
+                <div id="visitor-recent-queries-container" class="hidden pt-2.5 border-t border-devo-gray/40 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-[11px] text-devo-muted flex items-center gap-1 font-bold">
+                            <i class="ph ph-clock-counter-clockwise text-devo-orange"></i>
+                            <span>سجل الأكواد المستعلم عنها:</span>
+                        </span>
+                        <div id="visitor-recent-queries-list" class="flex flex-wrap items-center gap-1.5"></div>
+                    </div>
+                    <button type="button" onclick="clearQueriedCodesHistory()" class="text-[10px] text-devo-muted hover:text-rose-400 transition-colors cursor-pointer">
+                        مسح الأكواد
+                    </button>
+                </div>
+            </div>
+
+            <!-- قائمة سجل الطلبات -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between border-b border-devo-gray pb-3">
+                    <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-receipt text-devo-orange text-base"></i>
+                        <span id="visitor-orders-section-title">طلباتك المسجلة</span>
+                    </h4>
+                    <span id="visitor-orders-live-indicator" class="text-xs text-devo-muted flex items-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>مربوط بالنظام الحي</span>
+                    </span>
+                </div>
+
+                <div id="visitor-orders-history-list" class="space-y-4">
+                    <div class="p-8 text-center bg-devo-dark border border-devo-gray rounded-2xl">
+                        <i class="ph ph-spinner animate-spin text-2xl text-devo-orange"></i>
+                        <p class="text-xs text-devo-muted mt-2">جاري فحص وتحديث طلباتك...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ==================== نهاية سلة الزائر ==================== -->
+
 <div id="view-cart" class="site-view-section hidden animate-fade-in pb-20">
             <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
                 
@@ -550,7 +742,7 @@
                                     <th class="p-1 border-l border-gray-300 w-8 text-center">م</th>
                                     <th class="p-1 border-l border-gray-300">الموديل</th>
                                     <th class="p-1 border-l border-gray-300 text-center">اللون</th>
-                                    <th class="p-1 text-center border-l border-gray-300">الكمية</th>
+                                    <th class="p-1 text-center border-l border-gray-300">الكمية (سيريه / ق)</th>
                                     <th class="p-1 text-center border-l border-gray-300">السعر</th>
                                     <th class="p-1 text-center">الإجمالي</th>
                                 </tr>
@@ -561,9 +753,21 @@
                     </div>
 
                     <div class="flex justify-end">
-                        <div class="w-2/3 md:w-1/3 border-2 border-black rounded overflow-hidden">
+                        <div class="w-full sm:w-2/3 md:w-5/12 border-2 border-black rounded overflow-hidden">
+                            <div class="flex justify-between p-1.5 border-b border-gray-200 bg-gray-50 text-xs">
+                                <span class="font-bold text-gray-700">إجمالي الأصناف:</span>
+                                <span class="font-black text-black" id="inv-total-items">0</span>
+                            </div>
+                            <div class="flex justify-between p-1.5 border-b border-gray-200 bg-white text-xs">
+                                <span class="font-bold text-gray-700">إجمالي السريات:</span>
+                                <span class="font-black text-black" id="inv-total-series">0</span>
+                            </div>
+                            <div class="flex justify-between p-1.5 border-b border-gray-200 bg-gray-50 text-xs">
+                                <span class="font-bold text-gray-700">إجمالي القطع:</span>
+                                <span class="font-black text-black" id="inv-total-pieces">0</span>
+                            </div>
                             <div class="flex justify-between p-1.5 border-b border-gray-300 bg-white text-xs">
-                                <span class="font-bold text-gray-700">الإجمالي:</span>
+                                <span class="font-bold text-gray-700">الإجمالي الكلي:</span>
                                 <span class="font-black text-black" id="inv-total-price">0</span>
                             </div>
                             <div class="flex justify-between p-1.5 border-b border-gray-300 bg-gray-100 text-xs">
@@ -700,11 +904,103 @@
         </div>
     </main>
 
+<!-- الزر العائم لسلة الزائر -->
+<div id="visitor-floating-cart-btn" onclick="switchSiteView('view-visitor-cart'); window.refreshVisitorCartView?.();" class="hidden fixed bottom-6 right-6 z-[99999] cursor-pointer group">
+    <div class="relative bg-devo-orange hover:bg-devo-orangeHover text-white rounded-2xl px-4 py-3 shadow-[0_8px_30px_rgba(249,115,22,0.5)] flex items-center gap-2.5 transition-all duration-300 hover:scale-105 active:scale-95">
+        <i class="ph ph-shopping-cart-simple text-2xl"></i>
+        <div>
+            <p class="text-[10px] font-bold opacity-80 leading-none">سلتك</p>
+            <p class="text-xs font-black leading-none mt-0.5"><span id="visitor-floating-cart-count">0</span> سيريه</p>
+        </div>
+        <div class="absolute -top-2 -left-2 w-5 h-5 bg-devo-error text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md" id="visitor-cart-badge">
+            <i class="ph ph-dot-outline-fill text-xs"></i>
+        </div>
+    </div>
+</div>
+
 <!-- Footer Container — يُملأ ديناميكياً من footer_layouts.js -->
     <div id="site-footer"></div>
     <div id="toast-container" class="fixed bottom-6 left-6 z-[500] flex flex-col gap-3 pointer-events-none"></div>
     <script type="module" src="./src/js/components/searchable_select.js"></script>
     <script type="module" src="./src/js/components/table_sorter.js"></script>
-    <script type="module" src="./src/js/pages/home/index.js?v=9.2"></script>
+    <script type="module" src="./src/js/pages/home/index.js?v=10.5"></script>
+<!-- مودال نجاح إرسال طلب الزائر -->
+<div id="visitor-order-success-modal" class="fixed inset-0 bg-black/90 backdrop-blur-xl z-[300000] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-success/40 rounded-2xl w-full max-w-sm p-6 sm:p-8 text-center shadow-2xl">
+        <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-devo-success/15 flex items-center justify-center text-devo-success mx-auto mb-4 ring-4 ring-devo-success/20">
+            <i class="ph ph-check-circle text-4xl sm:text-5xl"></i>
+        </div>
+        <h3 class="text-xl sm:text-2xl font-black text-white mb-2">تم استلام طلبك بنجاح!</h3>
+        <p class="text-devo-muted text-xs sm:text-sm mb-4 leading-relaxed">
+            تم تسجيل طلبك بنظامنا، وسيقوم فريقنا بمراجعته والتواصل معك هاتفياً لتأكيده.
+        </p>
+        <div class="bg-devo-black rounded-xl p-3.5 mb-5 text-xs text-right space-y-2 border border-devo-gray">
+            <div class="flex justify-between items-center"><span class="text-devo-muted">اسم العميل:</span><span class="text-white font-bold" id="vos-customer-name">---</span></div>
+            <div class="flex justify-between items-center"><span class="text-devo-muted">رقم الهاتف:</span><span class="text-white font-mono font-bold" id="vos-customer-phone" dir="ltr">---</span></div>
+            <div class="flex justify-between items-center pt-1 border-t border-devo-gray/50">
+                <span class="text-devo-muted">كود الطلب:</span>
+                <span class="text-devo-orange font-mono font-black text-sm flex items-center gap-1.5">
+                    <span id="vos-order-id">---</span>
+                    <button type="button" onclick="copyVisitorOrderCode(document.getElementById('vos-order-id')?.textContent)" class="text-devo-muted hover:text-white p-1" title="نسخ الكود"><i class="ph ph-copy text-base"></i></button>
+                </span>
+            </div>
+        </div>
+        <div class="space-y-2">
+            <button type="button" id="vos-btn-print" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-xs cursor-pointer">
+                <i class="ph ph-printer text-base"></i>
+                <span>طباعة الفاتورة الآن</span>
+            </button>
+            <button type="button" id="vos-btn-history" onclick="goToVisitorOrdersHistoryTab()" class="w-full bg-devo-dark border border-devo-gray hover:border-devo-orange text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-xs cursor-pointer">
+                <i class="ph ph-clock-counter-clockwise text-base text-devo-orange"></i>
+                <span>متابعة الطلب في سجلي</span>
+            </button>
+            <button onclick="closeVisitorOrderSuccess()" class="w-full bg-devo-gray/30 hover:bg-devo-gray text-devo-muted hover:text-white font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer">
+                <i class="ph ph-arrow-left ml-1"></i> تصفح المزيد من الموديلات
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- مودال عرض تفاصيل طلب العميل للزائر -->
+<div id="visitor-order-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[350000] hidden flex items-center justify-center p-3 sm:p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300">
+        <!-- Header -->
+        <div class="px-4 sm:px-6 py-4 border-b border-devo-gray flex justify-between items-center bg-devo-black shrink-0">
+            <div class="flex items-center gap-2.5">
+                <i class="ph ph-receipt text-devo-orange text-2xl"></i>
+                <div>
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <span>تفاصيل طلبك</span>
+                        <span id="vod-order-code" class="font-mono text-devo-orange font-bold text-xs sm:text-sm bg-devo-dark px-2 py-0.5 rounded border border-devo-gray">#---</span>
+                        <button type="button" onclick="copyVisitorOrderCode(document.getElementById('vod-order-code')?.textContent)" class="text-devo-muted hover:text-white" title="نسخ الكود"><i class="ph ph-copy text-sm"></i></button>
+                    </h3>
+                    <p class="text-[11px] text-devo-muted mt-0.5" id="vod-order-date">---</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="vod-status-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">في الانتظار</span>
+                <button onclick="closeCustomerOrderDetailsModal()" class="text-devo-muted hover:text-white p-1 rounded-lg transition-colors cursor-pointer" title="إغلاق">
+                    <i class="ph ph-x text-2xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Scrollable Content -->
+        <div class="p-4 sm:p-6 overflow-y-auto space-y-4 custom-scrollbar flex-1" id="vod-modal-content">
+            <!-- Filled dynamically -->
+        </div>
+
+        <!-- Footer -->
+        <div class="p-3.5 sm:px-6 sm:py-4 border-t border-devo-gray bg-devo-black flex items-center justify-between gap-3 shrink-0">
+            <button type="button" onclick="closeCustomerOrderDetailsModal()" class="px-4 py-2 bg-devo-gray/40 hover:bg-devo-gray text-white text-xs font-bold rounded-xl transition-colors cursor-pointer">
+                إغلاق
+            </button>
+            <button type="button" id="vod-btn-print" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-black rounded-xl transition-all flex items-center gap-2 shadow-lg cursor-pointer">
+                <i class="ph ph-printer text-base"></i>
+                <span>طباعة الفاتورة</span>
+            </button>
+        </div>
+    </div>
+</div>
 </body>
 </html>

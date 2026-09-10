@@ -848,13 +848,21 @@ async function showInvoiceModal(order, items) {
     }
 
     const tbody = document.getElementById('inv-items-body');
+    let totalPieces = 0;
+    let totalSeries = 0;
+    let totalItems = 0;
+
     if (tbody) {
         tbody.innerHTML = '';
         if (oToUse.order_items && oToUse.order_items.length > 0) {
+            totalItems = oToUse.order_items.length;
             oToUse.order_items.forEach((item, idx) => {
                 const classSizes = item.models?.classes?.class_sizes || [];
                 const sizesCount = classSizes.length > 0 ? classSizes.length : (item.models?.model_sizes?.length || 1);
-                const pieces = item.quantity * sizesCount;
+                const qty = Number(item.quantity) || 0;
+                const pieces = qty * sizesCount;
+                totalPieces += pieces;
+                totalSeries += qty;
                 const piecePrice = item.price_per_series / sizesCount;
                 const factoryCode = item.models?.factory_code || item.models?.system_code || '';
                 
@@ -866,31 +874,42 @@ async function showInvoiceModal(order, items) {
                             ${factoryCode ? `<span class="text-gray-500 font-mono text-xs mr-1 font-normal">(${factoryCode})</span>` : ''}
                         </td>
                         <td class="border border-gray-300 p-1 sm:p-2 text-center text-gray-600">${item.colors?.name || 'لون'}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${pieces}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 text-center">${piecePrice}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50">${item.total_price}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">
+                            ${qty}
+                            <span class="text-[10px] text-gray-500 font-normal block font-mono">(${pieces} ق)</span>
+                        </td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-mono">${piecePrice}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50 font-mono">${item.total_price}</td>
                     </tr>
                 `;
                 tbody.innerHTML += row;
             });
-        } else {
+        } else if (items && items.length > 0) {
             // Fallback if order_items are not fetched
+            totalItems = items.length;
             items.forEach((item, idx) => {
                 const cachedItem = JSON.parse(localStorage.getItem('devo_edit_order_data_cache') || '[]').find(i => i.modelId === item.model_id && i.colorId === item.color_id);
                 const factoryCode = item.factory_code || item.models?.factory_code || cachedItem?.factory_code || cachedItem?.factoryCode || item.models?.system_code || '';
-                const pieces = item.pieces || item.quantity * (item.sizesCount || 1) || item.qty * (item.sizesCount || 1);
+                const qty = Number(item.quantity || item.qty || 1);
+                const sizesCount = Number(item.sizesCount || cachedItem?.sizesCount || 1);
+                const pieces = item.pieces || (qty * sizesCount);
+                totalPieces += pieces;
+                totalSeries += qty;
                 const priceVal = item.price || item.price_per_series;
                 const row = `
                     <tr class="text-xs sm:text-sm">
-                        <td class="border border-gray-300 p-1 sm:p-2">${idx + 1}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center">${idx + 1}</td>
                         <td class="border border-gray-300 p-1 sm:p-2 font-bold">
                             ${cachedItem?.modelName || item.model_name || 'موديل'}
                             ${factoryCode ? `<span class="text-gray-500 font-mono text-xs mr-1 font-normal">(${factoryCode})</span>` : ''}
                         </td>
                         <td class="border border-gray-300 p-1 sm:p-2 text-gray-600">${cachedItem?.colorName || item.color_name || 'لون'}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">${pieces}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 text-center">${priceVal}</td>
-                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50">${item.total_price || item.total}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 font-bold text-center">
+                            ${qty}
+                            <span class="text-[10px] text-gray-500 font-normal block font-mono">(${pieces} ق)</span>
+                        </td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-mono">${priceVal}</td>
+                        <td class="border border-gray-300 p-1 sm:p-2 text-center font-bold bg-gray-50 font-mono">${item.total_price || item.total}</td>
                     </tr>
                 `;
                 tbody.innerHTML += row;
@@ -898,12 +917,19 @@ async function showInvoiceModal(order, items) {
         }
     }
 
+    const invTotalItems = document.getElementById('inv-total-items');
+    if (invTotalItems) invTotalItems.textContent = `${totalItems} صنف`;
+    const invTotalSeries = document.getElementById('inv-total-series');
+    if (invTotalSeries) invTotalSeries.textContent = `${totalSeries} سيريه`;
+    const invTotalPieces = document.getElementById('inv-total-pieces');
+    if (invTotalPieces) invTotalPieces.textContent = `${totalPieces.toLocaleString()} قطعة`;
+
     const invTotal = document.getElementById('inv-total-price');
-    if (invTotal) invTotal.textContent = oToUse.total_price;
+    if (invTotal) invTotal.textContent = Number(oToUse.total_price || 0).toLocaleString() + ' ج.م';
     const invDeposit = document.getElementById('inv-deposit');
-    if (invDeposit) invDeposit.textContent = oToUse.deposit;
+    if (invDeposit) invDeposit.textContent = Number(oToUse.deposit || 0).toLocaleString() + ' ج.م';
     const invRem = document.getElementById('inv-remaining');
-    if (invRem) invRem.textContent = oToUse.total_price - oToUse.deposit;
+    if (invRem) invRem.textContent = Number((oToUse.total_price || 0) - (oToUse.deposit || 0)).toLocaleString() + ' ج.م';
 
     const modal = document.getElementById('invoice-modal');
     if (modal) {

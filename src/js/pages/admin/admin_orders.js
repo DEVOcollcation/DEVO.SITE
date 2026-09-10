@@ -1,8 +1,8 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
-import { confirmDialog } from '../../components/modal.js';
+import { confirmDialog, promptDialog } from '../../components/modal.js';
 import { getCurrentSession } from '../../services/auth.js';
-import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
+import { printOrderCustomerInvoice } from '../../utils/print.js?v=3';
 
 let isInitialized = false;
 let allAdminOrders = [];
@@ -24,6 +24,13 @@ let localEditingCustomerData = {
     notes: ''
 };
 let currentAdminTab = 'active';
+
+// حالة طلبات الزوار (Visitor Orders)
+let allVisitorOrders = [];
+let currentVisitorOrdersSubTab = 'pending';
+let currentViewingVisitorOrder = null;
+let editingVisitorItems = [];
+let currentVisitorOrderLiveInventory = [];
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
@@ -62,17 +69,8 @@ export async function initAdminOrdersView() {
     try {
         const savedOrdersTab = localStorage.getItem('devo_active_admin_orders_tab') || 'active';
         currentAdminTab = savedOrdersTab;
-        const tabActive = document.getElementById('ao-tab-active');
-        const tabArchived = document.getElementById('ao-tab-archived');
-        if (tabActive && tabArchived) {
-            if (savedOrdersTab === 'active') {
-                tabActive.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
-                tabArchived.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
-            } else {
-                tabActive.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
-                tabArchived.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
-            }
-        }
+        updateTabButtonsUI(savedOrdersTab);
+        updateAdminTableHead(savedOrdersTab);
     } catch (e) {}
 
     const { session } = getCurrentSession();
@@ -101,9 +99,13 @@ export async function initAdminOrdersView() {
         }
     });
 
-    await populateWorkerFilter();
-    await fetchAdminOrders();
-    setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي 🌟
+    await Promise.all([
+        populateWorkerFilter(),
+        fetchAdminOrders(),
+        fetchVisitorOrders()
+    ]);
+    setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي للأوردرات 🌟
+    setupRealtimeVisitorOrders(); // 🌟 تفعيل رادار طلبات الزوار اللحظي 🌟
 
     isInitialized = true;
 }
@@ -350,22 +352,108 @@ window.switchAdminOrdersTab = (tab) => {
     try {
         localStorage.setItem('devo_active_admin_orders_tab', tab);
     } catch (e) {}
-    const tabActive = document.getElementById('ao-tab-active');
-    const tabArchived = document.getElementById('ao-tab-archived');
 
-    if (tabActive && tabArchived) {
-        if (tab === 'active') {
-            tabActive.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
-            tabArchived.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
+    const voSubtabs = document.getElementById('vo-subtabs-container');
+    if (voSubtabs) {
+        if (tab === 'visitors') {
+            voSubtabs.classList.remove('hidden');
+            updateVisitorOrdersSubTabsUI(currentVisitorOrdersSubTab);
         } else {
-            tabActive.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
-            tabArchived.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
+            voSubtabs.classList.add('hidden');
         }
     }
+
+    updateTabButtonsUI(tab);
+    updateAdminTableHead(tab);
     applyAdminOrdersFilter();
 };
 
+window.setVisitorOrdersSubTab = (subTab) => {
+    currentVisitorOrdersSubTab = subTab;
+    updateVisitorOrdersSubTabsUI(subTab);
+    applyAdminOrdersFilter();
+};
+
+function updateVisitorOrdersSubTabsUI(activeSubTab) {
+    const tabs = ['pending', 'archived', 'approved', 'rejected', 'all'];
+    tabs.forEach(tab => {
+        const btn = document.getElementById(`vo-subtab-${tab}`);
+        if (!btn) return;
+        if (tab === activeSubTab) {
+            btn.className = tab === 'pending'
+                ? "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-amber-500 text-black flex items-center gap-1.5 cursor-pointer shadow-sm"
+                : (tab === 'archived'
+                    ? "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-purple-600 text-white flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    : "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 cursor-pointer shadow-sm");
+        } else {
+            btn.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 flex items-center gap-1.5 cursor-pointer";
+        }
+    });
+}
+
+function updateTabButtonsUI(activeTabName) {
+    const tabActive = document.getElementById('ao-tab-active');
+    const tabArchived = document.getElementById('ao-tab-archived');
+    const tabVisitors = document.getElementById('ao-tab-visitors');
+
+    const setInactive = (el) => {
+        if (el) el.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
+    };
+    const setActive = (el) => {
+        if (el) el.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
+    };
+
+    setInactive(tabActive);
+    setInactive(tabArchived);
+    setInactive(tabVisitors);
+
+    if (activeTabName === 'active') setActive(tabActive);
+    else if (activeTabName === 'archived') setActive(tabArchived);
+    else if (activeTabName === 'visitors') setActive(tabVisitors);
+}
+
+function updateAdminTableHead(tab) {
+    const thead = document.getElementById('ao-table-head');
+    if (!thead) return;
+
+    if (tab === 'visitors') {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-3 font-medium">كود الطلب</th>
+                <th class="p-3 font-medium">تاريخ الإرسال</th>
+                <th class="p-3 font-medium">العميل / الهاتف</th>
+                <th class="p-3 font-medium">العنوان / الملاحظات</th>
+                <th class="p-3 font-medium text-center">الأصناف</th>
+                <th class="p-3 font-medium text-center">السريات</th>
+                <th class="p-3 font-medium text-center">الإجمالي</th>
+                <th class="p-3 font-medium text-center">حالة الطلب</th>
+                <th class="p-3 font-medium text-center">إجراءات الإدارة</th>
+            </tr>
+        `;
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-3 font-medium">رقم الأوردر</th>
+                <th class="p-3 font-medium">التاريخ</th>
+                <th class="p-3 font-medium">العميل / المحل</th>
+                <th class="p-3 font-medium">البائع (المعرض)</th>
+                <th class="p-3 font-medium text-center">الكمية</th>
+                <th class="p-3 font-medium text-center">الإجمالي</th>
+                <th class="p-3 font-medium text-center text-devo-info">مُسند إلى (الإدارة)</th>
+                <th class="p-3 font-medium text-center">الحالة</th>
+                <th class="p-3 font-medium text-center">الإجراءات</th>
+            </tr>
+        `;
+    }
+}
+
 function updateAdminStats(targetList = null, isFiltered = false) {
+    // 🌟 إذا كنا في تبويب طلبات الزوار
+    if (currentAdminTab === 'visitors') {
+        updateVisitorStats(targetList, isFiltered);
+        return;
+    }
+
     // 🌟 إذا كان هناك بحث/فلترة مفعلة، تعكس الإحصائيات نتائج البحث بدقة
     // وإذا لم يكن هناك بحث، تعكس الإحصائيات إجمالي النشطة + الأرشيف معاً
     const list = isFiltered && targetList ? targetList : allAdminOrders;
@@ -397,6 +485,85 @@ function updateAdminStats(targetList = null, isFiltered = false) {
 
     const badgeArchived = document.getElementById('ao-badge-archived');
     if (badgeArchived) badgeArchived.textContent = archivedCount;
+
+    // تحديث شارة طلبات الزوار
+    updateVisitorBadges();
+}
+
+function updateVisitorStats(targetList = null, isFiltered = false) {
+    const list = isFiltered && targetList ? targetList : allVisitorOrders;
+
+    let totalCount = list.length;
+    let totalSeries = 0;
+    let totalRev = 0;
+
+    list.forEach(vo => {
+        totalSeries += Number(vo.total_series) || 0;
+        totalRev += Number(vo.total_price) || 0;
+    });
+
+    const statTotalEl = document.getElementById('ao-stat-total');
+    if (statTotalEl) statTotalEl.textContent = totalCount.toLocaleString('ar-EG');
+
+    const statSeriesEl = document.getElementById('ao-stat-series');
+    if (statSeriesEl) statSeriesEl.textContent = totalSeries.toLocaleString('ar-EG');
+
+    const statRevEl = document.getElementById('ao-stat-rev');
+    if (statRevEl) statRevEl.textContent = totalRev.toLocaleString('ar-EG');
+
+    const activeCount = allAdminOrders.filter(o => !o.is_archived).length;
+    const archivedCount = allAdminOrders.filter(o => o.is_archived).length;
+
+    const badgeActive = document.getElementById('ao-badge-active');
+    if (badgeActive) badgeActive.textContent = activeCount;
+
+    const badgeArchived = document.getElementById('ao-badge-archived');
+    if (badgeArchived) badgeArchived.textContent = archivedCount;
+
+    updateVisitorBadges();
+}
+
+function updateVisitorBadges() {
+    const pendingCount = allVisitorOrders.filter(vo => vo.status === 'pending').length;
+    const archivedCount = allVisitorOrders.filter(vo => vo.status === 'archived').length;
+    const approvedCount = allVisitorOrders.filter(vo => vo.status === 'approved').length;
+    const rejectedCount = allVisitorOrders.filter(vo => vo.status === 'rejected' || vo.status === 'ignored').length;
+    const allCount = allVisitorOrders.length;
+
+    const bPending = document.getElementById('vo-subtab-badge-pending');
+    if (bPending) bPending.textContent = pendingCount;
+
+    const bArchived = document.getElementById('vo-subtab-badge-archived');
+    if (bArchived) bArchived.textContent = archivedCount;
+
+    const bApproved = document.getElementById('vo-subtab-badge-approved');
+    if (bApproved) bApproved.textContent = approvedCount;
+
+    const bRejected = document.getElementById('vo-subtab-badge-rejected');
+    if (bRejected) bRejected.textContent = rejectedCount;
+
+    const bAll = document.getElementById('vo-subtab-badge-all');
+    if (bAll) bAll.textContent = allCount;
+
+    const badgeVisitors = document.getElementById('ao-badge-visitors');
+    if (badgeVisitors) {
+        badgeVisitors.textContent = pendingCount;
+        if (pendingCount > 0) {
+            badgeVisitors.className = "bg-amber-500 text-black font-black text-[10px] px-1.5 py-0.5 rounded-full mr-1 animate-pulse";
+        } else {
+            badgeVisitors.className = "bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded-full mr-1";
+        }
+    }
+
+    const sidebarBadge = document.getElementById('sidebar-visitor-orders-badge');
+    if (sidebarBadge) {
+        if (pendingCount > 0) {
+            sidebarBadge.textContent = `${pendingCount} انتظار`;
+            sidebarBadge.classList.remove('hidden');
+        } else {
+            sidebarBadge.classList.add('hidden');
+        }
+    }
 }
 
 window.applyAdminOrdersFilter = () => {
@@ -410,6 +577,67 @@ window.applyAdminOrdersFilter = () => {
 
     const hasAnyFilter = Boolean(invoiceTerm || customerTerm || phoneTerm || workerVal || statusFilter || dateFrom || dateTo);
 
+    // ==========================================
+    // 🌟 فرع فلترة طلبات الزوار
+    // ==========================================
+    if (currentAdminTab === 'visitors') {
+        const filtered = allVisitorOrders.filter(vo => {
+            if (invoiceTerm) {
+                const shortId = (vo.id || '').toLowerCase();
+                if (!shortId.includes(invoiceTerm)) return false;
+            }
+            if (customerTerm) {
+                const cust = String(vo.customer_name || '').toLowerCase();
+                if (!cust.includes(customerTerm)) return false;
+            }
+            if (phoneTerm) {
+                const p1 = String(vo.phone_1 || '');
+                const p2 = String(vo.phone_2 || '');
+                if (!p1.includes(phoneTerm) && !p2.includes(phoneTerm)) return false;
+            }
+
+            // فحص الحالة بحسب الفلتر المنسدل أو التبويب الفرعي لطلبات الزوار
+            if (statusFilter) {
+                if (statusFilter !== 'all' && vo.status !== statusFilter) return false;
+            } else {
+                if (currentVisitorOrdersSubTab === 'pending') {
+                    if (vo.status !== 'pending') return false;
+                } else if (currentVisitorOrdersSubTab === 'archived') {
+                    if (vo.status !== 'archived') return false;
+                } else if (currentVisitorOrdersSubTab === 'approved') {
+                    if (vo.status !== 'approved') return false;
+                } else if (currentVisitorOrdersSubTab === 'rejected') {
+                    if (vo.status !== 'rejected' && vo.status !== 'ignored') return false;
+                }
+                // If 'all', do not filter by status
+            }
+
+            if (dateFrom || dateTo) {
+                const voDate = new Date(vo.created_at);
+                voDate.setHours(0, 0, 0, 0);
+                if (dateFrom && voDate < new Date(dateFrom)) return false;
+                if (dateTo && voDate > new Date(dateTo)) return false;
+            }
+            return true;
+        });
+
+        updateAdminStats(filtered, hasAnyFilter);
+
+        const tbody = document.getElementById('ao-table-body');
+        if (!tbody) return;
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">لا توجد طلبات زوار تطابق شروط البحث والفلترة.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(vo => generateVisitorOrderRowHTML(vo)).join('');
+        return;
+    }
+
+    // ==========================================
+    // 🌟 فرع الأوردرات العادية (نشطة / أرشيف)
+    // ==========================================
     const filtered = allAdminOrders.filter(o => {
         const isArchived = Boolean(o.is_archived);
 
@@ -935,12 +1163,17 @@ window.printAdminOrder = async (id, type) => {
     let finalHtml = '';
 
     if (type === 'detailed') {
+        const totalItemsCount = Object.keys(groupedItems).length;
+        const grandTotalSeries = Object.values(groupedItems).reduce((sum, i) => sum + (Number(i.totalQty) || 0), 0);
+        const grandTotalPieces = Object.values(groupedItems).reduce((sum, i) => sum + (Number(i.totalPieces) || 0), 0);
+        const cleanNotes = (o.notes && o.notes !== '-' && o.notes !== 'بدون ملاحظات') ? String(o.notes).trim() : '';
+
         let itemsHtml = Object.values(groupedItems).map((item, idx) => `
             <tr>
                 <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
                 <td style="font-weight: bold;">${item.modelName} ${item.code ? `<span class="code-span">(${item.code})</span>` : ''}</td>
                 <td style="font-size: 11px;">${item.colorsList.join(' / ')}</td>
-                <td style="text-align: center; font-weight: bold;">${item.totalQty} <span style="font-weight: normal; font-size: 10px;">(${item.totalPieces} ق)</span></td>
+                <td style="text-align: center; font-weight: bold;">${item.totalQty} <span style="font-weight: normal; font-size: 10px; color: #555;">(${item.totalPieces} ق)</span></td>
                 <td style="text-align: center;">${item.price}</td>
                 <td style="text-align: center; font-weight: 900; background-color: #f5f5f5 !important; -webkit-print-color-adjust: exact;">${item.totalPrice}</td>
             </tr>
@@ -951,46 +1184,99 @@ window.printAdminOrder = async (id, type) => {
             <html lang="ar" dir="rtl">
             <head>
                 <meta charset="UTF-8">
-                <title>${pdfFileName}</title>
+                <title></title>
                 <style>
-                    @page { size: A4 portrait; margin: 0.5cm; }
-                    body { font-family: 'Tahoma', 'Arial', sans-serif; font-size: 12px; color: black; background: white; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                    .erp-header { border-bottom: 2px solid black; padding-bottom: 4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-end; }
-                    .erp-header h1 { margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
-                    .erp-header p { margin: 2px 0 0 0; font-size: 10px; font-weight: bold; }
+                    @page { size: A4 portrait; margin: 0; }
+                    @media print {
+                        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
+                        body { padding: 6mm 10mm !important; }
+                    }
+                    body { font-family: 'Tahoma', 'Arial', sans-serif; font-size: 11px; color: black; background: white; margin: 0; padding: 6mm 10mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .erp-header { border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: flex-end; }
+                    .erp-header .brand-box { display: flex; align-items: center; gap: 8px; }
+                    .erp-header .brand-box .brand-logo { display: inline-flex; align-items: center; gap: 5px; direction: ltr; }
+                    .erp-header .brand-box h1 { margin: 0; font-size: 19px; font-weight: 900; letter-spacing: 1px; line-height: 1; color: #000; }
+                    .erp-header .brand-box .tag { background: #000; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; line-height: 1.1; display: inline-block; vertical-align: middle; }
+                    .erp-header .brand-box .sep { color: #cbd5e1; font-weight: 300; font-size: 12px; margin: 0 2px; }
+                    .erp-header .brand-box .phone { font-size: 10.5px; color: #333; white-space: nowrap; }
                     .erp-header .title-box { text-align: left; }
-                    .erp-header .title-box h2 { margin: 0; font-size: 14px; font-weight: bold; background: #eee; padding: 2px 6px; border: 1px solid #000; border-radius: 3px; }
-                    .erp-info { display: flex; justify-content: space-between; border-bottom: 1px solid black; padding-bottom: 4px; margin-bottom: 6px; font-size: 11px; line-height: 1.4; }
-                    .erp-info div { width: 48%; }
-                    .erp-info .left-col { text-align: left; }
-                    .erp-table { width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 8px; }
+                    .erp-header .title-box .badge { display: inline-block; background: #000; color: #fff; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+                    .erp-header .title-box .order-no { margin-top: 3px; font-size: 11px; font-weight: bold; color: #000; }
+                    .erp-header .title-box .order-no span { font-family: monospace; font-size: 13px; color: #dc2626; font-weight: 900; }
+                    .erp-info { display: flex; justify-content: space-between; align-items: flex-start; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px; margin-bottom: 6px; font-size: 10.5px; gap: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .erp-info .info-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2.5px; text-align: right; }
+                    .erp-info .info-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+                    .erp-info .label { color: #475569; font-weight: bold; margin-left: 3px; }
+                    .erp-info .val { color: #000; font-weight: bold; }
+                    .erp-table { width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 6px; }
                     .erp-table thead { display: table-header-group; background-color: #e5e5e5; }
                     .erp-table th { border: 1px solid #666; padding: 3px 4px; font-size: 11px; color: black; }
                     .erp-table td { border: 1px solid #aaa; padding: 2px 4px; line-height: 1.1; vertical-align: middle; }
                     .erp-table tbody tr { page-break-inside: avoid; height: 22px; }
                     .code-span { font-size: 9px; font-family: monospace; color: #444; }
-                    .erp-totals-wrapper { display: flex; justify-content: flex-end; page-break-inside: avoid; }
-                    .erp-totals { width: 220px; border: 1.5px solid black; border-radius: 3px; overflow: hidden; }
-                    .erp-totals .row { display: flex; justify-content: space-between; padding: 4px 6px; border-bottom: 1px solid #aaa; font-size: 12px; }
-                    .erp-totals .row:last-child { border-bottom: none; background: #e5e7eb !important; color: black !important; font-size: 14px; font-weight: bold; padding: 6px; border-top: 1px solid #aaa; -webkit-print-color-adjust: exact;}
+                    .erp-totals-wrapper { display: flex; justify-content: flex-end; page-break-inside: avoid; margin-top: 6px; }
+                    .erp-totals { width: 230px; border: 1.5px solid black; border-radius: 3px; overflow: hidden; }
+                    .erp-totals .row { display: flex; justify-content: space-between; padding: 3px 6px; border-bottom: 1px solid #aaa; font-size: 11px; }
+                    .erp-totals .row:last-child { border-bottom: none; background: #e5e7eb !important; color: black !important; font-size: 13px; font-weight: bold; padding: 5px 6px; border-top: 1px solid #aaa; -webkit-print-color-adjust: exact;}
                     .erp-footer { text-align: center; margin-top: 10px; padding-top: 4px; border-top: 1px dashed #999; font-size: 9px; color: #555; position: fixed; bottom: 0; width: 100%; }
                 </style>
             </head>
             <body>
                 <div class="erp-header">
-                    <div><h1>DEVO <span style="font-size:11px; font-weight:bold;">Collection</span></h1><p>Phone: +20 12 12751111</p></div>
-                    <div class="title-box"><h2>فاتورة تفصيلية للإدارة</h2><p style="margin-top: 4px;">رقم الأوردر: <span style="font-family: monospace; font-size: 12px; color: red;">${o.invoice_number}</span></p></div>
+                    <div class="brand-box">
+                        <div class="brand-logo">
+                            <h1>DEVO</h1>
+                            <span class="tag">COLLECTION</span>
+                        </div>
+                        <span class="sep">|</span>
+                        <span class="phone">هاتف: <span dir="ltr" style="font-family: monospace; font-weight: bold;">+20 12 12751111</span></span>
+                    </div>
+                    <div class="title-box">
+                        <span class="badge">فاتورة تفصيلية للإدارة</span>
+                        <div class="order-no">رقم الأوردر: <span>#${o.invoice_number}</span></div>
+                    </div>
                 </div>
                 <div class="erp-info">
-                    <div><div><b>العميل:</b> ${o.customer_name}</div><div><b>الهاتف:</b> <span dir="ltr">${o.phone_1} ${o.phone_2 ? ' / ' + o.phone_2 : ''}</span></div><div><b>العنوان:</b> ${o.address || '-'}</div></div>
-                    <div class="left-col"><div><b>التاريخ:</b> ${new Date(o.created_at).toLocaleDateString('ar-EG')} &nbsp;|&nbsp; <b>الوقت:</b> ${new Date(o.created_at).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}</div><div><b>الموظف:</b> ${o.system_users?.full_name}</div><div><b>العربون:</b> ${o.deposit} ج.م &nbsp;|&nbsp; <b>مستلم العربون:</b> ${o.deposit_receiver || '-'}</div></div>
+                    <div class="info-col">
+                        <div class="info-row"><span class="label">العميل:</span> <span class="val">${o.customer_name || 'بدون اسم'}</span></div>
+                        <div class="info-row"><span class="label">الهاتف:</span> <span class="val" dir="ltr" style="font-family: monospace;">${o.phone_1 || '---'}${o.phone_2 ? ' / ' + o.phone_2 : ''}</span></div>
+                        <div class="info-row"><span class="label">العنوان:</span> <span class="val">${(o.address && o.address !== '-' && o.address !== 'بدون عنوان') ? o.address : '---'}</span></div>
+                    </div>
+                    <div class="info-col">
+                        <div class="info-row">
+                            <span class="label">التاريخ:</span> <span class="val" style="font-family: monospace;">${new Date(o.created_at).toLocaleDateString('ar-EG')}</span>
+                            <span style="color: #cbd5e1; margin: 0 4px;">|</span>
+                            <span class="label">الوقت:</span> <span class="val" style="font-family: monospace;">${new Date(o.created_at).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div class="info-row"><span class="label">الموظف:</span> <span class="val">${o.system_users?.full_name || '---'}</span></div>
+                        <div class="info-row">
+                            <span class="label">العربون:</span> <span class="val" style="font-family: monospace; font-weight: bold;">${Number(o.deposit || 0).toLocaleString()} ج.م</span>
+                            ${o.deposit_receiver ? `<span style="color: #cbd5e1; margin: 0 4px;">|</span><span class="label">المستلم:</span> <span class="val">${o.deposit_receiver}</span>` : ''}
+                        </div>
+                    </div>
                 </div>
+                ${cleanNotes ? `
+                    <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; padding: 4px 8px; margin-bottom: 6px; font-size: 11px; color: #92400e; display: flex; align-items: flex-start; gap: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                        <b style="color: #b45309; white-space: nowrap;">الملاحظات:</b>
+                        <span style="color: #1c1917; font-weight: 600; line-height: 1.3;">${escapeHtml(cleanNotes)}</span>
+                    </div>
+                ` : ''}
                 <table class="erp-table">
-                    <thead><tr><th style="width: 30px;">#</th><th>الموديل</th><th>تفصيل الألوان</th><th style="width: 80px;">الكمية</th><th style="width: 60px;">السعر</th><th style="width: 80px;">الإجمالي</th></tr></thead>
+                    <thead><tr><th style="width: 30px;">#</th><th>الموديل</th><th>تفصيل الألوان</th><th style="width: 100px;">الكمية (سيريه / ق)</th><th style="width: 60px;">السعر</th><th style="width: 80px;">الإجمالي</th></tr></thead>
                     <tbody>${itemsHtml}</tbody>
                 </table>
-                <div class="erp-totals-wrapper"><div class="erp-totals"><div class="row"><b>الإجمالي الكلي:</b> <b>${o.total_price}</b></div><div class="row" style="background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><b>المدفوع:</b> <b>${o.deposit}</b></div><div class="row"><b>المتبقي:</b> <span>${remaining} ج.م</span></div></div></div>
-                <div class="erp-footer">Developed by <a href="https://www.facebook.com/share/1NiodPNtXF/" target="_blank" style="color: inherit; text-decoration: none; font-weight: bold;">UltraSoft</a> - +201140409832</div>
+                <div class="erp-totals-wrapper">
+                    <div class="erp-totals">
+                        <div class="row"><span>إجمالي الأصناف:</span> <b>${totalItemsCount} صنف</b></div>
+                        <div class="row" style="background: #f9f9f9 !important;"><span>إجمالي السريات:</span> <b>${grandTotalSeries} سيريه</b></div>
+                        <div class="row"><span>إجمالي القطع:</span> <b>${grandTotalPieces} قطعة</b></div>
+                        <div class="row"><b>الإجمالي الكلي:</b> <b>${Number(o.total_price || 0).toLocaleString()} ج.م</b></div>
+                        ${o.deposit > 0 ? `
+                            <div class="row" style="background: #f9f9f9 !important; -webkit-print-color-adjust: exact;"><b>المدفوع:</b> <b>${Number(o.deposit).toLocaleString()} ج.م</b></div>
+                            <div class="row"><b>المتبقي:</b> <span>${Number(remaining).toLocaleString()} ج.م</span></div>
+                        ` : ''}
+                    </div>
+                </div>
             </body>
             </html>
         `;
@@ -2511,3 +2797,1204 @@ function getModelSizesCount(model, fallbackSizesCount = 1) {
     }
     return 1;
 }
+
+// =========================================================================
+// 🌟 5. نظام إدارة طلبات الزوار (Visitor Orders Management System) 🌟
+// =========================================================================
+
+async function fetchVisitorOrders() {
+    try {
+        const { data, error } = await supabase
+            .from('visitor_orders')
+            .select(`
+                *,
+                visitor_order_items (
+                    *,
+                    models (id, name, factory_code, system_code, price, model_images(image_url), model_inventory(color_id, available_series)),
+                    colors (id, name, color_code)
+                )
+            `)
+            .order('created_at', { ascending: false });
+
+        if (!error && data) {
+            allVisitorOrders = data;
+            if (currentAdminTab === 'visitors') {
+                applyAdminOrdersFilter();
+            } else {
+                updateVisitorBadges();
+            }
+        }
+    } catch (err) {
+        console.error('[AdminOrders] Error fetching visitor orders:', err);
+    }
+}
+
+function setupRealtimeVisitorOrders() {
+    supabase.channel('admin_visitor_orders_radar')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_orders' }, async (payload) => {
+            await fetchVisitorOrders();
+            if (payload.eventType === 'INSERT') {
+                showToast(`🔔 طلب زائر جديد وارد من: ${payload.new.customer_name || 'عميل'}`, 'info');
+            }
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_order_items' }, async () => {
+            await fetchVisitorOrders();
+        })
+        .subscribe();
+}
+
+function generateVisitorOrderRowHTML(vo) {
+    const dateStr = new Date(vo.created_at).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour:'2-digit', minute:'2-digit' });
+    const itemsCount = vo.visitor_order_items?.length || 0;
+    const shortId = (vo.id || '').split('-')[0].toUpperCase();
+
+    let statusBadge = '';
+    if (vo.status === 'pending') {
+        statusBadge = '<span class="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-xs px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-clock"></i> في الانتظار</span>';
+    } else if (vo.status === 'approved') {
+        statusBadge = '<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-check-circle"></i> معتمد ومحول</span>';
+    } else if (vo.status === 'rejected' || vo.status === 'ignored') {
+        statusBadge = '<span class="bg-rose-500/20 text-rose-400 border border-rose-500/40 text-xs px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-x-circle"></i> مرفوض</span>';
+    } else if (vo.status === 'archived') {
+        statusBadge = '<span class="bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-archive"></i> مؤرشف</span>';
+    } else {
+        statusBadge = `<span class="bg-devo-gray/40 text-devo-muted border border-devo-gray text-xs px-2.5 py-1 rounded-full font-bold">${vo.status}</span>`;
+    }
+
+    const isPending = vo.status === 'pending';
+    const isApproved = vo.status === 'approved';
+    const isRejected = vo.status === 'rejected' || vo.status === 'ignored';
+    const isArchived = vo.status === 'archived';
+
+    return `
+        <tr id="visitor-order-row-${vo.id}" class="hover:bg-devo-black/40 transition-colors">
+            <td class="p-3 font-mono text-amber-400 font-bold text-xs">
+                #${shortId}
+            </td>
+            <td class="p-3 text-devo-muted text-[11px]">${dateStr}</td>
+            <td class="p-3">
+                <div class="font-bold text-white text-xs">${escapeHtml(vo.customer_name)}</div>
+                <div class="text-devo-muted text-[11px] font-mono mt-0.5" dir="ltr">${escapeHtml(vo.phone_1)} ${vo.phone_2 ? ' / ' + escapeHtml(vo.phone_2) : ''}</div>
+            </td>
+            <td class="p-3 text-xs text-devo-muted max-w-[200px] truncate" title="${escapeHtml(vo.address || '')} ${vo.notes ? ' - ' + escapeHtml(vo.notes) : ''}">
+                ${vo.address ? `<span class="text-white">${escapeHtml(vo.address)}</span>` : '<span class="text-devo-muted/60">بدون عنوان</span>'}
+                ${vo.notes ? `<p class="text-[10px] text-amber-400/80 truncate font-sans mt-0.5"><i class="ph ph-note"></i> ${escapeHtml(vo.notes)}</p>` : ''}
+                ${isRejected && vo.rejection_reason ? `
+                    <div class="mt-1 text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded flex items-center gap-1 truncate" title="سبب الرفض: ${escapeHtml(vo.rejection_reason)}">
+                        <i class="ph ph-warning-circle shrink-0"></i>
+                        <span class="truncate">سبب الرفض: ${escapeHtml(vo.rejection_reason)}</span>
+                    </div>
+                ` : ''}
+            </td>
+            <td class="p-3 text-center text-white font-bold text-xs">${itemsCount} صنف</td>
+            <td class="p-3 text-center text-devo-orange font-black text-sm">${vo.total_series}</td>
+            <td class="p-3 text-center font-bold text-white text-xs">${Number(vo.total_price || 0).toLocaleString()} ج.م</td>
+            <td class="p-3 text-center">${statusBadge}</td>
+            <td class="p-3">
+                <div class="flex items-center justify-center gap-1.5 flex-nowrap">
+                    <!-- 1. عرض -->
+                    <button onclick="openVisitorOrderModal('${vo.id}', 'view')" class="w-8 h-8 bg-blue-500/15 text-blue-400 hover:bg-blue-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="عرض تفاصيل الطلب">
+                        <i class="ph ph-eye text-base"></i>
+                    </button>
+
+                    <!-- 2. تعديل -->
+                    ${!isApproved ? `
+                        <button onclick="openVisitorOrderModal('${vo.id}', 'edit')" class="w-8 h-8 bg-amber-500/15 text-amber-400 hover:bg-amber-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="تعديل أصناف وبيانات الطلب">
+                            <i class="ph ph-pencil-simple text-base"></i>
+                        </button>
+                    ` : ''}
+
+                    <!-- 3. طباعة -->
+                    <button onclick="printVisitorOrder('${vo.id}')" class="w-8 h-8 bg-purple-500/15 text-purple-400 hover:bg-purple-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="طباعة فاتورة الطلب">
+                        <i class="ph ph-printer text-base"></i>
+                    </button>
+
+                    <!-- 4. قبول واعتماد -->
+                    ${!isApproved ? `
+                        <button onclick="approveVisitorOrder('${vo.id}')" class="w-8 h-8 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="قبول واعتماد الطلب وخصم المخزون ونقله للأوردرات">
+                            <i class="ph ph-check-circle text-base"></i>
+                        </button>
+                    ` : ''}
+
+                    <!-- 5. رفض / استعادة -->
+                    ${isPending ? `
+                        <button onclick="rejectVisitorOrder('${vo.id}')" class="w-8 h-8 bg-rose-500/15 text-rose-400 hover:bg-rose-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="رفض الطلب">
+                            <i class="ph ph-x-circle text-base"></i>
+                        </button>
+                    ` : ''}
+                    ${(isRejected || isArchived) ? `
+                        <button onclick="reopenVisitorOrder('${vo.id}')" class="w-8 h-8 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="استعادة إلى قائمة الانتظار">
+                            <i class="ph ph-arrow-counter-clockwise text-base"></i>
+                        </button>
+                    ` : ''}
+
+                    <!-- 6. أرشفة الطلب -->
+                    ${!isArchived ? `
+                        <button onclick="archiveVisitorOrder('${vo.id}')" class="w-8 h-8 bg-purple-500/15 text-purple-400 hover:bg-purple-500 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="أرشفة الطلب">
+                            <i class="ph ph-archive text-base"></i>
+                        </button>
+                    ` : ''}
+
+                    <!-- 7. حذف -->
+                    <button onclick="deleteVisitorOrder('${vo.id}')" class="w-8 h-8 bg-devo-error/15 text-devo-error hover:bg-devo-error hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-sm" title="حذف الطلب نهائياً">
+                        <i class="ph ph-trash text-base"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// ==========================================
+// 🌟 مودال تفاصيل وتعديل طلب الزائر
+// ==========================================
+window.openVisitorOrderModal = async (orderId, mode = 'view') => {
+    const order = allVisitorOrders.find(o => String(o.id) === String(orderId));
+    if (!order) return showToast('تعذر العثور على بيانات الطلب', 'error');
+
+    currentViewingVisitorOrder = order;
+    window.currentViewingVisitorOrder = order;
+    window.currentVisitorOrderModalMode = mode;
+    editingVisitorItems = (order.visitor_order_items || []).map(item => ({ ...item }));
+
+    const modal = document.getElementById('vo-details-modal');
+    const content = document.getElementById('vo-details-content');
+    const badge = document.getElementById('vo-modal-status-badge');
+    const titleEl = document.getElementById('vo-modal-header-title');
+    if (!modal || !content) return;
+
+    const shortId = (order.id || '').split('-')[0].toUpperCase();
+    if (titleEl) {
+        titleEl.textContent = mode === 'view'
+            ? `طلب زائر #${shortId} — عرض التفاصيل`
+            : `طلب زائر #${shortId} — تعديل البيانات والأصناف`;
+    }
+
+    if (badge) {
+        if (order.status === 'pending') {
+            badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40";
+            badge.textContent = "في الانتظار";
+        } else if (order.status === 'approved') {
+            badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40";
+            badge.textContent = "معتمد";
+        } else if (order.status === 'rejected' || order.status === 'ignored') {
+            badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40";
+            badge.textContent = "مرفوض";
+        } else if (order.status === 'archived') {
+            badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40";
+            badge.textContent = "مؤرشف";
+        }
+    }
+
+    content.innerHTML = `<div class="p-8 text-center"><i class="ph ph-spinner animate-spin text-2xl text-devo-orange"></i><p class="text-xs text-devo-muted mt-2">جاري فحص المخزون الحالي...</p></div>`;
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+
+    // جلب المخزون الحي لجميع الأصناف من قاعدة البيانات
+    const modelIds = [...new Set(editingVisitorItems.map(i => i.model_id).filter(Boolean))];
+    let liveInventory = [];
+    if (modelIds.length > 0) {
+        const { data: invData } = await supabase
+            .from('model_inventory')
+            .select('model_id, color_id, available_series')
+            .in('model_id', modelIds);
+        liveInventory = invData || [];
+    }
+    currentVisitorOrderLiveInventory = liveInventory;
+
+    renderVisitorOrderModalContent(order, liveInventory, mode);
+
+    if (mode === 'edit') {
+        setTimeout(() => {
+            const nameInput = document.getElementById('vo-edit-name');
+            if (nameInput) nameInput.focus();
+        }, 150);
+    }
+};
+
+window.closeVisitorOrderModal = () => {
+    const modal = document.getElementById('vo-details-modal');
+    if (modal) {
+        modal.classList.add('opacity-0');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+    }
+    currentViewingVisitorOrder = null;
+    editingVisitorItems = [];
+};
+
+function renderVisitorOrderModalContent(order, liveInventory, mode = (window.currentVisitorOrderModalMode || 'view')) {
+    const content = document.getElementById('vo-details-content');
+    const footer = document.getElementById('vo-modal-footer');
+    if (!content) return;
+
+    if (liveInventory && Array.isArray(liveInventory) && liveInventory.length > 0) {
+        currentVisitorOrderLiveInventory = liveInventory;
+    } else {
+        liveInventory = currentVisitorOrderLiveInventory;
+    }
+
+    const isViewMode = (mode === 'view');
+    window.currentVisitorOrderModalMode = mode;
+
+    let totalPieces = 0;
+    let totalSeries = 0;
+    let totalPrice = 0;
+    let hasStockWarning = false;
+
+    const itemsRowsHtml = editingVisitorItems.map((item, idx) => {
+        const inv = liveInventory.find(i => String(i.model_id) === String(item.model_id) && String(i.color_id) === String(item.color_id));
+        const availableInStock = inv ? Math.max(0, Number(inv.available_series) || 0) : 0;
+        const isStockShortage = item.quantity > availableInStock;
+        if (isStockShortage) hasStockWarning = true;
+
+        const qty = Number(item.quantity) || 0;
+        const sizesCount = Number(item.sizes_count || item.sizesCount) || (item.models?.classes?.class_sizes?.length || item.models?.model_sizes?.length || 1);
+        const rowPieces = qty * sizesCount;
+        totalPieces += rowPieces;
+        const rowTotal = qty * (Number(item.price_per_series) || 0);
+        totalSeries += qty;
+        totalPrice += rowTotal;
+
+        const isAtMax = availableInStock > 0 ? (item.quantity >= availableInStock) : true;
+        const isAtMin = item.quantity <= 1;
+
+        const stockBadge = isStockShortage
+            ? `<span class="bg-devo-error/20 text-devo-error border border-devo-error/40 px-2 py-0.5 rounded text-[10px] font-bold block">المتاح: ${availableInStock} فقط (عجز)</span>
+               ${!isViewMode && availableInStock > 0 ? `<button type="button" onclick="setVisitorModalItemQty(${idx}, ${availableInStock})" class="mt-1 text-[10px] bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white px-2 py-0.5 rounded transition-colors font-bold block mx-auto cursor-pointer" title="ضبط الكمية على الحد الأقصى المتاح">ضبط على المتاح (${availableInStock})</button>` : ''}`
+            : `<span class="bg-devo-success/20 text-devo-success border border-devo-success/40 px-2 py-0.5 rounded text-[10px] font-bold">المتاح: ${availableInStock} سيريه</span>`;
+
+        return `
+            <tr class="border-b border-devo-gray/50 hover:bg-devo-black/30 transition-colors ${isStockShortage ? 'bg-devo-error/5' : ''}">
+                <td class="p-3 font-bold text-white text-xs">
+                    <div class="text-sm">${escapeHtml(item.model_name || 'موديل')}</div>
+                    <span class="text-devo-muted text-[10px] font-mono bg-devo-dark px-1.5 py-0.5 rounded border border-devo-gray/50">${escapeHtml(item.factory_code || '')}</span>
+                </td>
+                <td class="p-3 text-xs text-white">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-devo-orange mr-1 align-middle"></span>
+                    <span class="font-bold">${escapeHtml(item.color_name || 'لون')}</span>
+                </td>
+                <td class="p-3 text-center">${stockBadge}</td>
+                <td class="p-3 text-center">
+                    ${isViewMode ? `
+                        <span class="px-3 py-1 bg-devo-black border border-devo-gray rounded-lg text-white font-mono font-bold text-xs inline-block shadow-inner">${qty} <span class="text-[10px] text-devo-muted font-normal block font-mono">(${rowPieces} ق)</span></span>
+                    ` : `
+                        <div class="inline-flex items-center bg-devo-black border ${isStockShortage ? 'border-devo-error ring-1 ring-devo-error/40' : 'border-devo-gray'} rounded-lg overflow-hidden h-8">
+                            <button type="button" 
+                                onclick="updateVisitorModalItemQty(${idx}, -1)" 
+                                ${isAtMin ? 'disabled' : ''} 
+                                class="px-2.5 text-white hover:text-devo-orange transition-colors disabled:opacity-20 disabled:hover:text-white disabled:cursor-not-allowed">
+                                <i class="ph ph-minus text-xs"></i>
+                            </button>
+                            <input type="number" 
+                                min="1" 
+                                max="${Math.max(1, availableInStock)}" 
+                                value="${item.quantity}" 
+                                onchange="handleVisitorModalQtyInput(${idx}, this.value)" 
+                                class="w-12 h-full bg-transparent text-center text-white text-xs font-bold outline-none border-x border-devo-gray font-mono focus:bg-devo-dark transition-colors">
+                            <button type="button" 
+                                onclick="updateVisitorModalItemQty(${idx}, 1)" 
+                                ${isAtMax ? 'disabled' : ''} 
+                                class="px-2.5 text-white hover:text-devo-orange transition-colors disabled:opacity-20 disabled:hover:text-white disabled:cursor-not-allowed"
+                                title="${isAtMax ? `وصلت للحد الأقصى المتاح بالمخزن (${availableInStock} سيريه)` : 'زيادة سيريه'}">
+                                <i class="ph ph-plus text-xs"></i>
+                            </button>
+                        </div>
+                        <span class="text-[10px] text-devo-muted font-normal block mt-1 font-mono">(${rowPieces} ق)</span>
+                    `}
+                </td>
+                <td class="p-3 text-center text-xs text-devo-muted font-mono">${Number(item.price_per_series || 0).toLocaleString()} ج.م</td>
+                <td class="p-3 text-center font-black text-devo-orange text-sm font-mono">${rowTotal.toLocaleString()} ج.م</td>
+                ${!isViewMode ? `
+                    <td class="p-3 text-center">
+                        <button type="button" onclick="removeVisitorModalItem(${idx})" class="text-devo-error hover:bg-devo-error/20 p-2 rounded-lg transition-colors cursor-pointer" title="إزالة الصنف"><i class="ph ph-trash text-base"></i></button>
+                    </td>
+                ` : ''}
+            </tr>
+        `;
+    }).join('');
+
+    const customerFieldsHtml = isViewMode ? `
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">اسم العميل / المحل</label>
+            <input type="text" id="vo-edit-name" disabled readonly value="${escapeHtml(order.customer_name || '')}" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2.5 text-white text-xs cursor-default outline-none font-bold">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">رقم الهاتف الأساسي</label>
+            <input type="tel" id="vo-edit-phone1" disabled readonly value="${escapeHtml(order.phone_1 || '')}" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2.5 text-white text-xs cursor-default outline-none font-mono font-bold">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">رقم هاتف إضافي</label>
+            <input type="tel" id="vo-edit-phone2" disabled readonly value="${escapeHtml(order.phone_2 || '')}" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2.5 text-white/80 text-xs cursor-default outline-none font-mono">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">العنوان بالتفصيل</label>
+            <input type="text" id="vo-edit-address" disabled readonly value="${escapeHtml(order.address || '')}" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2.5 text-white/90 text-xs cursor-default outline-none">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات الطلب</label>
+            <textarea id="vo-edit-notes" disabled readonly rows="3" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2 text-white/90 text-xs cursor-default outline-none resize-none">${escapeHtml(order.notes || '')}</textarea>
+        </div>
+    ` : `
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">اسم العميل / المحل</label>
+            <input type="text" id="vo-edit-name" value="${escapeHtml(order.customer_name || '')}" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-devo-orange outline-none font-bold transition-colors">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">رقم الهاتف الأساسي</label>
+            <input type="tel" id="vo-edit-phone1" value="${escapeHtml(order.phone_1 || '')}" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-devo-orange outline-none font-mono transition-colors">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">رقم هاتف إضافي</label>
+            <input type="tel" id="vo-edit-phone2" value="${escapeHtml(order.phone_2 || '')}" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-devo-orange outline-none font-mono transition-colors">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">العنوان بالتفصيل</label>
+            <input type="text" id="vo-edit-address" value="${escapeHtml(order.address || '')}" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-devo-orange outline-none transition-colors">
+        </div>
+        <div>
+            <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات الطلب</label>
+            <textarea id="vo-edit-notes" rows="3" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2 text-white text-xs focus:border-devo-orange outline-none resize-none transition-colors">${escapeHtml(order.notes || '')}</textarea>
+        </div>
+    `;
+
+    const rejectionAlertHtml = ((order.status === 'rejected' || order.status === 'ignored') && order.rejection_reason) ? `
+        <div class="mb-4 bg-rose-500/15 border border-rose-500/30 rounded-2xl p-4 flex items-start gap-3 text-rose-300 shadow-sm">
+            <i class="ph ph-warning-circle text-rose-400 text-2xl shrink-0 mt-0.5"></i>
+            <div class="flex-1">
+                <h5 class="font-bold text-sm text-rose-200 mb-1">تم رفض هذا الطلب</h5>
+                <p class="text-xs text-rose-300/95 font-sans leading-relaxed"><strong class="text-white">سبب الرفض:</strong> ${escapeHtml(order.rejection_reason)}</p>
+            </div>
+        </div>
+    ` : '';
+
+    const stockWarningBannerHtml = (hasStockWarning && !isViewMode) ? `
+        <div class="mb-4 bg-amber-500/15 border border-amber-500/30 rounded-2xl p-3.5 flex items-center justify-between gap-3 flex-wrap shadow-sm">
+            <div class="flex items-center gap-2.5 text-xs text-amber-300">
+                <i class="ph ph-warning-diamond text-amber-400 text-xl shrink-0"></i>
+                <div>
+                    <strong class="text-white block mb-0.5">تنبيه: الكميات المطلوبة تتجاوز المخزون الحالي بالمخزن</strong>
+                    <span>لا يمكن حفظ التعديل حتى يتم تعديل الكميات بما لا يتجاوز رصيد المخزن المتاح.</span>
+                </div>
+            </div>
+            <button type="button" onclick="autoAdjustAllItemsToStock()" class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl transition-all text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer">
+                <i class="ph ph-check-circle text-base"></i>
+                <span>ضبط كل الأصناف على المتاح فوراً</span>
+            </button>
+        </div>
+    ` : '';
+
+    content.innerHTML = `
+        ${rejectionAlertHtml}
+        ${stockWarningBannerHtml}
+        <div class="flex flex-col lg:flex-row items-start gap-5 w-full">
+            <!-- عمود بيانات العميل والتوصيل -->
+            <div class="w-full lg:w-80 xl:w-96 shrink-0 bg-devo-black/60 border border-devo-gray rounded-2xl p-4 sm:p-5 space-y-3.5">
+                <h4 class="text-sm font-bold text-white flex items-center justify-between border-b border-devo-gray pb-2.5">
+                    <span class="flex items-center gap-2">
+                        <i class="ph ph-user text-devo-orange text-base"></i> بيانات العميل والتوصيل
+                    </span>
+                    ${isViewMode ? `
+                        <span class="text-[10px] text-devo-muted bg-devo-dark px-2 py-0.5 rounded border border-devo-gray/50">للقراءة فقط</span>
+                    ` : `
+                        <span class="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">وضع التعديل</span>
+                    `}
+                </h4>
+                ${customerFieldsHtml}
+                <div class="pt-3 border-t border-devo-gray/50 text-xs text-devo-muted space-y-1">
+                    <p>تاريخ الإرسال: <span class="text-white font-bold">${new Date(order.created_at).toLocaleString('ar-EG')}</span></p>
+                    ${order.reviewed_by ? `<p>تمت المراجعة بواسطة: <span class="text-devo-info font-bold">${escapeHtml(order.reviewed_by)}</span></p>` : ''}
+                </div>
+            </div>
+
+            <!-- عمود أصناف الطلب وفحص المخزون -->
+            <div class="flex-1 min-w-0 w-full space-y-4">
+                <div class="flex justify-between items-center border-b border-devo-gray pb-2.5">
+                    <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-package text-devo-orange text-base"></i> الأصناف المطلوبة (${editingVisitorItems.length})
+                    </h4>
+                    ${hasStockWarning ? `<span class="text-devo-error text-xs font-bold flex items-center gap-1 bg-devo-error/15 px-2.5 py-1 rounded-lg border border-devo-error/30"><i class="ph ph-warning-circle"></i> بعض الأصناف تتجاوز المتاح حالياً</span>` : `<span class="text-devo-success text-xs font-bold flex items-center gap-1 bg-devo-success/15 px-2.5 py-1 rounded-lg border border-devo-success/30"><i class="ph ph-check-circle"></i> جميع الكميات متاحة بالمخزن</span>`}
+                </div>
+
+                <div class="bg-devo-black/60 border border-devo-gray rounded-2xl overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right text-xs">
+                            <thead class="bg-devo-dark border-b border-devo-gray text-devo-muted font-bold">
+                                <tr>
+                                    <th class="p-3">الموديل والكود</th>
+                                    <th class="p-3">اللون</th>
+                                    <th class="p-3 text-center">المخزن الحي</th>
+                                    <th class="p-3 text-center">الكمية (سيريه / ق)</th>
+                                    <th class="p-3 text-center">سعر السيريه</th>
+                                    <th class="p-3 text-center">الإجمالي</th>
+                                    ${!isViewMode ? '<th class="p-3 text-center">إجراء</th>' : ''}
+                                </tr>
+                            </thead>
+                            <tbody id="vo-modal-items-tbody">
+                                ${itemsRowsHtml || `<tr><td colspan="${!isViewMode ? 7 : 6}" class="p-8 text-center text-devo-muted font-bold">تم إزالة جميع الأصناف.</td></tr>`}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- شريط الملخص المالي -->
+                <div class="bg-devo-dark border border-devo-gray rounded-2xl p-4 flex justify-between items-center flex-wrap gap-4 shadow-sm">
+                    <div class="flex items-center gap-5 text-xs flex-wrap">
+                        <span class="text-devo-muted">إجمالي الأصناف: <strong class="text-white text-base font-mono mr-1">${editingVisitorItems.length}</strong></span>
+                        <span class="text-devo-muted">إجمالي السريات: <strong class="text-white text-base font-mono mr-1" id="vo-summary-series">${totalSeries}</strong></span>
+                        <span class="text-devo-muted">إجمالي القطع: <strong class="text-amber-400 text-base font-mono mr-1" id="vo-summary-pieces">${totalPieces.toLocaleString()}</strong></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-devo-muted">الإجمالي الكلي:</span>
+                        <span class="text-devo-orange font-black text-lg font-mono" id="vo-summary-price">${totalPrice.toLocaleString()} ج.م</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // أزرار الفوتر
+    const isPending = order.status === 'pending';
+    const isApproved = order.status === 'approved';
+    const isRejected = order.status === 'rejected' || order.status === 'ignored';
+
+    if (footer) {
+        footer.innerHTML = `
+            <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" onclick="deleteVisitorOrder('${order.id}')" class="px-3.5 py-2 bg-devo-error/15 text-devo-error hover:bg-devo-error hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                    <i class="ph ph-trash text-base"></i>
+                    <span>حذف الطلب</span>
+                </button>
+                ${isPending ? `
+                    <button type="button" onclick="rejectVisitorOrder('${order.id}')" class="px-3.5 py-2 bg-rose-500/15 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-x-circle text-base"></i>
+                        <span>رفض الطلب</span>
+                    </button>
+                ` : ''}
+                ${isRejected ? `
+                    <button type="button" onclick="reopenVisitorOrder('${order.id}')" class="px-3.5 py-2 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-arrow-counter-clockwise text-base"></i>
+                        <span>استعادة للانتظار</span>
+                    </button>
+                ` : ''}
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" onclick="printVisitorOrder('${order.id}')" class="px-3.5 py-2 bg-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                    <i class="ph ph-printer text-base"></i>
+                    <span>طباعة الفاتورة</span>
+                </button>
+
+                ${isViewMode ? `
+                    <button type="button" onclick="openVisitorOrderModal('${order.id}', 'edit')" class="px-4 py-2 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-pencil-simple text-base"></i>
+                        <span>تعديل الطلب</span>
+                    </button>
+                ` : `
+                    <button type="button" onclick="openVisitorOrderModal('${order.id}', 'view')" class="px-3.5 py-2 bg-devo-gray/50 hover:bg-devo-gray text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-x text-base"></i>
+                        <span>إلغاء التعديل</span>
+                    </button>
+                    <button type="button" 
+                        onclick="saveVisitorOrderEdits('${order.id}')" 
+                        ${hasStockWarning ? 'disabled' : ''}
+                        class="px-4 py-2 bg-devo-orange/20 text-devo-orange border border-devo-orange/40 hover:bg-devo-orange hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-devo-orange/20 disabled:hover:text-devo-orange"
+                        title="${hasStockWarning ? 'لا يمكن الحفظ: بعض الأصناف تتجاوز الكمية المتاحة بالمخزن' : 'حفظ التعديلات'}">
+                        <i class="ph ph-floppy-disk text-base"></i>
+                        <span>حفظ التعديلات</span>
+                    </button>
+                `}
+
+                ${!isApproved ? `
+                    <button type="button" id="btn-approve-visitor-order" onclick="approveVisitorOrder('${order.id}')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-lg active:scale-95 cursor-pointer">
+                        <i class="ph ph-check-circle text-lg"></i>
+                        <span>قبول واعتماد الطلب وخصم المخزون</span>
+                    </button>
+                ` : ''}
+
+                ${order.status === 'archived' ? `
+                    <button type="button" onclick="reopenVisitorOrder('${order.id}')" class="px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-arrow-counter-clockwise text-base"></i>
+                        <span>استعادة للانتظار</span>
+                    </button>
+                ` : `
+                    <button type="button" onclick="archiveVisitorOrder('${order.id}')" class="px-4 py-2 bg-purple-500/15 text-purple-400 border border-purple-500/30 hover:bg-purple-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="ph ph-archive text-base"></i>
+                        <span>أرشفة الطلب</span>
+                    </button>
+                `}
+            </div>
+        `;
+    }
+}
+
+window.setVisitorModalItemQty = (itemIndex, targetQty) => {
+    if (!editingVisitorItems[itemIndex]) return;
+    const inv = currentVisitorOrderLiveInventory.find(i => 
+        String(i.model_id) === String(editingVisitorItems[itemIndex].model_id) && 
+        String(i.color_id) === String(editingVisitorItems[itemIndex].color_id)
+    );
+    const availableInStock = inv ? Math.max(0, Number(inv.available_series) || 0) : 0;
+    const finalQty = Math.max(1, Math.min(targetQty, availableInStock || 1));
+
+    editingVisitorItems[itemIndex].quantity = finalQty;
+    editingVisitorItems[itemIndex].total_price = finalQty * (Number(editingVisitorItems[itemIndex].price_per_series) || 0);
+
+    const order = currentViewingVisitorOrder;
+    if (order) {
+        renderVisitorOrderModalContent(order, currentVisitorOrderLiveInventory, 'edit');
+    }
+};
+
+window.handleVisitorModalQtyInput = (itemIndex, rawVal) => {
+    if (!editingVisitorItems[itemIndex]) return;
+    const item = editingVisitorItems[itemIndex];
+    const inv = currentVisitorOrderLiveInventory.find(i => 
+        String(i.model_id) === String(item.model_id) && 
+        String(i.color_id) === String(item.color_id)
+    );
+    const availableInStock = inv ? Math.max(0, Number(inv.available_series) || 0) : 0;
+
+    let num = parseInt(rawVal, 10);
+    if (isNaN(num) || num < 1) num = 1;
+
+    if (availableInStock > 0 && num > availableInStock) {
+        showToast(`لا يمكن تجاوز المتاح بالمخزن! تم تعديل الكمية إلى ${availableInStock} سيريه`, 'warning');
+        num = availableInStock;
+    } else if (availableInStock === 0) {
+        showToast('هذا الصنف غير متوفر بالمخزن حالياً (0 سيريه)', 'error');
+        num = 1;
+    }
+
+    item.quantity = num;
+    item.total_price = num * (Number(item.price_per_series) || 0);
+
+    const order = currentViewingVisitorOrder;
+    if (order) {
+        renderVisitorOrderModalContent(order, currentVisitorOrderLiveInventory, 'edit');
+    }
+};
+
+window.autoAdjustAllItemsToStock = () => {
+    let adjustedCount = 0;
+    editingVisitorItems.forEach(item => {
+        const inv = currentVisitorOrderLiveInventory.find(i => 
+            String(i.model_id) === String(item.model_id) && 
+            String(i.color_id) === String(item.color_id)
+        );
+        const available = inv ? Math.max(0, Number(inv.available_series) || 0) : 0;
+        if (available > 0 && Number(item.quantity) > available) {
+            item.quantity = available;
+            item.total_price = available * (Number(item.price_per_series) || 0);
+            adjustedCount++;
+        }
+    });
+
+    if (adjustedCount > 0) {
+        showToast(`تم ضبط ${adjustedCount} صنف على أقصى كمية متاحة بالمخزن بنجاح`, 'success');
+        if (currentViewingVisitorOrder) {
+            renderVisitorOrderModalContent(currentViewingVisitorOrder, currentVisitorOrderLiveInventory, 'edit');
+        }
+    } else {
+        showToast('جميع الكميات مضبوطة بالفعل ضمن حدود المخزون المتاح', 'info');
+    }
+};
+
+window.updateVisitorModalItemQty = (itemIndex, delta) => {
+    if (!editingVisitorItems[itemIndex]) return;
+    const item = editingVisitorItems[itemIndex];
+    const inv = currentVisitorOrderLiveInventory.find(i => 
+        String(i.model_id) === String(item.model_id) && 
+        String(i.color_id) === String(item.color_id)
+    );
+    const availableInStock = inv ? Math.max(0, Number(inv.available_series) || 0) : 0;
+    const currentQty = Number(item.quantity) || 1;
+
+    if (delta > 0) {
+        if (availableInStock > 0 && currentQty >= availableInStock) {
+            return showToast(`لا يمكن زيادة الكمية! أقصى متاح بالمخزن هو (${availableInStock} سيريه)`, 'warning');
+        }
+        if (availableInStock === 0) {
+            return showToast('هذا الصنف نفذ من المخزن تماماً (0 سيريه)', 'error');
+        }
+    }
+
+    const maxAllowed = Math.max(1, availableInStock || 1);
+    const newQty = Math.min(maxAllowed, Math.max(1, currentQty + delta));
+    item.quantity = newQty;
+    item.total_price = newQty * (Number(item.price_per_series) || 0);
+
+    const order = currentViewingVisitorOrder;
+    if (order) {
+        renderVisitorOrderModalContent(order, currentVisitorOrderLiveInventory, 'edit');
+    }
+};
+
+window.removeVisitorModalItem = async (itemIndex) => {
+    if (!editingVisitorItems[itemIndex]) return;
+    const confirmed = await confirmDialog({
+        title: 'إزالة الصنف',
+        message: `هل تريد إزالة الصنف (${editingVisitorItems[itemIndex].model_name} - ${editingVisitorItems[itemIndex].color_name}) من هذا الطلب؟`,
+        isDestructive: true
+    });
+    if (!confirmed) return;
+
+    editingVisitorItems.splice(itemIndex, 1);
+    const order = currentViewingVisitorOrder;
+    if (order) {
+        renderVisitorOrderModalContent(order, currentVisitorOrderLiveInventory, 'edit');
+    }
+};
+
+window.saveVisitorOrderEdits = async (orderId) => {
+    if (!currentViewingVisitorOrder) return;
+    if (editingVisitorItems.length === 0) return showToast('لا يمكن حفظ طلب بدون أصناف!', 'error');
+
+    const customerName = document.getElementById('vo-edit-name')?.value.trim();
+    const phone1 = document.getElementById('vo-edit-phone1')?.value.trim();
+    const phone2 = document.getElementById('vo-edit-phone2')?.value.trim() || null;
+    const address = document.getElementById('vo-edit-address')?.value.trim() || null;
+    const notes = document.getElementById('vo-edit-notes')?.value.trim() || null;
+
+    if (!customerName || !phone1) return showToast('اسم العميل ورقم الهاتف مطلوبان!', 'warning');
+
+    // 🌟 فحص صارم للمخزون الحي: عدم السماح بحفظ أي صنف يتجاوز رصيد المخزن المتاح
+    const modelIds = [...new Set(editingVisitorItems.map(i => i.model_id).filter(Boolean))];
+    const { data: latestInv } = await supabase
+        .from('model_inventory')
+        .select('model_id, color_id, available_series')
+        .in('model_id', modelIds);
+
+    currentVisitorOrderLiveInventory = latestInv || [];
+
+    const stockErrors = [];
+    editingVisitorItems.forEach(item => {
+        const inv = currentVisitorOrderLiveInventory.find(i => String(i.model_id) === String(item.model_id) && String(i.color_id) === String(item.color_id));
+        const available = inv ? Math.max(0, Number(inv.available_series) || 0) : 0;
+        if (Number(item.quantity) > available) {
+            stockErrors.push(`الصنف (${item.model_name} - ${item.color_name}): المطلوب ${item.quantity} والمتاح بالمخزن ${available} فقط`);
+        }
+    });
+
+    if (stockErrors.length > 0) {
+        showToast('لا يمكن الحفظ! ' + stockErrors[0], 'error');
+        renderVisitorOrderModalContent(currentViewingVisitorOrder, currentVisitorOrderLiveInventory, 'edit');
+        return;
+    }
+
+    const totalSeries = editingVisitorItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+    const totalPrice = editingVisitorItems.reduce((sum, i) => sum + ((Number(i.quantity) || 0) * (Number(i.price_per_series) || 0)), 0);
+
+    showToast('جاري حفظ التعديلات...', 'info');
+
+    try {
+        // 1. تحديث جدول visitor_orders
+        const { error: orderErr } = await supabase.from('visitor_orders').update({
+            customer_name: customerName,
+            phone_1: phone1,
+            phone_2: phone2,
+            address: address,
+            notes: notes,
+            total_series: totalSeries,
+            total_price: totalPrice
+        }).eq('id', orderId);
+
+        if (orderErr) throw orderErr;
+
+        // 2. تحديث أصناف الطلب (حذف القديم وإضافة المعدل لضمان المطابقة التامة)
+        await supabase.from('visitor_order_items').delete().eq('visitor_order_id', orderId);
+
+        const newItemsToInsert = editingVisitorItems.map(item => ({
+            visitor_order_id: orderId,
+            model_id: item.model_id,
+            color_id: item.color_id,
+            model_name: item.model_name,
+            color_name: item.color_name,
+            factory_code: item.factory_code || '',
+            quantity: item.quantity,
+            price_per_series: item.price_per_series,
+            sizes_count: item.sizes_count || 1,
+            total_price: (item.quantity * item.price_per_series)
+        }));
+
+        const { error: itemsErr } = await supabase.from('visitor_order_items').insert(newItemsToInsert);
+        if (itemsErr) throw itemsErr;
+
+        showToast('تم حفظ تعديلات طلب الزائر بنجاح!', 'success');
+        await fetchVisitorOrders();
+        openVisitorOrderModal(orderId, 'view');
+
+    } catch (err) {
+        console.error('[VisitorOrder] Save edits error:', err);
+        showToast('خطأ أثناء حفظ التعديلات: ' + (err.message || 'خطأ غير معروف'), 'error');
+    }
+};
+
+window.approveVisitorOrder = async (orderId) => {
+    const order = allVisitorOrders.find(o => String(o.id) === String(orderId));
+    if (!order) return showToast('تعذر العثور على بيانات الطلب', 'error');
+
+    const items = (currentViewingVisitorOrder && String(currentViewingVisitorOrder.id) === String(orderId))
+        ? editingVisitorItems
+        : (order.visitor_order_items || []);
+
+    if (items.length === 0) return showToast('الطلب لا يحتوي على أي أصناف!', 'error');
+
+    const confirmed = await confirmDialog({
+        title: 'قبول واعتماد طلب الزائر',
+        message: `هل تريد اعتماد طلب العميل (${order.customer_name}) بإجمالي ${order.total_series} سيريه؟ سيتم خصم المخزون وإصدار فاتورة أوردر رسمية بالسيستم.`,
+        confirmText: 'نعم، اعتمد واخصم المخزون'
+    });
+
+    if (!confirmed) return;
+
+    const btn = document.getElementById('btn-approve-visitor-order');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> جاري اعتماد الأوردر...'; }
+    showToast('جاري التحقق من المخزون والاعتماد...', 'info');
+
+    try {
+        // 1. التحقق من المخزون الحي لكل الأصناف قبل إتمام المعاملة
+        const modelIds = [...new Set(items.map(i => i.model_id).filter(Boolean))];
+        const { data: currentInv } = await supabase
+            .from('model_inventory')
+            .select('model_id, color_id, available_series')
+            .in('model_id', modelIds);
+
+        const stockErrors = [];
+        items.forEach(item => {
+            const inv = currentInv?.find(i => String(i.model_id) === String(item.model_id) && String(i.color_id) === String(item.color_id));
+            const available = inv ? inv.available_series : 0;
+            if (item.quantity > available) {
+                stockErrors.push(`الموديل (${item.model_name} - ${item.color_name}): المطلوب ${item.quantity} والمتاح فقط ${available}`);
+            }
+        });
+
+        if (stockErrors.length > 0) {
+            showToast('لا يمكن الاعتماد لنقص المخزون: ' + stockErrors[0], 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-check-circle text-lg"></i> <span>قبول واعتماد الطلب وخصم المخزون</span>'; }
+            return;
+        }
+
+        // 2. إعداد بيانات الفاتورة والأصناف لدالة process_order_transaction المركزية
+        const customerName = document.getElementById('vo-edit-name')?.value.trim() || order.customer_name;
+        const phone1 = document.getElementById('vo-edit-phone1')?.value.trim() || order.phone_1;
+        const phone2 = document.getElementById('vo-edit-phone2')?.value.trim() || order.phone_2;
+        const address = document.getElementById('vo-edit-address')?.value.trim() || order.address;
+        const notes = document.getElementById('vo-edit-notes')?.value.trim() || order.notes;
+
+        const totalSeries = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+        const totalPrice = items.reduce((sum, i) => sum + ((Number(i.quantity) || 0) * (Number(i.price_per_series) || 0)), 0);
+
+        const orderData = {
+            customer_name: customerName,
+            phone_1: phone1,
+            phone_2: phone2,
+            address: address,
+            deposit: 0,
+            deposit_receiver: null,
+            notes: (notes ? notes + ' | ' : '') + 'طلب موقع إلكتروني (زائر معتمد)',
+            total_price: totalPrice,
+            total_series: totalSeries,
+            worker_id: currentUserProfile?.id || null
+        };
+
+        const orderItemsData = items.map(item => {
+            const sizesCount = item.sizes_count || 1;
+            const pricePerSeries = Number(item.price_per_series) || 0;
+            return {
+                model_id: item.model_id,
+                color_id: item.color_id,
+                color_name: item.color_name || '',
+                qty: item.quantity,
+                model_name: item.model_name || '',
+                price: pricePerSeries,
+                total: item.quantity * pricePerSeries,
+                sizes_count: sizesCount,
+                piece_price: sizesCount > 0 ? (pricePerSeries / sizesCount) : pricePerSeries
+            };
+        });
+
+        // 3. استدعاء المعاملة السحابية لإنشاء الفاتورة وخصم المخزون وإرسال الإشعارات
+        const { data: rpcData, error: rpcError } = await supabase.rpc('process_order_transaction', {
+            p_order_id: null,
+            p_order_data: orderData,
+            p_order_items: orderItemsData
+        });
+
+        if (rpcError) throw rpcError;
+
+        const newInvoiceNumber = rpcData?.invoice_number;
+
+        // 4. تحديث حالة طلب الزائر إلى approved
+        await supabase.from('visitor_orders').update({
+            status: 'approved',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: currentUserProfile?.full_name || 'إدارة النظام'
+        }).eq('id', orderId);
+
+        showToast(`🎉 تم اعتماد الطلب بنجاح! تم إصدار الفاتورة رقم #${newInvoiceNumber} وخصم المخزون.`, 'success');
+
+        closeVisitorOrderModal();
+        await Promise.all([
+            fetchVisitorOrders(),
+            fetchAdminOrders()
+        ]);
+
+    } catch (err) {
+        console.error('[VisitorOrder] Approval error:', err);
+        showToast('فشل اعتماد الطلب: ' + (err.message || 'خطأ غير معروف'), 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-check-circle text-lg"></i> <span>قبول واعتماد الطلب وخصم المخزون</span>'; }
+    }
+};
+
+window.rejectVisitorOrder = async (orderId) => {
+    const vo = allVisitorOrders.find(o => String(o.id) === String(orderId));
+    const custName = vo?.customer_name || 'هذا الطلب';
+
+    const reason = await promptDialog({
+        title: 'رفض طلب الزائر',
+        message: `يرجى تحديد سبب رفض طلب (${custName}):`,
+        placeholder: 'مثال: نفاذ الكمية بالمخزن / تعذر التواصل مع العميل...',
+        confirmText: 'تأكيد الرفض',
+        cancelText: 'إلغاء'
+    });
+
+    if (reason === false || reason === null) return;
+
+    const finalReason = (typeof reason === 'string' && reason.trim()) ? reason.trim() : 'لم يتم تحديد سبب الرفض';
+
+    try {
+        const { error } = await supabase
+            .from('visitor_orders')
+            .update({
+                status: 'rejected',
+                rejection_reason: finalReason,
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: currentUserProfile?.full_name || 'إدارة النظام'
+            })
+            .eq('id', orderId);
+
+        if (error) throw error;
+
+        showToast('تم رفض الطلب وتسجيل سبب الرفض بنجاح', 'info');
+        closeVisitorOrderModal();
+        await fetchVisitorOrders();
+    } catch (err) {
+        console.error('[VisitorOrder] Reject error:', err);
+        showToast('حدث خطأ أثناء رفض الطلب: ' + err.message, 'error');
+    }
+};
+
+window.reopenVisitorOrder = async (orderId) => {
+    try {
+        const { error } = await supabase
+            .from('visitor_orders')
+            .update({
+                status: 'pending',
+                rejection_reason: null,
+                reviewed_at: null,
+                reviewed_by: null
+            })
+            .eq('id', orderId);
+
+        if (error) throw error;
+
+        showToast('تمت استعادة الطلب إلى قائمة الانتظار', 'success');
+        closeVisitorOrderModal();
+        await fetchVisitorOrders();
+    } catch (err) {
+        console.error('[VisitorOrder] Reopen error:', err);
+        showToast('حدث خطأ: ' + err.message, 'error');
+    }
+};
+
+window.archiveVisitorOrder = async (orderId) => {
+    const vo = allVisitorOrders.find(o => String(o.id) === String(orderId));
+    const custName = vo?.customer_name || 'هذا الطلب';
+
+    const confirmed = await confirmDialog({
+        title: 'أرشفة طلب الزائر',
+        message: `هل تريد أرشفة طلب العميل (${custName})؟ سيتم نقله إلى أرشيف طلبات الزوار وإزالته من قائمة الانتظار الحالية.`,
+        confirmText: 'نعم، أرشف الطلب'
+    });
+
+    if (!confirmed) return;
+
+    try {
+        const { error } = await supabase
+            .from('visitor_orders')
+            .update({
+                status: 'archived',
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: currentUserProfile?.full_name || 'إدارة النظام'
+            })
+            .eq('id', orderId);
+
+        if (error) throw error;
+
+        showToast('تمت أرشفة الطلب بنجاح ونقله إلى أرشيف طلبات الزوار', 'success');
+        closeVisitorOrderModal();
+        await fetchVisitorOrders();
+    } catch (err) {
+        console.error('[VisitorOrder] Archive error:', err);
+        showToast('حدث خطأ أثناء أرشفة الطلب: ' + err.message, 'error');
+    }
+};
+
+window.printVisitorOrder = async (orderId) => {
+    let vo = allVisitorOrders.find(o => String(o.id) === String(orderId));
+    if (!vo) {
+        const { data } = await supabase.from('visitor_orders').select(`
+            *,
+            visitor_order_items (
+                *,
+                models (id, name, factory_code, system_code, price, classes (class_sizes), model_sizes),
+                colors (id, name, color_code)
+            )
+        `).eq('id', orderId).maybeSingle();
+        vo = data;
+    }
+    if (!vo) return showToast('تعذر العثور على بيانات الطلب للطباعة', 'error');
+
+    showToast('جاري تحضير الفاتورة للطباعة...', 'info');
+
+    const shortId = (vo.id || '').split('-')[0].toUpperCase();
+    const dateStr = new Date(vo.created_at).toLocaleString('ar-EG', {
+        year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const items = vo.visitor_order_items || [];
+
+    let statusText = 'في الانتظار';
+    let statusColor = '#b45309';
+
+    if (vo.status === 'approved') { 
+        statusText = 'معتمد ومقبول'; 
+        statusColor = '#047857'; 
+    } else if (vo.status === 'rejected' || vo.status === 'ignored') { 
+        statusText = 'مرفوض'; 
+        statusColor = '#b91c1c'; 
+    } else if (vo.status === 'archived') {
+        statusText = 'مؤرشف';
+        statusColor = '#4b5563';
+    }
+
+    // Phone cleanup: If phone_2 matches phone_1, don't repeat it
+    const p1 = (vo.phone_1 || '').trim();
+    const p2 = (vo.phone_2 || '').trim();
+    let phoneDisplay = p1;
+    if (p2 && p2 !== p1) {
+        phoneDisplay = `${p1} &nbsp;|&nbsp; <span style="color:#555; font-weight:normal;">إضافي:</span> ${p2}`;
+    }
+
+    // Address cleanup: Don't show placeholder texts like 'بدون عنوان' or '-'
+    let cleanAddress = (vo.address || '').trim();
+    if (cleanAddress === 'بدون عنوان' || cleanAddress === '-' || cleanAddress === 'null' || cleanAddress === 'undefined') {
+        cleanAddress = '';
+    }
+
+    // Notes cleanup
+    let cleanNotes = (vo.notes || '').trim();
+    if (cleanNotes === 'null' || cleanNotes === 'undefined' || cleanNotes === '-') {
+        cleanNotes = '';
+    }
+
+    let totalPieces = 0;
+    let totalSeries = 0;
+    const itemsRows = items.map((item, idx) => {
+        const qty = Number(item.quantity) || 0;
+        const sizesCount = Number(item.sizes_count) || getModelSizesCount(item.models, 1);
+        const rowPieces = qty * sizesCount;
+        totalPieces += rowPieces;
+        totalSeries += qty;
+        const rowTotal = qty * (Number(item.price_per_series) || 0);
+        return `
+            <tr>
+                <td style="padding: 3px 4px; border: 1px solid #000; text-align: center; font-family: monospace; font-size: 10px;">${idx + 1}</td>
+                <td style="padding: 3px 6px; border: 1px solid #000; font-weight: bold; text-align: right;">
+                    ${item.model_name || 'موديل'}
+                    ${item.factory_code ? `<span style="font-size:10px; color:#475569; font-family: monospace; margin-right: 4px; font-weight: normal;">(${item.factory_code})</span>` : ''}
+                </td>
+                <td style="padding: 3px 6px; border: 1px solid #000; text-align: center;">${item.color_name || 'لون'}</td>
+                <td style="padding: 3px 6px; border: 1px solid #000; text-align: center; font-weight: bold; font-size: 11px;">
+                    ${qty} <span style="font-size: 9.5px; color: #555; font-weight: normal;">(${rowPieces} ق)</span>
+                </td>
+                <td style="padding: 3px 6px; border: 1px solid #000; text-align: center; font-family: monospace;">${Number(item.price_per_series || 0).toLocaleString()} ج.م</td>
+                <td style="padding: 3px 6px; border: 1px solid #000; text-align: center; font-weight: bold; font-family: monospace; background: #f8fafc !important;">${rowTotal.toLocaleString()} ج.م</td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title></title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+                @page {
+                    size: A4 portrait;
+                    margin: 0;
+                }
+                @media print {
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    .print-page {
+                        padding: 6mm 10mm !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                    }
+                }
+                body {
+                    font-family: 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: #ffffff;
+                    margin: 0;
+                    padding: 6mm 10mm;
+                    color: #000000;
+                    box-sizing: border-box;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-page">
+                <!-- Compact Header -->
+                <div style="border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: inline-flex; align-items: center; gap: 5px; direction: ltr;">
+                            <span style="font-size: 18px; font-weight: 900; letter-spacing: 1px; color: #000; line-height: 1;">DEVO</span>
+                            <span style="background: #000; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 800; letter-spacing: 1.5px; line-height: 1.1; display: inline-block; vertical-align: middle;">COLLECTION</span>
+                        </div>
+                        <span style="color: #cbd5e1; font-weight: 300; font-size: 12px; margin: 0 2px;">|</span>
+                        <span style="font-size: 10.5px; color: #444; white-space: nowrap;">هاتف: <span dir="ltr" style="font-family: monospace; font-weight: bold; color: #000;">+20 12 12751111</span></span>
+                    </div>
+                    <div style="text-align: left; font-size: 11px;">
+                        <b style="font-size: 13px; color: #000;">فاتورة طلب عميل</b>
+                        <span style="color: #666; margin-right: 6px; font-family: monospace;">(#${shortId})</span>
+                        <span style="font-size: 10px; color: ${statusColor}; font-weight: bold; margin-right: 4px;">[${statusText}]</span>
+                    </div>
+                </div>
+
+                <!-- Customer Details Strip -->
+                <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; margin-bottom: 6px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div><b>العميل:</b> <span style="font-weight: bold; color: #000;">${escapeHtml(vo.customer_name || 'بدون اسم')}</span></div>
+                        <div><b>الهاتف:</b> <span dir="ltr" style="font-family: monospace; font-weight: bold;">${phoneDisplay}</span></div>
+                        ${cleanAddress ? `<div><b>العنوان:</b> <span>${escapeHtml(cleanAddress)}</span></div>` : ''}
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; font-size: 10.5px; color: #475569;">
+                        <div><b>التاريخ:</b> <span>${dateStr}</span></div>
+                        ${vo.reviewed_by ? `<div><b>المراجعة:</b> <span>${escapeHtml(vo.reviewed_by)}</span></div>` : ''}
+                    </div>
+                </div>
+
+                <!-- Notes if any -->
+                ${cleanNotes ? `
+                    <div style="margin-bottom: 6px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; padding: 3px 8px; font-size: 10.5px; color: #92400e;">
+                        <b>ملاحظات:</b> ${escapeHtml(cleanNotes)}
+                    </div>
+                ` : ''}
+
+                <!-- Rejection Reason if any -->
+                ${(vo.status === 'rejected' || vo.status === 'ignored') && vo.rejection_reason ? `
+                    <div style="background: #fef2f2; padding: 3px 8px; border: 1px solid #fecaca; border-radius: 4px; margin-bottom: 6px; font-size: 10.5px; color: #991b1b;">
+                        <b>سبب رفض الطلب:</b> ${escapeHtml(vo.rejection_reason)}
+                    </div>
+                ` : ''}
+
+                <!-- Items Table -->
+                <table style="border: 1px solid #000; font-size: 11px; margin-bottom: 6px;">
+                    <thead style="background: #e2e8f0 !important; color: #000 !important; -webkit-print-color-adjust: exact;">
+                        <tr>
+                            <th style="padding: 3px 4px; border: 1px solid #000; width: 28px; text-align: center;">م</th>
+                            <th style="padding: 3px 6px; border: 1px solid #000; text-align: right;">الموديل والكود</th>
+                            <th style="padding: 3px 6px; border: 1px solid #000; width: 85px; text-align: center;">اللون</th>
+                            <th style="padding: 3px 6px; border: 1px solid #000; width: 100px; text-align: center;">الكمية (سيريه / ق)</th>
+                            <th style="padding: 3px 6px; border: 1px solid #000; width: 85px; text-align: center;">سعر السيريه</th>
+                            <th style="padding: 3px 6px; border: 1px solid #000; width: 95px; text-align: center;">الإجمالي</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsRows}
+                    </tbody>
+                </table>
+
+                <!-- Totals Section -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 6px; page-break-inside: avoid;">
+                    <div style="border: 1.5px solid #000; width: 230px; border-radius: 4px; overflow: hidden; background: #ffffff;">
+                        <div style="padding: 3px 8px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; font-size: 10.5px;">
+                            <span style="color: #475569;">إجمالي الأصناف:</span>
+                            <b style="color: #000;">${items.length} صنف</b>
+                        </div>
+                        <div style="padding: 3px 8px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; font-size: 10.5px; background: #f8fafc !important;">
+                            <span style="color: #475569;">إجمالي السريات:</span>
+                            <b style="color: #000;">${totalSeries || vo.total_series || 0} سيريه</b>
+                        </div>
+                        <div style="padding: 3px 8px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; font-size: 10.5px;">
+                            <span style="color: #475569;">إجمالي القطع:</span>
+                            <b style="color: #000;">${totalPieces} قطعة</b>
+                        </div>
+                        <div style="padding: 4px 8px; display: flex; justify-content: space-between; font-size: 12px; background: #000 !important; color: #fff !important; font-weight: bold; -webkit-print-color-adjust: exact;">
+                            <span>الإجمالي الكلي:</span>
+                            <span style="font-size: 13px; font-family: monospace;">${Number(vo.total_price || 0).toLocaleString()} ج.م</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    printHtmlInIframe(html);
+};
+
+window.toggleIgnoreVisitorOrder = async (orderId, newStatus) => {
+    try {
+        const { error } = await supabase
+            .from('visitor_orders')
+            .update({ status: newStatus })
+            .eq('id', orderId);
+
+        if (error) throw error;
+
+        const msg = newStatus === 'ignored' ? 'تم تجاهل الطلب' : 'تمت إعادة الطلب لقائمة الانتظار';
+        showToast(msg, 'success');
+        closeVisitorOrderModal();
+        await fetchVisitorOrders();
+    } catch (err) {
+        showToast('حدث خطأ: ' + err.message, 'error');
+    }
+};
+
+window.deleteVisitorOrder = async (orderId) => {
+    const confirmed = await confirmDialog({
+        title: 'حذف طلب الزائر',
+        message: 'هل أنت متأكد من رغبتك في حذف هذا الطلب نهائياً من قائمة طلبات الزوار؟',
+        isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+        const { error } = await supabase
+            .from('visitor_orders')
+            .delete()
+            .eq('id', orderId);
+
+        if (error) throw error;
+
+        showToast('تم حذف الطلب بنجاح', 'success');
+        closeVisitorOrderModal();
+        await fetchVisitorOrders();
+    } catch (err) {
+        showToast('خطأ أثناء الحذف: ' + err.message, 'error');
+    }
+};

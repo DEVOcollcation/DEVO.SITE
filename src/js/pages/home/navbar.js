@@ -51,13 +51,14 @@ export async function initNavbar() {
             return 'view-cart';
         }
 
-        const validViews = ['view-home', 'view-gallery', 'view-barcode', 'view-cart', 'view-orders'];
+        const validViews = ['view-home', 'view-gallery', 'view-barcode', 'view-cart', 'view-orders', 'view-visitor-cart'];
         const aliasMap = {
             'home': 'view-home',
             'gallery': 'view-gallery',
             'barcode': 'view-barcode',
             'cart': 'view-cart',
-            'orders': 'view-orders'
+            'orders': 'view-orders',
+            'visitor-cart': 'view-visitor-cart'
         };
 
         const hash = (window.location.hash || '').replace('#', '').trim().toLowerCase();
@@ -70,7 +71,7 @@ export async function initNavbar() {
             } catch (e) {}
         }
 
-        if (window.isVisitor && target && target !== 'view-home' && target !== 'view-gallery' && target !== 'view-barcode') {
+        if (window.isVisitor && target && target !== 'view-home' && target !== 'view-gallery' && target !== 'view-barcode' && target !== 'view-visitor-cart') {
             target = 'view-home';
         }
 
@@ -80,7 +81,7 @@ export async function initNavbar() {
     // نظام التوجيه (التبديل بين الصفحات بدون تحميل)
     window.switchSiteView = async (targetId, skipHistory = false) => {
         // تأكيد الخروج من صفحة الباركود إلا إذا كان الهدف هو السلة
-        if (!skipHistory && window.currentView === 'view-barcode' && targetId !== 'view-cart') {
+        if (!skipHistory && window.currentView === 'view-barcode' && targetId !== 'view-cart' && targetId !== 'view-visitor-cart') {
             const confirmed = await showCustomConfirm("هل تريد الخروج من صفحة الباركود؟", "تأكيد الانتقال");
             if (!confirmed) {
                 return;
@@ -148,6 +149,8 @@ export async function initNavbar() {
             window.refreshCartView();
         } else if (targetId === 'view-orders' && typeof window.refreshWorkerOrders === 'function') {
             window.refreshWorkerOrders();
+        } else if (targetId === 'view-visitor-cart' && typeof window.refreshVisitorCartView === 'function') {
+            window.refreshVisitorCartView();
         }
     };
 
@@ -205,6 +208,16 @@ export async function initNavbar() {
             return;
         }
 
+        const visitorSuccessModal = document.getElementById('visitor-order-success-modal');
+        if (visitorSuccessModal && !visitorSuccessModal.classList.contains('hidden')) {
+            if (typeof window.closeVisitorOrderSuccess === 'function') {
+                window.closeVisitorOrderSuccess();
+            } else {
+                visitorSuccessModal.classList.add('hidden');
+            }
+            return;
+        }
+
         const modelModal = document.getElementById('model-viewer-modal');
         if (modelModal) {
             const urlParams = new URLSearchParams(window.location.search);
@@ -254,7 +267,7 @@ export async function initNavbar() {
                     window.switchSiteView(cur, true);
                 }
             } else if (targetView) {
-                if (window.currentView === 'view-barcode' && targetView !== 'view-cart') {
+                if (window.currentView === 'view-barcode' && targetView !== 'view-cart' && targetView !== 'view-visitor-cart') {
                     const confirmed = await showCustomConfirm("هل تريد الخروج من صفحة الباركود؟", "تأكيد الانتقال");
                     if (confirmed) {
                         window.switchSiteView(targetView, true);

@@ -90,6 +90,19 @@ export async function initGallery() {
         document.getElementById('floating-cart-btn')?.classList.remove('hidden');
     }
 
+    // إظهار زر سلة الزائر إذا كان الشخص زائراً
+    if (window.isVisitor) {
+        const visitorBtn = document.getElementById('visitor-floating-cart-btn');
+        if (visitorBtn) {
+            const vc = localStorage.getItem('devo_visitor_cart');
+            const vcItems = vc ? JSON.parse(vc) : [];
+            const total = vcItems.reduce((s, i) => s + i.qty, 0);
+            if (total > 0) visitorBtn.classList.remove('hidden');
+            const countEl = document.getElementById('visitor-floating-cart-count');
+            if (countEl) countEl.textContent = total;
+        }
+    }
+
     document.getElementById('gal-search')?.addEventListener('input', applyGalleryFilters);
     document.getElementById('gal-category')?.addEventListener('change', applyGalleryFilters);
     document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
@@ -814,6 +827,7 @@ window.openModelViewer = async (id, skipHistory = false) => {
             const cachedData = await getAllCachedModels();
             if (cachedData && cachedData.length > 0) {
                 allModels = cachedData;
+                if (typeof window !== 'undefined') window.allGalleryModels = allModels;
                 model = allModels.find(m => String(m.id) === String(id));
             }
         } catch (e) {}
@@ -859,7 +873,7 @@ window.openModelViewer = async (id, skipHistory = false) => {
         document.getElementById('floating-cart-btn')?.classList.remove('hidden');
     }
 
-    // قسم إضافة طقم (يظهر فقط للموظفين/الآدمن)
+    // قسم إضافة طقم (للموظفين/الآدمن)
     let setHtml = '';
     if (isWorkerActive) {
         setHtml = `
@@ -891,6 +905,40 @@ window.openModelViewer = async (id, skipHistory = false) => {
         </div>`;
     }
 
+    // قسم إضافة طقم للزائر
+    let visitorSetHtml = '';
+    if (!isWorkerActive) {
+        // حساب المتاح الفعلي لكل الألوان
+        const anyAvailable = model.model_inventory?.some(inv => (inv.available_series || 0) > 0);
+        if (anyAvailable) {
+            visitorSetHtml = `
+            <div class="bg-gradient-to-r from-devo-orange/10 via-devo-dark to-devo-black border border-devo-orange/30 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-devo-orange/15 border border-devo-orange/40 flex items-center justify-center text-devo-orange shrink-0">
+                        <i class="ph ph-package text-lg"></i>
+                    </div>
+                    <div>
+                        <h5 class="text-white text-xs sm:text-sm font-black flex items-center gap-1">
+                            إضافة طقم كامل للسلة
+                            <span class="text-[10px] text-devo-orange bg-devo-orange/20 px-1.5 py-0.5 rounded font-bold border border-devo-orange/30">(سيريه من كل لون)</span>
+                        </h5>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <div class="flex items-center bg-devo-dark border border-devo-orange/50 rounded-lg overflow-hidden h-8 sm:h-9">
+                        <button onclick="decrementQty('vset-qty-${model.id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
+                        <input type="number" id="vset-qty-${model.id}" value="1" min="1" max="99" readonly class="w-8 bg-transparent text-center text-devo-orange text-xs sm:text-sm font-black outline-none border-x border-devo-gray">
+                        <button onclick="incrementQty('vset-qty-${model.id}', 99)" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
+                    </div>
+                    <button id="visitor-add-set-btn-${model.id}" onclick="visitorAddSetToCart(event, '${model.id}')" class="flex-1 sm:flex-none px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-lg text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-1.5 active:scale-95">
+                        <i class="ph ph-shopping-cart-simple text-base sm:text-lg"></i>
+                        <span>إضافة طقم</span>
+                    </button>
+                </div>
+            </div>`;
+        }
+    }
+
     if (content) {
         content.innerHTML = `
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-1 sm:p-2 md:p-0">
@@ -912,7 +960,7 @@ window.openModelViewer = async (id, skipHistory = false) => {
                         <div id="viewer-sizes-container" class="flex flex-wrap gap-1.5">${sizesHtml}</div>
                     </div>
 
-                    ${setHtml}
+                    ${setHtml}${visitorSetHtml}
 
                     <div class="flex-1">
                         <h4 class="text-xs sm:text-sm font-bold text-white mb-2 flex items-center gap-1.5"><i class="ph ph-palette text-devo-orange"></i> الألوان المتاحة للطلب</h4>
@@ -966,6 +1014,8 @@ function refreshColorsContainer(modelId) {
     const container = document.getElementById('viewer-colors-container');
     if (container) container.innerHTML = generateColorsHTML(model, sizesCount);
 }
+// نوفر نسخة عامة يستخدمها visitor_cart.js
+window.refreshVisitorColorsContainer = refreshColorsContainer;
 
 function generateColorsHTML(model, sizesCount) {
     if (!model.model_inventory || model.model_inventory.length === 0) {
@@ -980,9 +1030,45 @@ function generateColorsHTML(model, sizesCount) {
         const available = dbAvailable + ownedQty;
         const isOut = available === 0;
         const colorName = getResolvedColorName(inv);
-        
+
+        // ===== واجهة الزائر (بدون مستخدم) =====
         if (!isWorkerActive) {
-            return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-gray rounded-xl mb-1.5 transition-all"><span class="text-white text-xs sm:text-sm font-bold">${colorName}</span><span class="${isOut ? 'text-devo-error' : 'text-devo-success'} text-xs font-bold">${isOut ? 'غير متوفر' : 'متوفر'}</span></div>`;
+            const visitorCartQty = (typeof window.getVisitorCartQtyForColor === 'function')
+                ? window.getVisitorCartQtyForColor(model.id, inv.color_id) : 0;
+            const visitorDisplayAvailable = Math.max(0, dbAvailable - visitorCartQty);
+            const isVisitorDisplayOut = visitorDisplayAvailable === 0;
+            const vcBadge = visitorCartQty > 0
+                ? `<span class="inline-flex items-center gap-0.5 text-[10px] font-black text-devo-orange bg-devo-orange/15 border border-devo-orange/40 px-1.5 py-0.5 rounded-md whitespace-nowrap"><i class="ph ph-shopping-cart-simple text-[10px]"></i>${visitorCartQty} في السلة</span>`
+                : '';
+
+            if (isOut) {
+                return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-error/30 opacity-70 rounded-xl mb-1.5"><span class="text-white text-xs sm:text-sm font-bold">${colorName}</span><span class="text-devo-error text-xs font-bold px-2 py-0.5 bg-devo-error/10 border border-devo-error/20 rounded-lg">نفذت الكمية</span></div>`;
+            }
+
+            if (isVisitorDisplayOut) {
+                return `<div class="flex justify-between items-center p-2.5 bg-devo-black border border-devo-orange/30 rounded-xl mb-1.5"><div class="flex items-center gap-2"><span class="text-white text-xs sm:text-sm font-bold">${colorName}</span>${vcBadge}</div><span class="text-devo-orange text-xs font-bold px-2 py-0.5 bg-devo-orange/10 border border-devo-orange/20 rounded-lg">مضافة كلها</span></div>`;
+            }
+
+            return `
+            <div class="flex items-center justify-between p-2 sm:p-2.5 bg-devo-black border border-devo-gray rounded-xl mb-1.5 gap-2 transition-all duration-300">
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0 bg-devo-success"></span>
+                    <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span class="text-white font-bold text-xs sm:text-sm truncate">${colorName}</span>
+                        ${vcBadge}
+                    </div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <div class="flex items-center bg-devo-dark border border-devo-gray rounded-lg overflow-hidden h-8 sm:h-9">
+                        <button onclick="decrementQty('vqty-${inv.color_id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
+                        <input type="number" id="vqty-${inv.color_id}" value="1" min="1" max="${visitorDisplayAvailable}" readonly class="w-8 sm:w-10 bg-transparent text-center text-white text-xs sm:text-sm font-bold outline-none border-x border-devo-gray appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none leading-none">
+                        <button onclick="incrementQty('vqty-${inv.color_id}', ${visitorDisplayAvailable})" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
+                    </div>
+                    <button onclick="visitorAddToCart(event, '${model.id}', '${inv.color_id}')" class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-xs sm:text-sm font-bold transition-all shadow-md flex justify-center items-center gap-1 active:scale-95">
+                        <i class="ph ph-shopping-cart-simple text-sm sm:text-base"></i> <span class="hidden xs:inline">إضافة</span>
+                    </button>
+                </div>
+            </div>`;
         }
 
         const cartQty = getCartQtyForColor(model.id, inv.color_id);
