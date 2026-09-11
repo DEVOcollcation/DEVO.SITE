@@ -1,6 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { requireAuth } from '../../services/auth.js';
+import { confirmDialog } from '../../components/modal.js';
 
 // ============================================================
 // 📦 تعريف الهيكل وثوابت الجداول والمستويات
@@ -17,8 +18,17 @@ const PRIMARY_KEY_CONFIG = {
     model_inventory: 'model_id, color_id',
     model_colors_inventory: 'model_id, color_id',
     home_settings: 'setting_key',
+    order_item_preparation: 'order_id, item_id',
     default: 'id'
 };
+
+// الجداول المستثناة تماماً من النسخ والاستعادة (طوابير مؤقتة أو جداول محجوبة للنظام)
+const EXCLUDED_TABLES = [
+    'spatial_ref_sys',
+    'system_backups_log',
+    'schema_migrations',
+    'inventory_notification_queue'
+];
 
 // كافة الجداول التابعة لكل مستوى تصدير
 const EXPORT_PRESETS = {
@@ -134,7 +144,7 @@ let computedDiffData = null; // تخزين نتائج الفروقات والم�
 // 🎯 تهيئة الواجهة
 // ============================================================
 export async function initBackupRestoreView() {
-    const user = requireAuth(['owner']);
+    const user = requireAuth(['owner', 'admin']);
     if (!user) {
         showToast('⛔ ليس لديك صلاحية للوصول لإدارة النسخ الاحتياطي', 'error');
         return;
@@ -639,8 +649,14 @@ function attachBackupRestoreEvents() {
 // 🎯 حساب ومعاينة الفروقات واستعادة العناصر المخصصة (Diff Engine)
 // ============================================================
 async function openDiffAndSelectiveModal() {
-    if (!loadedBackupData || !loadedBackupData.tables) {
+    if (!loadedBackupData) {
         showToast('يرجى رفع ملف نسخة احتياطية صالح أولاً', 'error');
+        return;
+    }
+
+    const backupTables = loadedBackupData.tables || loadedBackupData.data;
+    if (!backupTables || typeof backupTables !== 'object') {
+        showToast('لا توجد بيانات جداول صالحة في ملف النسخة الاحتياطية', 'error');
         return;
     }
 
@@ -658,7 +674,7 @@ async function openDiffAndSelectiveModal() {
         </div>
     `;
 
-    computedDiffData = await computeBackupDiffStats(loadedBackupData.tables);
+    computedDiffData = await computeBackupDiffStats(backupTables);
     renderDiffModalContent(computedDiffData);
 }
 
@@ -719,10 +735,16 @@ async function computeBackupDiffStats(backupTables) {
                 if (tbl === 'home_settings') {
                     if (row.setting_key) return String(row.setting_key);
                 }
-                if (row.id) return String(row.id);
-                return null;
+                if (row.id !== undefined && row.id !== null) return String(row.id);
+                if (row.setting_key) return String(row.setting_key);
+                if (row.code) return String(row.code);
+                if (row.key) return String(row.key);
+                const idKeys = Object.keys(row).filter(k => k.endsWith('_id') || k === 'id');
+                if (idKeys.length > 0) return idKeys.map(k => row[k]).join('_');
+                return JSON.stringify(row);
             };
 
+            const liveMap = new Map();
             liveRows.forEach(r => {
                 const key = getRowUniqueKey(tableName, r);
                 if (key) liveMap.set(key, r);
@@ -860,6 +882,7 @@ function getItemDisplayLabel(tableName, item, lookups = {}) {
     if (item.name) return item.name;
     if (item.full_name) return item.full_name;
     if (item.title) return item.title;
+    if (item.label) return item.label;
 
     // 2. الأوردرات والفواتير
     if (tableName === 'orders' || item.customer_name) {
@@ -912,12 +935,14 @@ function getItemDisplayLabel(tableName, item, lookups = {}) {
         return `بند: ${modelName} (${colorName}) - كمية: ${qty}`;
     }
 
-    // 9. الإعدادات والمستخدمين والألوان
+    // 9. الإعدادات والمستخدمين والألوان والرموز
     if (item.setting_key) return `إعداد: ${item.setting_key}`;
     if (item.username) return `مستخدم: ${item.username} (${item.full_name || ''})`;
     if (item.color_code) return `لون: ${item.name || item.color_code}`;
+    if (item.code) return `كود: ${item.code}`;
+    if (item.description) return item.description.length > 30 ? item.description.substring(0, 30) + '...' : item.description;
 
-    // 10. Fallback بالعربية بدلاً من الجمل المبهمة
+    // 10. Fallback بالعربية بدلاً من الجمل المبهمة لأي جدول إضافي
     const arTable = TABLE_ARABIC_NAMES[tableName] || tableName;
     if (item.id) return `${arTable} #${String(item.id).substring(0, 8)}`;
     return `${arTable} (سجل جديد)`;
@@ -1034,11 +1059,40 @@ async function handleExportProcess() {
     }
 }
 
-// مولّد بيانات الـ JSON للنسخة الاحتياطية
+// جلب قائمة كافة جداول قاعدة البيانات الحية ديناميكياً (مهما تم إنشاء جداول جديدة)
+async function fetchLiveDatabaseTables() {
+    try {
+        const { data, error } = await supabase.rpc('get_all_system_tables');
+        if (!error && Array.isArray(data) && data.length > 0) {
+            return data.filter(t => !EXCLUDED_TABLES.includes(t));
+        }
+    } catch (e) {
+        console.warn('RPC get_all_system_tables fallback notice:', e);
+    }
+    return [
+        'categories', 'classes', 'sizes', 'colors', 'class_sizes',
+        'system_users', 'themes', 'home_settings',
+        'models', 'model_sizes', 'model_images', 'model_colors_inventory', 'model_inventory',
+        'stock_movements', 'promo_cards',
+        'invoices', 'invoice_items', 'orders', 'order_items', 'order_logs',
+        'system_notifications'
+    ].filter(t => !EXCLUDED_TABLES.includes(t));
+}
+
+// مولّد بيانات الـ JSON للنسخة الاحتياطية (يكتشف ويجلب كافة الجداول تلقائياً)
 async function generateBackupPayload(preset) {
     openProgressModal('تصدير نسخة احتياطية', `جاري تصدير: ${preset.label}`);
-    updateProgressUI(0, 'جاري البدء...', '0 / 0');
+    updateProgressUI(0, 'جاري فحص واكتشاف الجداول الحية...', '0 / 0');
 
+    let tablesToExport = [...preset.tables];
+    if (preset.id === 'full_system') {
+        const liveTables = await fetchLiveDatabaseTables();
+        liveTables.forEach(t => {
+            if (!tablesToExport.includes(t)) tablesToExport.push(t);
+        });
+    }
+
+    const totalTables = tablesToExport.length;
     const backupPayload = {
         meta: {
             format: BACKUP_FORMAT_IDENTIFIER,
@@ -1048,14 +1102,14 @@ async function generateBackupPayload(preset) {
             created_at: new Date().toISOString(),
             exported_by: localStorage.getItem('devo_current_username') || 'admin',
             total_records: 0,
-            tables_count: preset.tables.length
+            tables_count: totalTables,
+            tables: tablesToExport
         },
         tables: {}
     };
 
     let overallTotalRecords = 0;
     const errorsList = [];
-    const totalTables = preset.tables.length;
 
     let startTime = Date.now();
     const timerInterval = setInterval(() => {
@@ -1068,7 +1122,7 @@ async function generateBackupPayload(preset) {
 
     try {
         for (let i = 0; i < totalTables; i++) {
-            const tableName = preset.tables[i];
+            const tableName = tablesToExport[i];
             const arabicName = TABLE_ARABIC_NAMES[tableName] || tableName;
             const stepPercent = Math.round(((i) / totalTables) * 100);
 
@@ -1124,7 +1178,22 @@ async function fetchAllTableRecords(tableName, onProgress = null) {
     const pageSize = 1000;
     let hasMore = true;
 
-    const sortCol = PRIMARY_KEY_CONFIG[tableName] ? PRIMARY_KEY_CONFIG[tableName].split(',')[0].trim() : 'id';
+    // استبعاد الجداول المحجوبة أو الطوابير المؤقتة
+    if (EXCLUDED_TABLES.includes(tableName)) {
+        return [];
+    }
+
+    // تحديد عمود الترتيب بأمان لتفادي أخطاء 400 Bad Request
+    let sortCol = PRIMARY_KEY_CONFIG[tableName] ? PRIMARY_KEY_CONFIG[tableName].split(',')[0].trim() : null;
+    const knownTablesWithId = [
+        'categories', 'classes', 'sizes', 'colors', 'system_users', 'themes',
+        'models', 'model_images', 'stock_movements', 'promo_cards',
+        'invoices', 'invoice_items', 'orders', 'order_items', 'order_logs',
+        'system_notifications'
+    ];
+    if (!sortCol && knownTablesWithId.includes(tableName)) {
+        sortCol = 'id';
+    }
 
     while (hasMore) {
         let query = supabase.from(tableName).select('*');
@@ -1665,7 +1734,14 @@ async function downloadCloudBackup(filename) {
 
 // حذف نسخة سحابية
 async function deleteCloudBackup(id, filename) {
-    if (!confirm(`هل أنت متأكد من حذف النسخة السحابية (${filename})؟`)) return;
+    const confirmed = await confirmDialog({
+        title: 'حذف النسخة السحابية',
+        message: `هل أنت متأكد من حذف النسخة السحابية التالية؟\n(${filename})\n\nلن يمكنك التراجع أو استرجاع هذا الملف بعد الحذف.`,
+        confirmText: 'نعم، احذف النسخة',
+        cancelText: 'إلغاء',
+        isDestructive: true
+    });
+    if (!confirmed) return;
 
     try {
         await supabase.storage.from(STORAGE_BUCKET_NAME).remove([filename]);
@@ -1703,10 +1779,15 @@ function handleFileSelection(file) {
 }
 
 function validateAndInspectBackupContent(fileName, data) {
-    if (!data || typeof data !== 'object' || !data.tables) {
-        showToast('هيكل ملف النسخة الاحتياطية غير مطابقة للمواصفات', 'error');
+    if (!data || typeof data !== 'object' || (!data.tables && !data.data)) {
+        showToast('هيكل ملف النسخة الاحتياطية غير مطابق للمواصفات', 'error');
         resetFileInspection();
         return;
+    }
+
+    // تطبيع الهيكل ليكون دائماً data.tables
+    if (!data.tables && data.data) {
+        data.tables = data.data;
     }
 
     loadedBackupData = data;
@@ -1721,9 +1802,9 @@ function validateAndInspectBackupContent(fileName, data) {
     });
 
     document.getElementById('inspect-filename').textContent = fileName;
-    document.getElementById('inspect-backup-type').textContent = `نوع النسخة: ${meta.preset_name || 'مخصصة'}`;
-    document.getElementById('inspect-date').textContent = meta.created_at ? new Date(meta.created_at).toLocaleString('ar-EG') : 'غير محدد';
-    document.getElementById('inspect-total-records').textContent = `${totalRecs.toLocaleString('ar-EG')} سجل`;
+    document.getElementById('inspect-backup-type').textContent = `نوع النسخة: ${meta.preset_name || (meta.preset === 'full_system' ? 'نسخة كاملة' : 'مخصصة')}`;
+    document.getElementById('inspect-date').textContent = meta.created_at ? new Date(meta.created_at).toLocaleString('ar-EG') : (meta.exported_at ? new Date(meta.exported_at).toLocaleString('ar-EG') : 'غير محدد');
+    document.getElementById('inspect-total-records').textContent = `${totalRecs.toLocaleString('ar-EG')} سجل (${tableKeys.length} جدول)`;
 
     document.getElementById('file-inspection-card')?.classList.remove('hidden');
 
@@ -1796,13 +1877,20 @@ async function handleRestoreProcess(customDataPayload = null) {
     currentRestoreMode = modeRadio ? modeRadio.value : 'upsert';
 
     if (currentRestoreMode === 'replace' && !customDataPayload) {
-        const confirmResult = confirm('⚠️ تحذير شديد الخطورة:\nاخترت خيار "إعادة استبدال كاملة". ستقوم العملية بتفريغ وحذف البيانات الحالية للجداول المستهدفة واستبدالها بالبيانات الموجودة بالملف!\n\nهل أنت متأكد تماماً من المتابعة؟');
+        const confirmResult = await confirmDialog({
+            title: '⚠️ تحذير شديد الخطورة',
+            message: 'اخترت خيار "إعادة استبدال كاملة". ستقوم العملية بتفريغ وحذف البيانات الحالية للجداول المستهدفة واستبدالها بالبيانات الموجودة بالملف!\n\nهل أنت متأكد تماماً من المتابعة؟',
+            confirmText: 'نعم، استبدل البيانات',
+            cancelText: 'تراجع وإلغاء',
+            isDestructive: true
+        });
         if (!confirmResult) return;
     }
 
-    const tablesObj = dataToRestore.tables;
+    const tablesObj = dataToRestore.tables || dataToRestore.data || {};
     const orderedTablesToRestore = RESTORE_TABLE_ORDER.filter(t => Array.isArray(tablesObj[t]) && tablesObj[t].length > 0);
 
+    // 🌟 ضم كافة الجداول الجديدة وغير المسجلة مسبقاً الموجودة بالملف تلقائياً
     Object.keys(tablesObj).forEach(t => {
         if (!orderedTablesToRestore.includes(t) && Array.isArray(tablesObj[t]) && tablesObj[t].length > 0) {
             orderedTablesToRestore.push(t);

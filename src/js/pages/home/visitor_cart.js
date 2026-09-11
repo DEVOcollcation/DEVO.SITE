@@ -18,6 +18,8 @@ export function initVisitorCart() {
     const form = document.getElementById('visitor-checkout-form');
     if (form) {
         form.addEventListener('submit', handleVisitorCheckout);
+        form.addEventListener('input', saveVisitorCustomerDraft);
+        form.addEventListener('change', saveVisitorCustomerDraft);
     }
 
     // استرجاع بيانات العميل المحفوظة تلقائياً
@@ -651,6 +653,7 @@ async function handleVisitorCheckout(e) {
 
         visitorCartItems = [];
         saveVisitorCart();
+        localStorage.removeItem('devo_visitor_customer_draft');
         e.target.reset();
         loadAndRenderVisitorCart();
 
@@ -872,7 +875,49 @@ export function updateVisitorOrdersHistoryBadge() {
     }
 }
 
+function saveVisitorCustomerDraft() {
+    const name = document.getElementById('vc-name')?.value || '';
+    const p1 = document.getElementById('vc-phone1')?.value || '';
+    const p2 = document.getElementById('vc-phone2')?.value || '';
+    const addr = document.getElementById('vc-address')?.value || '';
+    const notes = document.getElementById('vc-notes')?.value || '';
+
+    const hasData = name.trim() || p1.trim() || p2.trim() || addr.trim() || notes.trim();
+    if (hasData) {
+        localStorage.setItem('devo_visitor_customer_draft', JSON.stringify({
+            customer_name: name,
+            phone_1: p1,
+            phone_2: p2,
+            address: addr,
+            notes: notes
+        }));
+    } else {
+        localStorage.removeItem('devo_visitor_customer_draft');
+    }
+}
+
 export function prefillCustomerCheckoutForm() {
+    try {
+        const savedDraft = localStorage.getItem('devo_visitor_customer_draft');
+        if (savedDraft) {
+            const draft = JSON.parse(savedDraft);
+            if (draft) {
+                const nameInput = document.getElementById('vc-name');
+                const p1Input = document.getElementById('vc-phone1');
+                const p2Input = document.getElementById('vc-phone2');
+                const addrInput = document.getElementById('vc-address');
+                const notesInput = document.getElementById('vc-notes');
+
+                if (nameInput && !nameInput.value && draft.customer_name) nameInput.value = draft.customer_name;
+                if (p1Input && !p1Input.value && draft.phone_1) p1Input.value = draft.phone_1;
+                if (p2Input && !p2Input.value && draft.phone_2) p2Input.value = draft.phone_2;
+                if (addrInput && !addrInput.value && draft.address) addrInput.value = draft.address;
+                if (notesInput && !notesInput.value && draft.notes) notesInput.value = draft.notes;
+                return;
+            }
+        }
+    } catch(e) {}
+
     const orders = getLocalOrdersHistory();
     if (!orders || orders.length === 0) return;
     const last = orders[0];

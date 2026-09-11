@@ -9,6 +9,7 @@ let currentUser = null;
 let cartItems = [];
 let itemToDeleteIndex = null;
 let editingOrderId = null; 
+let currentLoadedEditOrderId = null;
 let cartRealtimeChannel = null;
 let lastOrderForPrinting = null;
 
@@ -18,21 +19,97 @@ let cachedDbModels = [];
 let cachedOriginalOrderData = null;
 let currentCartFilter = 'all'; // 'all', 'ok', 'error'
 
+// ==========================================
+// 🌟 إدارة ومزامنة مسودة بيانات العميل في السلة 🌟
+// ==========================================
+function saveCustomerFormData() {
+    if (editingOrderId) return;
+    const name = document.getElementById('c-name')?.value ?? '';
+    const phone1 = document.getElementById('c-phone1')?.value ?? '';
+    const phone2 = document.getElementById('c-phone2')?.value ?? '';
+    const address = document.getElementById('c-address')?.value ?? '';
+    const deposit = document.getElementById('c-deposit')?.value ?? '0';
+    const receiver = document.getElementById('c-receiver')?.value ?? '';
+    const notes = document.getElementById('c-notes')?.value ?? '';
+
+    const hasData = name.trim() || phone1.trim() || phone2.trim() || address.trim() || (deposit && deposit !== '0') || receiver.trim() || notes.trim();
+    if (hasData) {
+        localStorage.setItem('devo_cart_customer_draft', JSON.stringify({
+            customer_name: name,
+            phone_1: phone1,
+            phone_2: phone2,
+            address: address,
+            deposit: deposit,
+            deposit_receiver: receiver,
+            notes: notes
+        }));
+    } else {
+        localStorage.removeItem('devo_cart_customer_draft');
+    }
+}
+
+function restoreCustomerFormData() {
+    if (editingOrderId) return;
+    try {
+        const saved = localStorage.getItem('devo_cart_customer_draft');
+        if (!saved) return;
+        const draft = JSON.parse(saved);
+        if (!draft) return;
+
+        const nameEl = document.getElementById('c-name');
+        const phone1El = document.getElementById('c-phone1');
+        const phone2El = document.getElementById('c-phone2');
+        const addrEl = document.getElementById('c-address');
+        const depEl = document.getElementById('c-deposit');
+        const recEl = document.getElementById('c-receiver');
+        const notesEl = document.getElementById('c-notes');
+
+        if (nameEl && !nameEl.value && draft.customer_name) nameEl.value = draft.customer_name;
+        if (phone1El && !phone1El.value && draft.phone_1) phone1El.value = draft.phone_1;
+        if (phone2El && !phone2El.value && draft.phone_2) phone2El.value = draft.phone_2;
+        if (addrEl && !addrEl.value && draft.address) addrEl.value = draft.address;
+        if (depEl && (!depEl.value || depEl.value === '0') && draft.deposit !== undefined) depEl.value = draft.deposit;
+        if (recEl && !recEl.value && draft.deposit_receiver) recEl.value = draft.deposit_receiver;
+        if (notesEl && !notesEl.value && draft.notes) notesEl.value = draft.notes;
+
+        if (recEl && depEl) {
+            const depVal = parseFloat(depEl.value) || 0;
+            recEl.required = depVal > 0;
+        }
+    } catch (e) {
+        console.warn('Failed to restore customer draft:', e);
+    }
+}
+
+function clearCustomerFormData() {
+    localStorage.removeItem('devo_cart_customer_draft');
+    const form = document.getElementById('checkout-form');
+    if (form) form.reset();
+    const receiverEl = document.getElementById('c-receiver');
+    if (receiverEl) receiverEl.required = false;
+}
+
 export function initCart() {
     const { session } = getCurrentSession();
     currentUser = session ? session.user : null;
     
     if (currentUser) {
-        document.getElementById('checkout-form')?.addEventListener('submit', handleCheckout);
+        const form = document.getElementById('checkout-form');
+        if (form) {
+            form.addEventListener('submit', handleCheckout);
+            form.addEventListener('input', () => {
+                saveCustomerFormData();
+                const val = parseFloat(document.getElementById('c-deposit')?.value) || 0;
+                const recEl = document.getElementById('c-receiver');
+                if (recEl) recEl.required = val > 0;
+            });
+            form.addEventListener('change', saveCustomerFormData);
+        }
+
         window.refreshCartView = loadAndRenderCart;
         window.showInvoiceModal = showInvoiceModal;
         window.setCartFilter = setCartFilter;
         window.filterCartItems = filterCartItems;
-        
-        document.getElementById('c-deposit')?.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value) || 0;
-            document.getElementById('c-receiver').required = val > 0;
-        });
 
         loadAndRenderCart();
         setupCartRealtime(); 
@@ -123,24 +200,32 @@ async function loadAndRenderCart() {
     const saved = localStorage.getItem('devo_cart');
     if (saved) { try { cartItems = JSON.parse(saved); } catch(e) { cartItems = []; } }
 
-    // 🌟 نقلنا تعبئة البيانات هنا لتعمل في كل مرة يفتح فيها الموظف السلة 🌟
     let originalOrderData = null;
     const savedOrderData = localStorage.getItem('devo_edit_order_data');
     if (savedOrderData) {
         try {
             originalOrderData = JSON.parse(savedOrderData);
+            const isNewEdit = (currentLoadedEditOrderId !== originalOrderData.id);
             editingOrderId = originalOrderData.id;
-            document.getElementById('c-name').value = originalOrderData.customer_name || '';
-            document.getElementById('c-phone1').value = originalOrderData.phone_1 || '';
-            document.getElementById('c-phone2').value = originalOrderData.phone_2 || '';
-            document.getElementById('c-address').value = originalOrderData.address || '';
-            document.getElementById('c-notes').value = originalOrderData.notes || ''; 
-            document.getElementById('c-deposit').value = originalOrderData.deposit || 0;
-            document.getElementById('c-receiver').value = originalOrderData.deposit_receiver || '';
+            currentLoadedEditOrderId = originalOrderData.id;
+
+            if (isNewEdit) {
+                document.getElementById('c-name').value = originalOrderData.customer_name || '';
+                document.getElementById('c-phone1').value = originalOrderData.phone_1 || '';
+                document.getElementById('c-phone2').value = originalOrderData.phone_2 || '';
+                document.getElementById('c-address').value = originalOrderData.address || '';
+                document.getElementById('c-notes').value = originalOrderData.notes || ''; 
+                document.getElementById('c-deposit').value = originalOrderData.deposit || 0;
+                document.getElementById('c-receiver').value = originalOrderData.deposit_receiver || '';
+                const depVal = parseFloat(originalOrderData.deposit) || 0;
+                const recEl = document.getElementById('c-receiver');
+                if (recEl) recEl.required = depVal > 0;
+            }
         } catch(e) {}
     } else {
         editingOrderId = null;
-        document.getElementById('checkout-form')?.reset();
+        currentLoadedEditOrderId = null;
+        restoreCustomerFormData();
     }
 
     updateCartHeaderEditState(editingOrderId, originalOrderData?.invoice_number);
@@ -262,12 +347,12 @@ window.clearEntireCart = async () => {
 
         cartItems = [];
         editingOrderId = null;
+        currentLoadedEditOrderId = null;
         localStorage.removeItem('devo_cart');
         localStorage.removeItem('devo_edit_order_data');
         localStorage.removeItem('devo_edit_order_data_cache');
         
-        const form = document.getElementById('checkout-form');
-        if (form) form.reset();
+        clearCustomerFormData();
         
         updateFloatingCart();
         loadAndRenderCart();
@@ -704,11 +789,11 @@ async function handleCheckout(e) {
 
         cartItems = [];
         saveCart();
-        e.target.reset();
-        document.getElementById('c-receiver').required = false;
+        clearCustomerFormData();
         
         const finalEditingOrderId = editingOrderId;
         editingOrderId = null;
+        currentLoadedEditOrderId = null;
         localStorage.removeItem('devo_edit_order_data');
 
         const userName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
@@ -941,6 +1026,8 @@ async function showInvoiceModal(order, items) {
 }
 
 window.finishOrderAndRedirect = (skipHistory = false) => {
+    clearCustomerFormData();
+    currentLoadedEditOrderId = null;
     const modal = document.getElementById('invoice-modal');
     if (modal && !modal.classList.contains('hidden')) {
         modal.classList.add('opacity-0');

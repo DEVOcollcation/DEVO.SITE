@@ -412,7 +412,7 @@ async function loadViewLogic(targetId, subTab = null) {
             await initOffersView();
             break;
         case 'view-backup-restore':
-            const { initBackupRestoreView } = await import('./backup_restore.js?v=2.2');
+            const { initBackupRestoreView } = await import('./backup_restore.js?v=3.4');
             initBackupRestoreView();
             break;
         case 'view-notification-settings':
