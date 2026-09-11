@@ -23,6 +23,7 @@ let localCart = [];
 let currentPage = 1;
 const itemsPerPage = 25;
 let currentFilteredModels = [];
+let currentClasses = new Set();
 let globalColorsMap = {};
 
 export function getResolvedColorName(inv, colorId = null) {
@@ -105,6 +106,7 @@ export async function initGallery() {
 
     document.getElementById('gal-search')?.addEventListener('input', applyGalleryFilters);
     document.getElementById('gal-category')?.addEventListener('change', applyGalleryFilters);
+    document.getElementById('gal-class')?.addEventListener('change', applyGalleryFilters);
     document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
 
     await fetchGalleryModels();
@@ -142,6 +144,7 @@ async function fetchGalleryModels() {
             allModels = cachedData;
             if (typeof window !== 'undefined') window.allGalleryModels = allModels;
             populateCategoryFilter();
+            populateClassFilter();
             applyGalleryFilters();
         }
     } catch (e) {
@@ -198,6 +201,7 @@ async function fetchGalleryModels() {
             preloadModelImages(data);
 
             populateCategoryFilter();
+            populateClassFilter();
 
             // تطبيق التحديث الناعم Fine-Grained DOM Patching دون وميض
             patchOrRenderGallery(previousModels, data);
@@ -214,9 +218,28 @@ function populateCategoryFilter() {
     currentCategories = new Set();
     allModels.forEach(m => { if (m.categories?.name) currentCategories.add(m.categories.name); });
     let catOptions = `<option value="">جميع التصنيفات</option>`;
-    currentCategories.forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
+    Array.from(currentCategories).sort((a, b) => a.localeCompare(b, 'ar')).forEach(cat => catOptions += `<option value="${cat}">${cat}</option>`);
     catSelect.innerHTML = catOptions;
     if (currentVal) catSelect.value = currentVal;
+}
+
+function populateClassFilter() {
+    const classSelect = document.getElementById('gal-class');
+    if (!classSelect) return;
+    const currentVal = classSelect.value;
+    currentClasses = new Set();
+    allModels.forEach(m => {
+        const className = Array.isArray(m.classes) ? m.classes[0]?.name : m.classes?.name;
+        if (className) currentClasses.add(className);
+    });
+    let classOptions = `<option value="">جميع الفئات العمرية</option>`;
+    Array.from(currentClasses).sort((a, b) => a.localeCompare(b, 'ar')).forEach(cls => {
+        classOptions += `<option value="${cls}">${cls}</option>`;
+    });
+    classSelect.innerHTML = classOptions;
+    if (currentVal && currentClasses.has(currentVal)) {
+        classSelect.value = currentVal;
+    }
 }
 
 // ==========================================
@@ -316,6 +339,7 @@ function processRealtimeGalleryModelsQueue() {
 
             if (needsFilter) {
                 populateCategoryFilter();
+                populateClassFilter();
                 applyGalleryFilters();
             }
         } catch (err) {
@@ -514,9 +538,11 @@ window.toggleGalleryFilters = () => {
 window.clearGalleryFilters = () => {
     const searchEl = document.getElementById('gal-search');
     const catEl = document.getElementById('gal-category');
+    const classEl = document.getElementById('gal-class');
     const sortEl = document.getElementById('gal-sort');
     if (searchEl) searchEl.value = '';
     if (catEl) catEl.value = '';
+    if (classEl) classEl.value = '';
     if (sortEl) sortEl.value = 'newest';
     applyGalleryFilters();
 };
@@ -524,6 +550,7 @@ window.clearGalleryFilters = () => {
 function applyGalleryFilters() {
     const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
     const cat = document.getElementById('gal-category')?.value || '';
+    const cls = document.getElementById('gal-class')?.value || '';
     const sort = document.getElementById('gal-sort')?.value || 'newest';
 
     let filtered = allModels.filter(m => {
@@ -531,6 +558,8 @@ function applyGalleryFilters() {
         const searchStr = `${m.factory_code || ''} ${m.system_code || ''} ${m.name || ''}`.toLowerCase();
         if (term && !searchStr.includes(term)) isMatch = false;
         if (cat && m.categories?.name !== cat) isMatch = false;
+        const modelClassName = Array.isArray(m.classes) ? m.classes[0]?.name : m.classes?.name;
+        if (cls && modelClassName !== cls) isMatch = false;
         return isMatch;
     });
 
@@ -553,6 +582,7 @@ function patchOrRenderGallery(prevModels, nextModels) {
 
     const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
     const cat = document.getElementById('gal-category')?.value || '';
+    const cls = document.getElementById('gal-class')?.value || '';
     const sort = document.getElementById('gal-sort')?.value || 'newest';
 
     let filtered = nextModels.filter(m => {
@@ -560,6 +590,8 @@ function patchOrRenderGallery(prevModels, nextModels) {
         const searchStr = `${m.factory_code || ''} ${m.system_code || ''} ${m.name || ''}`.toLowerCase();
         if (term && !searchStr.includes(term)) isMatch = false;
         if (cat && m.categories?.name !== cat) isMatch = false;
+        const modelClassName = Array.isArray(m.classes) ? m.classes[0]?.name : m.classes?.name;
+        if (cls && modelClassName !== cls) isMatch = false;
         return isMatch;
     });
 

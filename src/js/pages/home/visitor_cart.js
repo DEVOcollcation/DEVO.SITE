@@ -24,6 +24,7 @@ export function initVisitorCart() {
     prefillCustomerCheckoutForm();
     updateVisitorOrdersHistoryBadge();
     renderQueriedCodesChips();
+    setupVisitorOrdersRealtime();
 
     window.refreshVisitorCartView = loadAndRenderVisitorCart;
     window.clearVisitorCart = clearVisitorCart;
@@ -730,6 +731,18 @@ function saveLocalOrdersHistory(orders) {
     }
 }
 
+export function removeOrderFromLocalHistory(orderId) {
+    if (!orderId) return;
+    try {
+        let orders = getLocalOrdersHistory();
+        orders = orders.filter(o => String(o.id) !== String(orderId) && (o.code ? String(o.code).toUpperCase() !== String(orderId).toUpperCase() : true));
+        saveLocalOrdersHistory(orders);
+        updateVisitorOrdersHistoryBadge();
+    } catch (e) {
+        console.error('[VisitorCart] Error removing order from local history:', e);
+    }
+}
+
 function saveOrderToLocalHistory(orderData, orderItems = []) {
     if (!orderData || !orderData.id) return;
     const orders = getLocalOrdersHistory();
@@ -960,18 +973,14 @@ export async function loadVisitorOrdersHistory(forceRefresh = false) {
 
         if (error) throw error;
 
-        if (dbOrders && dbOrders.length > 0) {
-            const mergedMap = new Map();
-            localOrders.forEach(o => mergedMap.set(String(o.id), o));
-            dbOrders.forEach(dbO => mergedMap.set(String(dbO.id), dbO));
-            cachedVisitorHistoryOrders = Array.from(mergedMap.values()).sort(
-                (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-            );
-            saveLocalOrdersHistory(cachedVisitorHistoryOrders);
-        } else {
-            cachedVisitorHistoryOrders = localOrders;
-        }
-
+        // إذا نجح الاستعلام من قاعدة البيانات:
+        // نعتمد حصرياً الطلبات التي لا تزال موجودة في قاعدة البيانات (Supabase)
+        // إذا قام الأدمن بحذف طلب، فلن يرجع في dbOrders ويتم حذفه تلقائياً من التخزين المحلي للمتصفح
+        cachedVisitorHistoryOrders = (dbOrders || []).sort(
+            (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        );
+        saveLocalOrdersHistory(cachedVisitorHistoryOrders);
+        updateVisitorOrdersHistoryBadge();
         renderVisitorOrdersHistoryList(cachedVisitorHistoryOrders);
 
     } catch (err) {
@@ -1032,12 +1041,17 @@ export function renderVisitorOrdersHistoryList(orders, isSearch = false) {
             statusClass = 'border-devo-gray hover:border-devo-orange/50';
         }
 
-        const rejectionBanner = (order.status === 'rejected' || order.status === 'ignored') && order.rejection_reason ? `
-            <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-start gap-2">
-                <i class="ph ph-warning-circle text-rose-400 text-base mt-0.5 shrink-0"></i>
-                <div>
-                    <span class="font-bold">سبب الرفض:</span>
-                    <span>${escapeHtml(order.rejection_reason)}</span>
+        const rejectionBanner = (order.status === 'rejected' || order.status === 'ignored') ? `
+            <div class="bg-rose-500/15 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-200 flex items-start gap-2.5">
+                <i class="ph ph-warning-circle text-rose-400 text-lg mt-0.5 shrink-0"></i>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1 flex-wrap">
+                        <span class="font-bold text-rose-300">سبب الرفض:</span>
+                        ${order.reviewed_by ? `<span class="text-[10px] text-rose-300/70">المراجع: ${escapeHtml(order.reviewed_by)}</span>` : ''}
+                    </div>
+                    <p class="text-white font-bold text-xs bg-devo-black/70 p-2 rounded-lg border border-rose-500/20 mt-1 leading-relaxed">
+                        ${escapeHtml(order.rejection_reason || 'تم رفض الطلب من قبل الإدارة لعدم توفر الكمية المطلوبة بالمخزن')}
+                    </p>
                 </div>
             </div>
         ` : '';
@@ -1194,28 +1208,35 @@ export async function searchVisitorOrders(targetQuery = null) {
             }
         });
 
-        // فحص أيضاً في الـ Local History
+        // التحقق من السجل المحلي وإزالة أي طلب تم حذفه من قاعدة البيانات
         const localOrders = getLocalOrdersHistory();
         const searchLower = cleanCode.toLowerCase();
+        
         localOrders.forEach(lo => {
             const matchId = (lo.id && lo.id.toLowerCase().startsWith(searchLower)) ||
                             (lo.code && lo.code.toLowerCase().startsWith(searchLower)) ||
                             (lo.id && lo.id.toLowerCase().replace(/-/g, '').startsWith(searchLower));
             const matchPhone = (lo.phone_1 && lo.phone_1.includes(cleanCode)) || (lo.phone_2 && lo.phone_2.includes(cleanCode));
             const matchName = lo.customer_name && lo.customer_name.includes(cleanCode);
-            if ((matchId || matchPhone || matchName) && !foundOrders.some(fo => String(fo.id) === String(lo.id))) {
-                foundOrders.push(lo);
+
+            // إذا كان الطلب مسجل محلياً وطابق شروط البحث ولكن لم تجده قاعدة البيانات إطلاقاً
+            // فهذا يعني أن الأدمن قام بحذفه، فيتم حذفه من الذاكرة المحلية فوراً وعدم إضافته لنتائج البحث
+            if (matchId || matchPhone || matchName) {
+                const stillExists = foundOrders.some(fo => String(fo.id) === String(lo.id));
+                if (!stillExists) {
+                    removeOrderFromLocalHistory(lo.id);
+                }
             }
         });
 
-        // ترتيب الطلبات من الأحدث للأقدم
+        // ترتيب الطلبات الحية من الأحدث للأقدم
         foundOrders.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
-        // حفظ جميع الطلبات المستعلم عنها في السجل المحلي للعميل فوراً وتحديث الشارة
+        // تحديث الطلبات الحية في السجل المحلي وتحديث الشارة
         if (foundOrders.length > 0) {
             foundOrders.forEach(order => saveOrderToLocalHistory(order));
-            updateVisitorOrdersHistoryBadge();
         }
+        updateVisitorOrdersHistoryBadge();
 
         renderVisitorOrdersHistoryList(foundOrders, true);
 
@@ -1266,29 +1287,26 @@ export async function viewCustomerOrderDetails(orderId) {
                 supabase.from('visitor_orders').select('*').eq('id', orderId).maybeSingle(),
                 supabase.from('visitor_order_items').select('*').eq('visitor_order_id', orderId)
             ]);
-            if (dbOrder) order = dbOrder;
-            if (dbItems && dbItems.length > 0) items = dbItems;
+            if (dbOrder) {
+                order = dbOrder;
+                if (dbItems && dbItems.length > 0) items = dbItems;
+            } else {
+                // الطلب غير موجود في قاعدة البيانات (تم حذفه من قِبل الأدمن)
+                removeOrderFromLocalHistory(orderId);
+                closeCustomerOrderDetailsModal();
+                showToast('عذراً، هذا الطلب غير موجود في النظام (قد تم حذفه من قبل الإدارة)', 'warning');
+                loadVisitorOrdersHistory(true);
+                return;
+            }
         } catch (dbEx) {
             console.warn('[VisitorCart] DB fetch warning in viewCustomerOrderDetails:', dbEx);
         }
 
-        // بديل فوري من السجل المحلي
-        const localOrders = getLocalOrdersHistory();
-        const localOrder = localOrders.find(o => 
-            String(o.id) === String(orderId) || 
-            (o.code && String(o.code).toUpperCase() === String(shortId).toUpperCase())
-        );
-
-        if (!order && localOrder) {
-            order = localOrder;
-        }
-
-        if (items.length === 0 && localOrder?.items?.length > 0) {
-            items = localOrder.items;
-        }
-
         if (!order) {
-            throw new Error('تعذر العثور على بيانات هذا الطلب في النظام');
+            removeOrderFromLocalHistory(orderId);
+            closeCustomerOrderDetailsModal();
+            showToast('تعذر العثور على بيانات هذا الطلب في النظام', 'warning');
+            return;
         }
 
         if (dateEl) {
@@ -1316,13 +1334,22 @@ export async function viewCustomerOrderDetails(orderId) {
             }
         }
 
-        const rejectionSection = (order.status === 'rejected' || order.status === 'ignored') && order.rejection_reason ? `
-            <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3.5 text-xs text-rose-300 flex items-start gap-2.5">
-                <i class="ph ph-warning-circle text-rose-400 text-lg mt-0.5 shrink-0"></i>
-                <div>
-                    <h5 class="font-bold text-rose-200 mb-0.5">سبب رفض الطلب:</h5>
-                    <p class="leading-relaxed">${escapeHtml(order.rejection_reason)}</p>
+        const rejectionSection = (order.status === 'rejected' || order.status === 'ignored') ? `
+            <div class="bg-gradient-to-r from-rose-950/70 to-devo-black border-2 border-rose-500/40 rounded-xl p-3.5 sm:p-4 text-xs text-rose-100 shadow-md space-y-2">
+                <div class="flex items-center justify-between flex-wrap gap-2 text-rose-400 font-bold text-sm">
+                    <div class="flex items-center gap-2">
+                        <i class="ph ph-x-circle text-2xl text-rose-400"></i>
+                        <span>تم رفض هذا الطلب من قبل الإدارة</span>
+                    </div>
+                    ${order.reviewed_by ? `<span class="text-[11px] font-normal text-rose-300/80">المسؤول: ${escapeHtml(order.reviewed_by)}</span>` : ''}
                 </div>
+                <div class="bg-devo-black/90 border border-rose-500/30 rounded-lg p-3 space-y-1">
+                    <span class="text-rose-300 font-bold block text-[11px]">سبب الرفض المسجل:</span>
+                    <p class="text-white font-bold text-xs sm:text-sm leading-relaxed">${escapeHtml(order.rejection_reason || 'تم رفض الطلب لعدم توافر الكمية المطلوبة بالمخزن أو تعذر التواصل')}</p>
+                </div>
+                <p class="text-[11px] text-rose-300/70 pt-0.5">
+                    إذا كانت لديك أي استفسارات أو رغبة في استبدال الموديل، يمكنك التواصل مع خدمة العملاء: <span class="text-white font-mono font-bold" dir="ltr">+20 12 12751111</span>
+                </p>
             </div>
         ` : '';
 
@@ -1457,28 +1484,24 @@ export async function printCustomerVisitorOrder(orderId) {
                 supabase.from('visitor_orders').select('*').eq('id', orderId).maybeSingle(),
                 supabase.from('visitor_order_items').select('*, models(id, name, factory_code, system_code, price, classes(class_sizes), model_sizes)').eq('visitor_order_id', orderId)
             ]);
-            if (dbOrder) order = dbOrder;
-            if (dbItems && dbItems.length > 0) items = dbItems;
+            if (dbOrder) {
+                order = dbOrder;
+                if (dbItems && dbItems.length > 0) items = dbItems;
+            } else {
+                // الطلب غير موجود في قاعدة البيانات (تم حذفه من قِبل الأدمن)
+                removeOrderFromLocalHistory(orderId);
+                showToast('تعذر طباعة الفاتورة؛ هذا الطلب لم يعد موجوداً في النظام (قد تم حذفه من قِبل الإدارة)', 'warning');
+                loadVisitorOrdersHistory(true);
+                return;
+            }
         } catch (dbEx) {
             console.warn('[VisitorCart] DB print fetch warning:', dbEx);
         }
 
-        const localOrders = getLocalOrdersHistory();
-        const localOrder = localOrders.find(o => 
-            String(o.id) === String(orderId) || 
-            (o.code && String(o.code).toUpperCase() === String(shortId).toUpperCase())
-        );
-
-        if (!order && localOrder) {
-            order = localOrder;
-        }
-
-        if (items.length === 0 && localOrder?.items?.length > 0) {
-            items = localOrder.items;
-        }
-
         if (!order) {
-            throw new Error('تعذر العثور على بيانات الطلب لطباعته');
+            removeOrderFromLocalHistory(orderId);
+            showToast('تعذر العثور على بيانات الطلب لطباعته', 'warning');
+            return;
         }
 
         const printHtml = generateCustomerVisitorOrderInvoiceHtml(order, items || []);
@@ -1638,9 +1661,9 @@ function generateCustomerVisitorOrderInvoiceHtml(order, items) {
                 ` : ''}
 
                 <!-- Rejection Reason if any -->
-                ${(order.status === 'rejected' || order.status === 'ignored') && order.rejection_reason ? `
-                    <div style="background: #fef2f2; padding: 3px 8px; border: 1px solid #fecaca; border-radius: 4px; margin-bottom: 6px; font-size: 10.5px; color: #991b1b;">
-                        <b>سبب رفض الطلب:</b> ${escapeHtml(order.rejection_reason)}
+                ${(order.status === 'rejected' || order.status === 'ignored') ? `
+                    <div style="background: #fef2f2; padding: 4px 8px; border: 1.5px solid #fca5a5; border-radius: 4px; margin-bottom: 6px; font-size: 11px; color: #991b1b; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                        <b>سبب رفض الطلب:</b> <span style="font-weight: bold;">${escapeHtml(order.rejection_reason || 'تم رفض الطلب من قبل الإدارة لعدم توفر الكمية المطلوبة')}</span>
                     </div>
                 ` : ''}
 
@@ -1699,5 +1722,57 @@ export function copyVisitorOrderCode(code) {
         });
     } else {
         prompt('انسخ كود الطلب:', clean);
+    }
+}
+
+// ==========================================
+// 📡 رادار التزامن اللحظي لطلبات الزائر (Realtime Sync)
+// ==========================================
+export function setupVisitorOrdersRealtime() {
+    try {
+        supabase.channel('visitor_orders_live_sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_orders' }, payload => {
+                if (payload.eventType === 'DELETE') {
+                    const deletedId = payload.old?.id;
+                    if (deletedId) {
+                        removeOrderFromLocalHistory(deletedId);
+                        cachedVisitorHistoryOrders = cachedVisitorHistoryOrders.filter(o => String(o.id) !== String(deletedId));
+                        renderVisitorOrdersHistoryList(cachedVisitorHistoryOrders);
+                        updateVisitorOrdersHistoryBadge();
+
+                        // إغلاق المودال تلقائياً إذا كان الزائر فاتحه للطلب المحذوف
+                        const modal = document.getElementById('visitor-order-details-modal');
+                        const codeEl = document.getElementById('vod-order-code');
+                        const shortDeleted = String(deletedId).split('-')[0].toUpperCase();
+                        if (modal && !modal.classList.contains('hidden') && codeEl?.textContent?.includes(shortDeleted)) {
+                            closeCustomerOrderDetailsModal();
+                            showToast('تم حذف هذا الطلب من قبل الإدارة', 'warning');
+                        }
+                    }
+                } else if (payload.eventType === 'UPDATE') {
+                    const updated = payload.new;
+                    if (updated && updated.id) {
+                        const localOrders = getLocalOrdersHistory();
+                        const idx = localOrders.findIndex(o => String(o.id) === String(updated.id));
+                        if (idx >= 0) {
+                            localOrders[idx] = { ...localOrders[idx], ...updated };
+                            saveLocalOrdersHistory(localOrders);
+                            cachedVisitorHistoryOrders = localOrders;
+                            renderVisitorOrdersHistoryList(localOrders);
+
+                            // تحديث المودال لحظياً إذا كان الزائر فاتحه
+                            const modal = document.getElementById('visitor-order-details-modal');
+                            const codeEl = document.getElementById('vod-order-code');
+                            const shortUpdated = String(updated.id).split('-')[0].toUpperCase();
+                            if (modal && !modal.classList.contains('hidden') && codeEl?.textContent?.includes(shortUpdated)) {
+                                viewCustomerOrderDetails(updated.id);
+                            }
+                        }
+                    }
+                }
+            })
+            .subscribe();
+    } catch (e) {
+        console.warn('[VisitorCart] Realtime setup error:', e);
     }
 }

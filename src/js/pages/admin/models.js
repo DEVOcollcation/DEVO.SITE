@@ -1087,7 +1087,7 @@ async function handleSaveModel(e) {
                 if (invErr) throw invErr;
             }
         }
-        if (images.length > 0) await supabase.from('model_images').insert(images.map(url => ({ model_id: modelId, image_url: url })));
+        if (images.length > 0) await supabase.from('model_images').insert(images.map((url, idx) => ({ model_id: modelId, image_url: url, sort_order: idx + 1, is_cover: idx === 0 })));
 
         showToast((id ? 'تم الحفظ' : 'تمت الإضافة') + statusMessage, 'success');
         closeModelModal();

@@ -370,7 +370,7 @@ async function loadViewLogic(targetId, subTab = null) {
             await initPrintBarcodesView();
             break;
         case 'view-admin-orders':
-            const { initAdminOrdersView } = await import('./admin_orders.js?v=9.8');
+            const { initAdminOrdersView } = await import('./admin_orders.js?v=9.9');
             await initAdminOrdersView();
             break;
         case 'view-reports': {
@@ -388,6 +388,10 @@ async function loadViewLogic(targetId, subTab = null) {
         case 'view-import-stock':
             const { initImportStockView } = await import('./import_stock.js');
             await initImportStockView();
+            break;
+        case 'view-import-images':
+            const { initImportImagesView } = await import('./import_images.js?v=2.4');
+            await initImportImagesView();
             break;
         case 'view-add-batch':
             const { initInboundInvoicesView } = await import('./inbound_invoices.js');
@@ -524,6 +528,7 @@ async function initRouter() {
     });
 
     window.switchAdminView = switchView;
+    window.switchView = switchView;
 
     // 🌟 فتح الصفحة المحددة أو المحفوظة عند التحميل أو الريفريش 🌟
     const initialRoute = resolveInitialAdminView();
@@ -620,7 +625,7 @@ export async function refreshAllSystemData(options = {}) {
                     break;
                 }
                 case 'view-admin-orders': {
-                    const ordersMod = await import('./admin_orders.js?v=9.8').catch(() => null);
+                    const ordersMod = await import('./admin_orders.js?v=9.9').catch(() => null);
                     if (ordersMod && typeof ordersMod.fetchAdminOrders === 'function') {
                         await ordersMod.fetchAdminOrders();
                     }

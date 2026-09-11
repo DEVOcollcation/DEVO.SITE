@@ -8,7 +8,7 @@ import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNetworkStatusMonitor } from '../../components/network_banner.js';
 import { validateAndSyncSession, setupUserRealtimeSync } from '../../services/auth.js';
-import { initVisitorCart, getVisitorCartQtyForColor } from './visitor_cart.js?v=10.5';
+import { initVisitorCart, getVisitorCartQtyForColor } from './visitor_cart.js?v=10.6';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // مراقبة وإظهار بنر الاتصال بالإنترنت عند الانقطاع

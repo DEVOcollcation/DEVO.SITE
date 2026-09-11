@@ -3157,12 +3157,12 @@ function renderVisitorOrderModalContent(order, liveInventory, mode = (window.cur
         </div>
     `;
 
-    const rejectionAlertHtml = ((order.status === 'rejected' || order.status === 'ignored') && order.rejection_reason) ? `
+    const rejectionAlertHtml = (order.status === 'rejected' || order.status === 'ignored') ? `
         <div class="mb-4 bg-rose-500/15 border border-rose-500/30 rounded-2xl p-4 flex items-start gap-3 text-rose-300 shadow-sm">
             <i class="ph ph-warning-circle text-rose-400 text-2xl shrink-0 mt-0.5"></i>
             <div class="flex-1">
                 <h5 class="font-bold text-sm text-rose-200 mb-1">تم رفض هذا الطلب</h5>
-                <p class="text-xs text-rose-300/95 font-sans leading-relaxed"><strong class="text-white">سبب الرفض:</strong> ${escapeHtml(order.rejection_reason)}</p>
+                <p class="text-xs text-rose-300/95 font-sans leading-relaxed"><strong class="text-white">سبب الرفض المسجل:</strong> ${escapeHtml(order.rejection_reason || 'تم رفض الطلب لعدم توافر الكمية بالمخزن أو تعذر التواصل مع العميل')}</p>
             </div>
         </div>
     ` : '';
@@ -3651,16 +3651,18 @@ window.rejectVisitorOrder = async (orderId) => {
     const custName = vo?.customer_name || 'هذا الطلب';
 
     const reason = await promptDialog({
-        title: 'رفض طلب الزائر',
-        message: `يرجى تحديد سبب رفض طلب (${custName}):`,
-        placeholder: 'مثال: نفاذ الكمية بالمخزن / تعذر التواصل مع العميل...',
+        title: 'رفض طلب الزائر وتحديد السبب',
+        message: `يرجى كتابة سبب رفض طلب (${custName}) بوضوح، وسيظهر هذا السبب مباشرة للعميل عند الاستعلام عن طلبه:\n(مثال: نفاذ الكمية بالمخزن / تعذر التواصل / رقم الهاتف غير متاح)`,
+        placeholder: 'اكتب سبب الرفض هنا ليظهر للعميل...',
         confirmText: 'تأكيد الرفض',
         cancelText: 'إلغاء'
     });
 
     if (reason === false || reason === null) return;
 
-    const finalReason = (typeof reason === 'string' && reason.trim()) ? reason.trim() : 'لم يتم تحديد سبب الرفض';
+    const finalReason = (typeof reason === 'string' && reason.trim()) 
+        ? reason.trim() 
+        : 'تم رفض الطلب لعدم توافر الكمية المطلوبة بالمخزن أو تعذر التواصل مع العميل';
 
     try {
         const { error } = await supabase

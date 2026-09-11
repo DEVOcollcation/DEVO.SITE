@@ -251,6 +251,11 @@
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">استيراد أعداد وألوان الموديلات</span>
                 <span class="sidebar-tooltip">استيراد الموديلات</span>
             </a>
+            <a href="#" data-target="view-import-images" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="استيراد صور الموديلات">
+                <i class="ph ph-images text-xl shrink-0 text-devo-orange"></i>
+                <span class="sidebar-label whitespace-nowrap transition-all duration-300">استيراد صور الموديلات</span>
+                <span class="sidebar-tooltip">استيراد صور Google Drive</span>
+            </a>
             <a href="#" data-target="view-notifications" class="nav-link sidebar-item group flex items-center gap-3 px-3 py-3 rounded-xl text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="الإشعارات">
                 <i class="ph ph-bell text-xl shrink-0"></i>
                 <span class="sidebar-label whitespace-nowrap transition-all duration-300">الإشعارات</span>
@@ -1723,6 +1728,10 @@
                 <button onclick="refreshModelsData()" class="bg-devo-gray hover:bg-devo-black text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border border-devo-gray text-sm" title="تحديث البيانات بدون ريفريش للصفحة">
         <i class="ph ph-arrows-clockwise text-xl" id="refresh-icon"></i>
     </button>
+                <button onclick="switchView('view-import-images')" class="flex-1 md:flex-none bg-devo-dark hover:bg-devo-gray border border-devo-gray text-white px-3.5 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 text-sm shadow-sm" title="استيراد وربط صور Google Drive">
+                    <i class="ph ph-images text-xl text-devo-orange"></i>
+                    <span>استيراد صور Drive</span>
+                </button>
                 <button onclick="openExcelImportModal()" class="flex-1 md:flex-none bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-4 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border border-devo-success/20 text-sm">
                     <i class="ph ph-file-xls text-xl"></i> استيراد من Excel
                 </button>
@@ -3356,7 +3365,534 @@
     </div>
 </div>
 
+<!-- ============================================================================== -->
+<!-- VIEW: DEVO Model Image Importer (Google Drive) -->
+<!-- ============================================================================== -->
+<div id="view-import-images" class="view-section hidden h-full">
+    <div class="animate-fade-in relative pb-12 space-y-6">
 
+        <!-- 1. Header & Controls -->
+        <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-devo-gray pb-4">
+                <div class="space-y-1">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2.5">
+                        <i class="ph ph-images text-devo-orange text-2xl"></i>
+                        <span>استيراد صور الموديلات من Google Drive</span>
+                    </h2>
+                    <p class="text-xs text-devo-muted">
+                        ربط وسحب صور الموديلات آلياً من Google Drive بالاعتماد على أسماء المجلدات أو الملفات (كود المصنع وترتيب الصور).
+                    </p>
+                </div>
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <div id="gdrive-api-key-status-badge" class="text-xs px-2.5 py-1 rounded-full bg-devo-dark border border-devo-gray text-devo-muted flex items-center gap-1.5">
+                        <i class="ph ph-spinner animate-spin"></i> جاري التحقق من المفتاح...
+                    </div>
+                    <button onclick="openDriveSettingsModal()" class="bg-devo-black hover:bg-devo-gray border border-devo-gray text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm">
+                        <i class="ph ph-gear text-devo-orange text-base"></i>
+                        <span>إعدادات Google API</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Last Sync Result Container -->
+            <div id="gdrive-last-sync-card" class="mt-4">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <!-- 2. Source Folder Input Card -->
+        <div class="bg-devo-dark border border-devo-gray rounded-xl p-5 shadow-sm space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-folder-open text-devo-orange text-lg"></i>
+                    <span>مجلد Google Drive المصدر (Source Folder)</span>
+                </h3>
+                <span class="text-[11px] text-devo-muted bg-devo-black px-2.5 py-1 rounded-lg border border-devo-gray">
+                    تأكد من مشاركة المجلد: Anyone with link → Viewer 👁️
+                </span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2.5">
+                <div class="relative flex-1">
+                    <i class="ph ph-link absolute right-3.5 top-1/2 -translate-y-1/2 text-devo-muted text-lg"></i>
+                    <input type="text" 
+                           id="gdrive-folder-url" 
+                           dir="ltr"
+                           placeholder="ضع رابط مجلد Drive هنا (مثال: https://drive.google.com/drive/folders/xxxx)..." 
+                           class="w-full bg-devo-black border border-devo-gray rounded-xl pr-10 pl-4 py-3 text-white text-xs font-mono outline-none focus:border-devo-orange transition-all placeholder:text-devo-muted/50">
+                </div>
+                <button id="btn-scan-drive" 
+                        onclick="scanGoogleDriveFolder()" 
+                        class="bg-devo-orange hover:bg-devo-orangeHover text-white px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-devo-orange/20 shrink-0">
+                    <i class="ph ph-magnifying-glass text-lg"></i>
+                    <span>فحص مجلد Drive (Scan)</span>
+                </button>
+            </div>
+            <!-- Progress Bar -->
+            <div id="gdrive-scan-progress-container" class="hidden space-y-2 pt-2 border-t border-devo-gray/50">
+                <div class="flex items-center justify-between text-xs">
+                    <span id="gdrive-scan-progress-text" class="text-white font-medium flex items-center gap-2">
+                        <i class="ph ph-spinner animate-spin text-devo-orange"></i>
+                        جاري معالجة وفحص مجلد Google Drive...
+                    </span>
+                    <span class="text-devo-orange font-bold font-mono">يرجى الانتظار...</span>
+                </div>
+                <div class="w-full bg-devo-black rounded-full h-2.5 overflow-hidden border border-devo-gray">
+                    <div id="gdrive-scan-progress-bar" class="bg-devo-orange h-full w-0 transition-all duration-300"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Preview Section (Initially Hidden) -->
+        <div id="gdrive-preview-section" class="hidden space-y-4">
+            
+            <!-- Stats Counters (5 cards) -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl text-center space-y-1">
+                    <span class="text-[11px] text-devo-muted block">إجمالي الموديلات</span>
+                    <span id="gdrive-stat-total-models" class="text-xl font-bold text-white font-mono">0</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl text-center space-y-1">
+                    <span class="text-[11px] text-devo-muted block">جاهزة للربط</span>
+                    <span id="gdrive-stat-ready-models" class="text-xl font-bold text-devo-success font-mono">0</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl text-center space-y-1">
+                    <span class="text-[11px] text-devo-muted block">تحتوي صوراً مسبقاً</span>
+                    <span id="gdrive-stat-existing-models" class="text-xl font-bold text-blue-400 font-mono">0</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl text-center space-y-1">
+                    <span class="text-[11px] text-devo-muted block">غير مسجلة بالنظام</span>
+                    <span id="gdrive-stat-not-found-models" class="text-xl font-bold text-devo-error font-mono">0</span>
+                </div>
+                <div class="bg-devo-dark border border-devo-gray p-3.5 rounded-xl text-center space-y-1 col-span-2 sm:col-span-1">
+                    <span class="text-[11px] text-devo-muted block">إجمالي الصور</span>
+                    <span id="gdrive-stat-total-images" class="text-xl font-bold text-devo-orange font-mono">0</span>
+                </div>
+            </div>
+
+            <!-- Filter Tabs & Actions Bar -->
+            <div class="bg-devo-dark border border-devo-gray rounded-xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                
+                <!-- Filter Tabs -->
+                <div class="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+                    <button data-filter="all" onclick="filterImportImagesView('all')" class="gdrive-filter-btn px-4 py-2 rounded-xl text-xs font-bold transition-all bg-devo-orange text-white shadow-lg shadow-devo-orange/20">
+                        الكل
+                    </button>
+                    <button data-filter="ready" onclick="filterImportImagesView('ready')" class="gdrive-filter-btn px-4 py-2 rounded-xl text-xs font-medium transition-all bg-devo-dark text-devo-muted hover:text-white border border-devo-gray hover:border-devo-orange/50">
+                        جاهز فقط
+                    </button>
+                    <button data-filter="existing" onclick="filterImportImagesView('existing')" class="gdrive-filter-btn px-4 py-2 rounded-xl text-xs font-medium transition-all bg-devo-dark text-devo-muted hover:text-white border border-devo-gray hover:border-devo-orange/50">
+                        صور سابقة
+                    </button>
+                    <button data-filter="not_found" onclick="filterImportImagesView('not_found')" class="gdrive-filter-btn px-4 py-2 rounded-xl text-xs font-medium transition-all bg-devo-dark text-devo-muted hover:text-white border border-devo-gray hover:border-devo-orange/50">
+                        غير مسجل
+                    </button>
+                </div>
+
+                <!-- Search Input & Execute Button -->
+                <div class="flex items-center gap-3 flex-1 md:max-w-md justify-end">
+                    <div class="relative flex-1">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                        <input type="text" 
+                               id="gdrive-search-input" 
+                               placeholder="بحث بكود أو اسم الموديل..." 
+                               class="w-full bg-devo-black border border-devo-gray rounded-xl pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange transition-all">
+                    </div>
+
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span id="gdrive-selected-counter" class="text-xs text-devo-muted hidden sm:inline-block">0 محدد</span>
+                        <button onclick="openPurgeModal()" 
+                                type="button"
+                                class="bg-devo-black hover:bg-devo-error/20 hover:text-devo-error border border-devo-gray text-devo-muted px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap" 
+                                title="تفريغ ومسح صور الموديلات السابقة أو صور محددة">
+                            <i class="ph ph-trash text-devo-error text-base"></i>
+                            <span class="hidden sm:inline">تفريغ الصور</span>
+                        </button>
+                        <button onclick="openFullscreenWorkspace()" 
+                                type="button"
+                                class="bg-devo-black hover:bg-devo-gray border border-devo-gray text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm" 
+                                title="فتح نافذة الاستوديو بالشاشة الكاملة">
+                            <i class="ph ph-arrows-out text-devo-orange text-base"></i>
+                            <span class="hidden sm:inline">شاشة كاملة</span>
+                        </button>
+                        <button id="btn-import-images-execute" 
+                                onclick="openImageConflictModal()" 
+                                class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20 whitespace-nowrap">
+                            <i class="ph ph-cloud-arrow-down text-base"></i>
+                            <span>استيراد وحفظ الصور</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Live Preview Table -->
+            <div class="bg-devo-dark border border-devo-gray rounded-xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto custom-scrollbar max-h-[600px]">
+                    <table class="w-full text-right text-xs">
+                        <thead class="bg-devo-black text-devo-muted border-b border-devo-gray sticky top-0 z-10 select-none">
+                            <tr>
+                                <th class="py-3 px-4 w-12 text-center">
+                                    <input type="checkbox" 
+                                           id="gdrive-select-all" 
+                                           onchange="toggleSelectAllImportImages(this.checked)" 
+                                           class="rounded bg-devo-black border-devo-gray text-devo-orange focus:ring-devo-orange cursor-pointer">
+                                </th>
+                                <th class="py-3 px-4 font-bold">كود المصنع (المستخرج)</th>
+                                <th class="py-3 px-4 font-bold">الموديل المطابق بالسيستم</th>
+                                <th class="py-3 px-4 text-center font-bold">حالة الربط</th>
+                                <th class="py-3 px-4 text-center font-bold">عدد الصور</th>
+                                <th class="py-3 px-4 font-bold">معاينة الصور (انقر للتكبير)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gdrive-preview-tbody" class="divide-y divide-devo-gray/40">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================================== -->
+<!-- MODAL: Google Drive Settings (API Key) -->
+<!-- ============================================================================== -->
+<div id="gdrive-settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[150] hidden opacity-0 transition-opacity duration-200">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl max-w-lg w-full mx-4 overflow-hidden shadow-2xl space-y-4">
+        
+        <!-- Header -->
+        <div class="p-5 border-b border-devo-gray flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-devo-orange/10 text-devo-orange flex items-center justify-center">
+                    <i class="ph ph-gear text-xl font-bold"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">إعدادات Google Drive API</h3>
+                    <p class="text-xs text-devo-muted">ربط مفتاح Google Drive API الرسمي للاستيراد السريع</p>
+                </div>
+            </div>
+            <button onclick="closeDriveSettingsModal()" class="text-devo-muted hover:text-white p-1 rounded-lg">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-5 space-y-4 text-xs">
+            <div class="space-y-1.5">
+                <label class="block font-bold text-white">مفتاح Google Drive API Key:</label>
+                <input type="password" 
+                       id="gdrive-api-key-input" 
+                       dir="ltr"
+                       placeholder="AIzaSy..." 
+                       class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white font-mono text-xs outline-none focus:border-devo-orange transition-all">
+                <p class="text-[11px] text-devo-muted">يتم تخزين المفتاح بأمان داخل جدول <code class="text-devo-orange">home_settings</code> في Supabase.</p>
+            </div>
+
+            <!-- Steps Helper -->
+            <div class="bg-devo-black/70 border border-devo-gray/70 rounded-xl p-3.5 space-y-2 text-devo-muted leading-relaxed">
+                <strong class="text-white flex items-center gap-1.5 text-xs">
+                    <i class="ph ph-question text-devo-orange"></i>
+                    كيفية استخراج مفتاح Google Drive API في دقيقتين مجاناً:
+                </strong>
+                <ol class="list-decimal list-inside space-y-1 text-[11px] pr-1">
+                    <li>افتح <a href="https://console.cloud.google.com/" target="_blank" class="text-devo-orange hover:underline font-bold">Google Cloud Console</a> وسجل دخولك.</li>
+                    <li>أنشئ مشروعاً جديداً (مثال: <code class="text-white">DEVO Site</code>).</li>
+                    <li>من القائمة الجانبية: اختر <strong>APIs & Services</strong> ثم <strong>Library</strong>.</li>
+                    <li>ابحث عن <strong>Google Drive API</strong> واضغط على زر <strong>Enable</strong>.</li>
+                    <li>من قسم <strong>Credentials</strong>، اضغط <strong>Create Credentials</strong> واختر <strong>API Key</strong>.</li>
+                    <li>انسخ المفتاح وضعه في الحقل أعلاه واضغط حفظ.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="p-4 bg-devo-black border-t border-devo-gray flex items-center justify-end gap-2.5">
+            <button onclick="closeDriveSettingsModal()" class="px-4 py-2.5 rounded-xl border border-devo-gray text-devo-muted hover:text-white text-xs font-bold transition-all">
+                إلغاء
+            </button>
+            <button onclick="saveDriveSettings()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-devo-orange/20">
+                <i class="ph ph-check"></i>
+                حفظ المفتاح
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================================== -->
+<!-- MODAL: Conflict Resolution (Replace vs Append vs Skip) -->
+<!-- ============================================================================== -->
+<div id="gdrive-conflict-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden opacity-0 transition-opacity duration-200" style="z-index: 150000 !important;">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl max-w-md w-full mx-4 overflow-hidden shadow-2xl space-y-4">
+        
+        <div class="p-5 border-b border-devo-gray flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-devo-orange/10 text-devo-orange flex items-center justify-center shrink-0">
+                <i class="ph ph-warning text-2xl font-bold"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-bold text-white">التعامل مع الصور السابقة للموديلات</h3>
+                <p class="text-xs text-devo-muted">
+                    يوجد <strong id="conflict-models-count" class="text-devo-orange font-bold font-mono">0</strong> موديل يحتوي على صور سابقة بالفعل.
+                </p>
+            </div>
+        </div>
+
+        <div class="p-5 space-y-3 text-xs">
+            <p class="text-white text-xs leading-relaxed">
+                يرجى اختيار الطريقة المفضلة للتعامل مع الموديلات التي لديها صور مسجلة مسبقاً بالنظام:
+            </p>
+
+            <div class="space-y-2 pt-1">
+                <!-- Option 1: Replace -->
+                <button onclick="executeImageImport('replace')" class="w-full text-right p-3.5 rounded-xl border border-devo-gray bg-devo-black hover:border-devo-orange hover:bg-devo-orange/5 transition-all group flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-devo-orange/10 text-devo-orange flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <i class="ph ph-arrows-clockwise text-lg"></i>
+                    </div>
+                    <div>
+                        <strong class="text-white block group-hover:text-devo-orange transition-colors">استبدال الصور القديمة (Replace)</strong>
+                        <span class="text-devo-muted text-[11px] block mt-0.5">حذف الصور السابقة لهذه الموديلات ووضع الصور الجديدة المستوردة من Drive مكانها.</span>
+                    </div>
+                </button>
+
+                <!-- Option 2: Append -->
+                <button onclick="executeImageImport('append')" class="w-full text-right p-3.5 rounded-xl border border-devo-gray bg-devo-black hover:border-blue-500 hover:bg-blue-500/5 transition-all group flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <i class="ph ph-plus-circle text-lg"></i>
+                    </div>
+                    <div>
+                        <strong class="text-white block group-hover:text-blue-400 transition-colors">إلحاق الصور الجديدة (Append)</strong>
+                        <span class="text-devo-muted text-[11px] block mt-0.5">الاحتفاظ بالصور القديمة وإضافة الصور الجديدة المستوردة بعدها بالترتيب.</span>
+                    </div>
+                </button>
+
+                <!-- Option 3: Skip -->
+                <button onclick="executeImageImport('skip')" class="w-full text-right p-3.5 rounded-xl border border-devo-gray bg-devo-black hover:border-devo-grayHover hover:bg-white/[0.02] transition-all group flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-devo-gray text-devo-muted flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <i class="ph ph-skip-forward text-lg"></i>
+                    </div>
+                    <div>
+                        <strong class="text-white block">تخطي الموديلات التي تحتوي صوراً (Skip)</strong>
+                        <span class="text-devo-muted text-[11px] block mt-0.5">استيراد الموديلات الجديدة التي لا تحتوي على أي صور سابقة فقط وتخطي الباقي.</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <div class="p-4 bg-devo-black border-t border-devo-gray flex items-center justify-between">
+            <button onclick="closeImageConflictModal(); openPurgeModal();" class="text-xs text-devo-orange hover:text-white transition-colors flex items-center gap-1.5 font-bold">
+                <i class="ph ph-trash text-sm text-devo-error"></i>
+                <span>أداة تفريغ مخصصة (الأولى / المحددة)...</span>
+            </button>
+            <button onclick="closeImageConflictModal()" class="px-4 py-2.5 rounded-xl border border-devo-gray text-devo-muted hover:text-white text-xs font-bold transition-all">
+                إلغاء العملية
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================================== -->
+<!-- MODAL: Advanced Image Purge Tool (تفريغ ومسح صور الموديلات) -->
+<!-- ============================================================================== -->
+<div id="gdrive-purge-modal" 
+     class="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center hidden opacity-0 transition-opacity duration-200"
+     style="z-index: 150000 !important;"
+     onclick="if (event.target === this) closePurgeModal()">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl max-w-xl w-full mx-4 overflow-hidden shadow-2xl space-y-0 text-right" onclick="event.stopPropagation()">
+        
+        <!-- Header -->
+        <div class="p-5 border-b border-devo-gray flex items-center justify-between bg-devo-black/40">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-devo-error/10 text-devo-error flex items-center justify-center shrink-0">
+                    <i class="ph ph-trash text-2xl font-bold"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        تفريغ ومسح صور الموديلات
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-devo-error/20 text-devo-error font-mono font-bold">Image Purge</span>
+                    </h3>
+                    <p class="text-xs text-devo-muted">مسح صور الموديلات لتجهيزها للرفع الجديد أو تعديل ترتيب الصور</p>
+                </div>
+            </div>
+            <button onclick="closePurgeModal()" class="text-devo-muted hover:text-white p-1 rounded-lg transition-colors">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-5 space-y-4 text-xs max-h-[70vh] overflow-y-auto custom-scrollbar">
+
+            <!-- Section 1: Scope Selection -->
+            <div class="space-y-2">
+                <label class="block font-bold text-white text-xs flex items-center gap-1.5">
+                    <i class="ph ph-crosshair text-devo-orange"></i>
+                    1. تحديد نطاق الموديلات المستهدفة:
+                </label>
+
+                <div class="grid grid-cols-1 gap-2">
+                    <!-- Scope: Scanned models that have existing photos -->
+                    <label class="relative flex items-start gap-3 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-scope" value="scanned_existing" checked onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <strong class="text-white text-xs">موديلات الدريف المسحوب التي تمتلك صوراً</strong>
+                                <span id="purge-badge-scanned" class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono text-[10px] font-bold">0 موديل</span>
+                            </div>
+                            <p class="text-[11px] text-devo-muted mt-0.5">تفريغ صور كافة موديلات Google Drive المفحوصة حالياً والتي تملك صوراً سابقة بالنظام.</p>
+                        </div>
+                    </label>
+
+                    <!-- Scope: Selected models only -->
+                    <label class="relative flex items-start gap-3 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-scope" value="selected" onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <strong class="text-white text-xs">الموديلات المحددة حالياً فقط في الجدول</strong>
+                                <span id="purge-badge-selected" class="px-2 py-0.5 rounded bg-devo-orange/10 text-devo-orange font-mono text-[10px] font-bold">0 موديل</span>
+                            </div>
+                            <p class="text-[11px] text-devo-muted mt-0.5">تفريغ صور الموديلات التي قمت بتحديدها عبر مربعات الاختيار بالجدول فقط.</p>
+                        </div>
+                    </label>
+
+                    <!-- Scope: Filtered view models -->
+                    <label class="relative flex items-start gap-3 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-scope" value="filtered" onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <strong class="text-white text-xs">الموديلات المعروضة حالياً بالجدول (حسب الفلتر والبحث)</strong>
+                                <span id="purge-badge-filtered" class="px-2 py-0.5 rounded bg-white/10 text-devo-muted font-mono text-[10px] font-bold">0 موديل</span>
+                            </div>
+                            <p class="text-[11px] text-devo-muted mt-0.5">تفريغ صور الموديلات الظاهرة حالياً في نتائج الفلترة والبحث بالجدول.</p>
+                        </div>
+                    </label>
+
+                    <!-- Scope: All models in database -->
+                    <label class="relative flex items-start gap-3 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-scope" value="all_system" onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <strong class="text-white text-xs">كافة موديلات النظام بالكامل (قاعدة البيانات)</strong>
+                                <span id="purge-badge-all-system" class="px-2 py-0.5 rounded bg-devo-error/10 text-devo-error font-mono text-[10px] font-bold">0 موديل</span>
+                            </div>
+                            <p class="text-[11px] text-devo-muted mt-0.5">مسح صور جميع موديلات النظام المسجلة بقاعدة بيانات المتجر.</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Section 2: Slot / Position Selection -->
+            <div class="space-y-2 pt-2 border-t border-devo-gray/60">
+                <label class="block font-bold text-white text-xs flex items-center gap-1.5">
+                    <i class="ph ph-images text-devo-orange"></i>
+                    2. تحديد الصور المراد تفريغها من كل موديل مستهدف:
+                </label>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <!-- Slot: All images -->
+                    <label class="flex items-start gap-2.5 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer sm:col-span-2">
+                        <input type="radio" name="purge-slot" value="all" checked onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div>
+                            <strong class="text-white text-xs block">تفريغ جميع الصور بالكامل</strong>
+                            <span class="text-[11px] text-devo-muted">حذف كافة الصور المرتبطة بكل موديل مستهدف ليصبح خالياً تماماً.</span>
+                        </div>
+                    </label>
+
+                    <!-- Slot: Image 1 (Cover) -->
+                    <label class="flex items-start gap-2.5 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-slot" value="slot_1" onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div>
+                            <strong class="text-white text-xs block">الصورة الأولى فقط (الغلاف Cover)</strong>
+                            <span class="text-[11px] text-devo-muted">حذف صورة الغلاف وترقية الصورة التالية كغلاف بديل للموديل.</span>
+                        </div>
+                    </label>
+
+                    <!-- Slot: Image 2 -->
+                    <label class="flex items-start gap-2.5 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-slot" value="slot_2" onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div>
+                            <strong class="text-white text-xs block">الصورة الثانية فقط</strong>
+                            <span class="text-[11px] text-devo-muted">حذف الصورة ذات الترتيب رقم 2 مع الإبقاء على باقي الصور.</span>
+                        </div>
+                    </label>
+
+                    <!-- Slot: Image 3 -->
+                    <label class="flex items-start gap-2.5 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-slot" value="slot_3" onchange="updatePurgePreviewStats()" class="mt-0.5 text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div>
+                            <strong class="text-white text-xs block">الصورة الثالثة فقط</strong>
+                            <span class="text-[11px] text-devo-muted">حذف الصورة ذات الترتيب رقم 3 مع الإبقاء على باقي الصور.</span>
+                        </div>
+                    </label>
+
+                    <!-- Slot: Custom Position -->
+                    <label class="flex items-center gap-2.5 p-3 rounded-xl border border-devo-gray bg-devo-black/70 hover:border-devo-orange/60 transition-all cursor-pointer">
+                        <input type="radio" name="purge-slot" value="custom" onchange="updatePurgePreviewStats()" class="text-devo-orange focus:ring-devo-orange bg-devo-dark border-devo-gray">
+                        <div class="flex items-center gap-2 flex-1">
+                            <span class="text-white text-xs font-bold whitespace-nowrap">رقم صورة مخصص:</span>
+                            <input type="number" 
+                                   id="purge-slot-custom-input" 
+                                   min="1" 
+                                   max="20" 
+                                   value="4" 
+                                   onchange="if(document.querySelector('input[name=purge-slot]:checked')?.value === 'custom') updatePurgePreviewStats()"
+                                   oninput="if(document.querySelector('input[name=purge-slot]:checked')?.value === 'custom') updatePurgePreviewStats()"
+                                   class="w-16 bg-devo-dark border border-devo-gray rounded-lg px-2 py-1 text-white text-center text-xs outline-none focus:border-devo-orange">
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Section 3: Live Preview & Impact Summary -->
+            <div class="p-3.5 rounded-xl border border-devo-error/30 bg-devo-error/5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-white font-bold flex items-center gap-1.5 text-xs">
+                        <i class="ph ph-warning-circle text-devo-error"></i>
+                        ملخص العملية وتأثير الحذف:
+                    </span>
+                    <div class="flex items-center gap-3 text-xs">
+                        <span class="text-devo-muted">الموديلات: <strong id="purge-summary-models" class="text-white font-mono font-bold">0</strong></span>
+                        <span class="text-devo-muted">الصور المحذوفة: <strong id="purge-summary-images" class="text-devo-error font-mono font-bold text-sm">0</strong></span>
+                    </div>
+                </div>
+                <p id="purge-summary-desc" class="text-[11px] text-devo-muted leading-relaxed">
+                    يرجى اختيار النطاق ونوع الصورة لحساب عدد الصور المستهدفة.
+                </p>
+            </div>
+
+            <!-- In-Modal Progress Bar -->
+            <div id="purge-progress-container" class="hidden space-y-1.5 pt-1">
+                <div class="flex items-center justify-between text-[11px]">
+                    <span id="purge-progress-text" class="text-white font-medium flex items-center gap-1.5">
+                        <i class="ph ph-spinner animate-spin text-devo-error"></i>
+                        جاري تفريغ الصور...
+                    </span>
+                    <span id="purge-progress-percent" class="text-devo-error font-mono font-bold">0%</span>
+                </div>
+                <div class="w-full bg-devo-black rounded-full h-2 overflow-hidden border border-devo-gray">
+                    <div id="purge-progress-bar" class="bg-devo-error h-full w-0 transition-all duration-200"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="p-4 bg-devo-black border-t border-devo-gray flex items-center justify-between">
+            <button onclick="closePurgeModal()" class="px-4 py-2.5 rounded-xl border border-devo-gray text-devo-muted hover:text-white text-xs font-bold transition-all">
+                إلغاء
+            </button>
+            <button id="btn-confirm-purge" 
+                    onclick="executeImagePurge()" 
+                    class="bg-devo-error hover:bg-red-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-error/20">
+                <i class="ph ph-trash-simple text-base"></i>
+                <span>تأكيد تفريغ الصور</span>
+            </button>
+        </div>
+
+    </div>
+</div>
 
 <div id="view-home-settings" class="view-section hidden">
 
@@ -5092,9 +5628,212 @@
     </div>
 </div>
 
+<!-- ============================================================================== -->
+<!-- WORKSPACE: Fullscreen Google Drive Image Studio Overlay -->
+<!-- ============================================================================== -->
+<div id="gdrive-fullscreen-workspace" 
+     class="fixed inset-0 z-[100000] hidden flex-col h-screen w-screen overflow-hidden no-print" 
+     style="z-index: 100000 !important; background-color: var(--devo-black, #0a0a0a); position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100vw; height: 100vh;">
+    
+    <!-- Studio Header -->
+    <div class="p-4 bg-devo-dark border-b border-devo-gray flex flex-wrap items-center justify-between gap-3 shrink-0 select-none shadow-md"
+         style="background-color: var(--devo-dark, #171717); border-color: var(--devo-gray, #262626);">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-devo-orange/10 text-devo-orange flex items-center justify-center font-bold">
+                <i class="ph ph-images text-2xl"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <span>استوديو فحص واستيراد صور الموديلات</span>
+                    <span class="text-[10px] bg-devo-orange/20 text-devo-orange border border-devo-orange/30 px-2 py-0.5 rounded-full font-mono">Google Drive Fullscreen</span>
+                </h3>
+                <p class="text-xs text-devo-muted">المطابقة الحصرية عبر كود المصنع (Factory Code) مع معاينة مباشرة لكافة الصور</p>
+            </div>
+        </div>
+
+        <!-- Studio Stats Pill Badges -->
+        <div class="flex items-center gap-2 flex-wrap">
+            <div class="bg-devo-black px-3 py-1.5 rounded-lg border border-devo-gray text-xs flex items-center gap-2">
+                <span class="text-devo-muted">إجمالي الموديلات:</span>
+                <strong id="gdrive-fs-stat-total" class="text-white font-mono">0</strong>
+            </div>
+            <div class="bg-devo-black px-3 py-1.5 rounded-lg border border-devo-gray text-xs flex items-center gap-2">
+                <span class="text-devo-success">جاهز للربط:</span>
+                <strong id="gdrive-fs-stat-ready" class="text-devo-success font-mono">0</strong>
+            </div>
+            <div class="bg-devo-black px-3 py-1.5 rounded-lg border border-devo-gray text-xs flex items-center gap-2">
+                <span class="text-blue-400">صور سابقة:</span>
+                <strong id="gdrive-fs-stat-existing" class="text-blue-400 font-mono">0</strong>
+            </div>
+            <div class="bg-devo-black px-3 py-1.5 rounded-lg border border-devo-gray text-xs flex items-center gap-2">
+                <span class="text-devo-error">غير مسجل:</span>
+                <strong id="gdrive-fs-stat-not-found" class="text-devo-error font-mono">0</strong>
+            </div>
+            <div class="bg-devo-black px-3 py-1.5 rounded-lg border border-devo-gray text-xs flex items-center gap-2">
+                <span class="text-devo-orange">الصور المكتشفة:</span>
+                <strong id="gdrive-fs-stat-images" class="text-devo-orange font-mono">0</strong>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-2.5">
+            <button onclick="openPurgeModal()" class="bg-devo-black hover:bg-devo-error/20 hover:text-devo-error border border-devo-gray text-devo-muted px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm" title="تفريغ ومسح صور الموديلات السابقة أو صور محددة">
+                <i class="ph ph-trash text-devo-error text-base"></i>
+                <span>تفريغ الصور</span>
+            </button>
+            <button onclick="selectOnlyNewModels()" class="bg-devo-black hover:bg-devo-gray border border-devo-gray text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm" title="تحديد الموديلات التي لا تمتلك أي صور سابقة فقط">
+                <i class="ph ph-check-square-offset text-devo-success text-base"></i>
+                <span>تحديد الجديد فقط</span>
+            </button>
+            <button id="btn-fs-import-execute" onclick="openImageConflictModal()" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-devo-orange/20">
+                <i class="ph ph-cloud-arrow-down text-base"></i>
+                <span>استيراد الصور المحددة</span>
+            </button>
+            <button onclick="closeFullscreenWorkspace()" class="bg-devo-black hover:bg-devo-error/20 hover:text-devo-error border border-devo-gray text-devo-muted px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5" title="تصغير / إغلاق الشاشة الكاملة">
+                <i class="ph ph-arrows-in text-base"></i>
+                <span class="hidden sm:inline">تصغير</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Studio Subheader: Search, Filters & Progress -->
+    <div class="px-4 py-3 bg-devo-dark/95 border-b border-devo-gray/70 flex flex-wrap items-center justify-between gap-3 shrink-0"
+         style="background-color: var(--devo-dark, #171717); border-color: var(--devo-gray, #262626);">
+        
+        <!-- Filter Tabs -->
+        <div class="flex items-center gap-2 overflow-x-auto custom-scrollbar">
+            <button data-filter="all" onclick="filterImportImagesView('all')" class="gdrive-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all bg-devo-orange text-white shadow-lg shadow-devo-orange/20">
+                الكل
+            </button>
+            <button data-filter="ready" onclick="filterImportImagesView('ready')" class="gdrive-filter-btn px-4 py-1.5 rounded-xl text-xs font-medium transition-all bg-devo-dark text-devo-muted hover:text-white border border-devo-gray hover:border-devo-orange/50">
+                جديد وجاهز فقط
+            </button>
+            <button data-filter="existing" onclick="filterImportImagesView('existing')" class="gdrive-filter-btn px-4 py-1.5 rounded-xl text-xs font-medium transition-all bg-devo-dark text-devo-muted hover:text-white border border-devo-gray hover:border-devo-orange/50">
+                يحتوي صوراً سابقة
+            </button>
+            <button data-filter="not_found" onclick="filterImportImagesView('not_found')" class="gdrive-filter-btn px-4 py-1.5 rounded-xl text-xs font-medium transition-all bg-devo-dark text-devo-muted hover:text-white border border-devo-gray hover:border-devo-orange/50">
+                غير مسجل بالنظام
+            </button>
+        </div>
+
+        <!-- Search & Selection Status -->
+        <div class="flex items-center gap-3 flex-1 max-w-md justify-end">
+            <div class="relative flex-1">
+                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                <input type="text" 
+                       id="gdrive-fs-search-input" 
+                       placeholder="بحث بكود المصنع أو اسم الموديل..." 
+                       class="w-full bg-devo-black border border-devo-gray rounded-xl pr-9 pl-3 py-1.5 text-white text-xs outline-none focus:border-devo-orange transition-all">
+            </div>
+            <span id="gdrive-fs-selected-counter" class="text-xs text-devo-muted font-mono whitespace-nowrap">0 محدد</span>
+        </div>
+    </div>
+
+    <!-- Real-time Progress Bar inside Fullscreen Studio -->
+    <div id="gdrive-fs-progress-container" class="hidden px-4 py-2 bg-devo-black border-b border-devo-orange/30 shrink-0" style="background-color: var(--devo-black, #0a0a0a);">
+        <div class="flex items-center justify-between text-xs mb-1.5">
+            <span id="gdrive-fs-progress-text" class="text-white font-medium flex items-center gap-2">
+                <i class="ph ph-spinner animate-spin text-devo-orange"></i>
+                جاري معالجة البيانات...
+            </span>
+            <span class="text-devo-orange font-bold font-mono">يرجى الانتظار...</span>
+        </div>
+        <div class="w-full bg-devo-dark rounded-full h-2 overflow-hidden border border-devo-gray">
+            <div id="gdrive-fs-progress-bar" class="bg-devo-orange h-full w-0 transition-all duration-200"></div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Table Area -->
+    <div class="flex-1 overflow-y-auto custom-scrollbar bg-devo-black" style="background-color: var(--devo-black, #0a0a0a);">
+        <table class="w-full text-right text-xs" style="background-color: var(--devo-black, #0a0a0a);">
+            <thead class="bg-devo-black text-devo-muted border-b border-devo-gray sticky top-0 select-none" style="background-color: var(--devo-black, #0a0a0a); z-index: 30;">
+                <tr style="background-color: var(--devo-black, #0a0a0a);">
+                    <th class="py-3 px-4 w-12 text-center" style="background-color: var(--devo-black, #0a0a0a);">
+                        <input type="checkbox" 
+                               id="gdrive-fs-select-all" 
+                               onchange="toggleSelectAllImportImages(this.checked)" 
+                               class="rounded bg-devo-black border-devo-gray text-devo-orange focus:ring-devo-orange cursor-pointer">
+                    </th>
+                    <th class="py-3 px-4 font-bold" style="background-color: var(--devo-black, #0a0a0a);">كود المصنع (المستخرج)</th>
+                    <th class="py-3 px-4 font-bold" style="background-color: var(--devo-black, #0a0a0a);">الموديل المطابق بالسيستم</th>
+                    <th class="py-3 px-4 text-center font-bold" style="background-color: var(--devo-black, #0a0a0a);">حالة الربط</th>
+                    <th class="py-3 px-4 text-center font-bold" style="background-color: var(--devo-black, #0a0a0a);">عدد الصور</th>
+                    <th class="py-3 px-4 font-bold" style="background-color: var(--devo-black, #0a0a0a);">معاينة الصور (انقر للتكبير والتنقل)</th>
+                </tr>
+            </thead>
+            <tbody id="gdrive-fs-preview-tbody" class="divide-y divide-devo-gray/40">
+                <!-- Dynamically Populated -->
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- ============================================================================== -->
+<!-- MODAL: High-Z-Index Image Zoom Lightbox with Carousel Navigation -->
+<!-- ============================================================================== -->
+<div id="gdrive-zoom-modal" 
+     class="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[200000] hidden opacity-0 transition-opacity duration-200 select-none" 
+     style="z-index: 200000 !important;" 
+     onclick="closeImageZoomModal()">
+    <div class="relative max-w-4xl w-full mx-4 p-4 text-center space-y-3" onclick="event.stopPropagation()">
+        
+        <!-- Header with title, counter & close -->
+        <div class="flex items-center justify-between text-white pb-2.5 border-b border-devo-gray/60">
+            <div class="flex items-center gap-2.5 text-right">
+                <span class="w-8 h-8 rounded-lg bg-devo-orange/10 text-devo-orange flex items-center justify-center font-bold shrink-0">
+                    <i class="ph ph-image text-lg"></i>
+                </span>
+                <div>
+                    <h4 id="gdrive-zoom-title" class="text-sm font-bold text-white">معاينة صورة الموديل</h4>
+                    <p id="gdrive-zoom-subtitle" class="text-[11px] text-devo-muted font-mono mt-0.5">صورة 1 من 1</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="gdrive-zoom-cover-badge" class="hidden bg-devo-orange text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">غلاف (Cover)</span>
+                <button onclick="closeImageZoomModal()" class="w-9 h-9 rounded-xl bg-devo-dark hover:bg-devo-gray border border-devo-gray text-devo-muted hover:text-white flex items-center justify-center transition-colors">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Display Container with Prev/Next Navigation Arrows -->
+        <div class="relative flex items-center justify-center bg-devo-black/90 rounded-2xl p-3 border border-devo-gray/80 overflow-hidden min-h-[350px] max-h-[70vh]">
+            
+            <!-- Previous Button (Left Arrow) -->
+            <button id="gdrive-zoom-btn-prev" 
+                    onclick="prevZoomImage()" 
+                    class="absolute left-3 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-devo-dark/90 hover:bg-devo-orange text-white border border-devo-gray hover:border-devo-orange flex items-center justify-center shadow-2xl transition-all hover:scale-110 cursor-pointer" 
+                    title="الصورة السابقة (السهم الأيسر ◀)">
+                <i class="ph ph-caret-left text-2xl font-bold"></i>
+            </button>
+
+            <!-- Main High-Res Image -->
+            <img id="gdrive-zoom-img" 
+                 src="" 
+                 class="max-h-[66vh] w-auto max-w-full object-contain rounded-xl shadow-2xl transition-all duration-200" 
+                 onerror="this.src='./src/assets/icons/devo.png'">
+
+            <!-- Next Button (Right Arrow) -->
+            <button id="gdrive-zoom-btn-next" 
+                    onclick="nextZoomImage()" 
+                    class="absolute right-3 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-devo-dark/90 hover:bg-devo-orange text-white border border-devo-gray hover:border-devo-orange flex items-center justify-center shadow-2xl transition-all hover:scale-110 cursor-pointer" 
+                    title="الصورة التالية (السهم الأيمن ▶)">
+                <i class="ph ph-caret-right text-2xl font-bold"></i>
+            </button>
+        </div>
+
+        <!-- Bottom Thumbnails Carousel Strip -->
+        <div id="gdrive-zoom-thumbs-strip" class="flex items-center justify-center gap-2 overflow-x-auto py-1.5 custom-scrollbar max-w-full">
+            <!-- Dynamically populated thumbnails -->
+        </div>
+
+    </div>
+</div>
+
 <div id="toast-container" class="fixed bottom-6 left-6 z-[99999] flex flex-col gap-3 pointer-events-none"></div>
     <script src="./src/vendor/xlsx/xlsx.full.min.js"></script>
-    <script type="module" src="./src/js/pages/admin/router.js?v=9.8"></script>
+    <script type="module" src="./src/js/pages/admin/router.js?v=9.9"></script>
     <script type="module" src="./src/js/pages/admin/definitions.js"></script>
 <script type="module" src="./src/js/pages/admin/bulk_edits.js"></script>
     <script type="module" src="./src/js/components/searchable_select.js"></script>
