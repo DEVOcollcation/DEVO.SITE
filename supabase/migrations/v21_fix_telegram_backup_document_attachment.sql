@@ -1,47 +1,51 @@
 -- ==============================================================================
--- 🚀 V20: الترقية الديناميكية الشاملة للنسخ الاحتياطي والاستعادة التلقائية لكافة الجداول
+-- 🚀 V21: إصلاح إرسال ملف النسخ الاحتياطي الفعلي كمستند مرفق إلى Telegram (sendDocument)
 -- ==============================================================================
--- الغرض:
--- 1. اكتشاف وجلب جميع الجداول الحالية والجديدة تلقائياً دون أي حصر يدوي أو تعديل كود.
--- 2. استبعاد الجداول الداخلية والطوابير المؤقتة (مثل inventory_notification_queue) لتفادي أخطاء الـ 400.
--- 3. دعم استعادة وحفظ أي جداول إضافية يتم إنشاؤها في المستقبل مهما زاد عددها أو سجلاتها.
--- 4. حماية مساحة قاعدة البيانات من التضخم بإلغاء تخزين البايلود المضاعف داخل الـ metadata.
+-- المشكلة المعالجة:
+-- في الترقية الأخيرة، تم إرسال رسالة نصية فقط (sendMessage) بدلاً من إرفاق ملف الـ JSON الفعلي (sendDocument).
+-- هذا التحديث يعيد إرسال المستند المرفق (.json) في شات التليجرام مع الكابشن التوضيحي ورابط التنزيل المباشر
+-- بالإضافة لضمان تفعيل الحاوية السحابية system_backups وسياسات القراءة العامة لمنع أي أخطاء 400.
 -- ==============================================================================
 
--- 1. دالة استرجاع كافة جداول النظام الحالية ديناميكياً للـ Frontend
-CREATE OR REPLACE FUNCTION public.get_all_system_tables()
-RETURNS text[]
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, information_schema
-AS $$
-DECLARE
-    v_tables text[];
+-- 1. التأكد من تفعيل حاوية التخزين system_backups وجعلها عامة للتنزيل المباشر
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'system_backups',
+    'system_backups',
+    true,
+    52428800, -- 50 MB
+    ARRAY['application/json', 'text/plain', 'application/octet-stream']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true,
+    file_size_limit = 52428800;
+
+-- 2. تأكيد سياسات الـ Storage لتمكين الوصول المباشر والرفع
+DO $$
 BEGIN
-    SELECT COALESCE(array_agg(table_name::text ORDER BY table_name), ARRAY[]::text[])
-    INTO v_tables
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND table_type = 'BASE TABLE'
-      AND table_name NOT IN (
-          'spatial_ref_sys', 
-          'system_backups_log', 
-          'schema_migrations',
-          'inventory_notification_queue'
-      );
-      
-    RETURN v_tables;
-END;
-$$;
+    DROP POLICY IF EXISTS "Public Access for system_backups bucket" ON storage.objects;
+    CREATE POLICY "Public Access for system_backups bucket"
+        ON storage.objects FOR SELECT
+        USING (bucket_id = 'system_backups');
 
-GRANT EXECUTE ON FUNCTION public.get_all_system_tables() TO anon, authenticated, service_role;
+    DROP POLICY IF EXISTS "Public Upload for system_backups bucket" ON storage.objects;
+    CREATE POLICY "Public Upload for system_backups bucket"
+        ON storage.objects FOR INSERT
+        WITH CHECK (bucket_id = 'system_backups');
 
--- 2. ترقية دالة النسخ الاحتياطي التلقائي لتجميع كل الجداول الحالية والجديدة ديناميكياً
+    DROP POLICY IF EXISTS "Public Update for system_backups bucket" ON storage.objects;
+    CREATE POLICY "Public Update for system_backups bucket"
+        ON storage.objects FOR UPDATE
+        USING (bucket_id = 'system_backups');
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- 3. ترقية دالة النسخ الاحتياطي التلقائي لإرسال الملف الفعلي كمستند مرفق (sendDocument)
 CREATE OR REPLACE FUNCTION public.execute_automated_daily_backup()
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, information_schema, net
+SET search_path = public, information_schema, net, storage
 AS $$
 DECLARE
     v_bot_token text;
@@ -119,7 +123,7 @@ BEGIN
     v_file_size_bytes := octet_length(v_full_payload::text);
     v_formatted_size := ROUND((v_file_size_bytes / 1024.0)::numeric, 1) || ' KB';
 
-    -- تسجيل النسخة الاحتياطية في جدول system_backups_log (بدون تخزين البايلود لتفادي امتلاء قاعدة البيانات)
+    -- تسجيل النسخة الاحتياطية في جدول system_backups_log
     INSERT INTO public.system_backups_log (
         filename,
         backup_type,
@@ -155,7 +159,7 @@ BEGIN
         timeout_milliseconds := 15000
     );
 
-    -- فهرسة الملف في جدول storage.objects
+    -- فهرسة الملف في جدول storage.objects لضمان التوافق التام مع مسارات التنزيل
     BEGIN
         INSERT INTO storage.objects (
             id,
@@ -183,13 +187,13 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
-    -- إرسال الإشعار والملف كمستند مرفق إلى تليجرام (sendDocument)
+    -- إرسال الإشعار والمستند المرفق إلى Telegram
     SELECT setting_value INTO v_backup_chat_id FROM public.home_settings WHERE setting_key = 'telegram_backup_chat_id';
     IF v_backup_chat_id IS NULL OR trim(v_backup_chat_id) = '' THEN
         SELECT setting_value INTO v_backup_chat_id FROM public.home_settings WHERE setting_key = 'telegram_chat_id';
     END IF;
 
-    -- ضبط معرفات السوبر جروب (-100...)
+    -- ضبط بادئة السوبر جروب (-100...)
     IF v_backup_chat_id LIKE '-%' AND v_backup_chat_id NOT LIKE '-100%' AND LENGTH(v_backup_chat_id) >= 8 THEN
         v_backup_chat_id := '-100' || SUBSTRING(v_backup_chat_id FROM 2);
     END IF;
