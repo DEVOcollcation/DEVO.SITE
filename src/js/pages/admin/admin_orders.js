@@ -3,6 +3,7 @@ import { showToast } from '../../components/toast.js';
 import { confirmDialog, promptDialog } from '../../components/modal.js';
 import { getCurrentSession } from '../../services/auth.js';
 import { printOrderCustomerInvoice } from '../../utils/print.js?v=3';
+import { parseWaitingOrderMeta } from '../../services/waiting_orders.js';
 
 let isInitialized = false;
 let allAdminOrders = [];
@@ -2866,19 +2867,30 @@ function generateVisitorOrderRowHTML(vo) {
     const isRejected = vo.status === 'rejected' || vo.status === 'ignored';
     const isArchived = vo.status === 'archived';
 
+    const meta = parseWaitingOrderMeta(vo.notes, vo);
+    const workerName = meta.worker_name || vo.worker_name;
+    const workerBadge = workerName 
+        ? `<div class="mt-1"><span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[10px] px-2 py-0.5 rounded font-bold inline-flex items-center gap-1"><i class="ph ph-user"></i> موظف: ${escapeHtml(workerName)}</span></div>`
+        : '';
+    const depositBadge = meta.deposit > 0 
+        ? `<div class="mt-0.5 text-[10px] text-emerald-400 font-bold">عربون: ${meta.deposit} ج.م</div>` 
+        : '';
+
     return `
         <tr id="visitor-order-row-${vo.id}" class="hover:bg-devo-black/40 transition-colors">
             <td class="p-3 font-mono text-amber-400 font-bold text-xs">
                 #${shortId}
+                ${workerBadge}
             </td>
             <td class="p-3 text-devo-muted text-[11px]">${dateStr}</td>
             <td class="p-3">
                 <div class="font-bold text-white text-xs">${escapeHtml(vo.customer_name)}</div>
                 <div class="text-devo-muted text-[11px] font-mono mt-0.5" dir="ltr">${escapeHtml(vo.phone_1)} ${vo.phone_2 ? ' / ' + escapeHtml(vo.phone_2) : ''}</div>
             </td>
-            <td class="p-3 text-xs text-devo-muted max-w-[200px] truncate" title="${escapeHtml(vo.address || '')} ${vo.notes ? ' - ' + escapeHtml(vo.notes) : ''}">
+            <td class="p-3 text-xs text-devo-muted max-w-[200px] truncate" title="${escapeHtml(vo.address || '')} ${meta.cleanNotes ? ' - ' + escapeHtml(meta.cleanNotes) : ''}">
                 ${vo.address ? `<span class="text-white">${escapeHtml(vo.address)}</span>` : '<span class="text-devo-muted/60">بدون عنوان</span>'}
-                ${vo.notes ? `<p class="text-[10px] text-amber-400/80 truncate font-sans mt-0.5"><i class="ph ph-note"></i> ${escapeHtml(vo.notes)}</p>` : ''}
+                ${meta.cleanNotes ? `<p class="text-[10px] text-amber-400/80 truncate font-sans mt-0.5"><i class="ph ph-note"></i> ${escapeHtml(meta.cleanNotes)}</p>` : ''}
+                ${depositBadge}
                 ${isRejected && vo.rejection_reason ? `
                     <div class="mt-1 text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded flex items-center gap-1 truncate" title="سبب الرفض: ${escapeHtml(vo.rejection_reason)}">
                         <i class="ph ph-warning-circle shrink-0"></i>
@@ -3113,7 +3125,30 @@ function renderVisitorOrderModalContent(order, liveInventory, mode = (window.cur
         `;
     }).join('');
 
+    const orderMeta = parseWaitingOrderMeta(order.notes, order);
+    const workerInfoBanner = (orderMeta.worker_name || order.worker_name) ? `
+        <div class="p-2.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl text-xs text-indigo-300 flex items-center gap-2">
+            <i class="ph ph-user text-indigo-400 text-base"></i>
+            <div>
+                <span class="text-[10px] text-indigo-400/80 block">منشئ الفاتورة:</span>
+                <span class="font-bold text-white">${escapeHtml(orderMeta.worker_name || order.worker_name)}</span>
+            </div>
+        </div>
+    ` : '';
+
+    const depositInfoBanner = orderMeta.deposit > 0 ? `
+        <div class="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="ph ph-money text-emerald-400 text-base"></i>
+                <span>العربون: <strong class="text-white font-mono">${orderMeta.deposit.toLocaleString()} ج.م</strong></span>
+            </div>
+            ${orderMeta.deposit_receiver ? `<span class="text-[11px] text-emerald-400/80">المستلم: <strong class="text-white">${escapeHtml(orderMeta.deposit_receiver)}</strong></span>` : ''}
+        </div>
+    ` : '';
+
     const customerFieldsHtml = isViewMode ? `
+        ${workerInfoBanner}
+        ${depositInfoBanner}
         <div>
             <label class="block text-xs font-bold text-devo-muted mb-1">اسم العميل / المحل</label>
             <input type="text" id="vo-edit-name" disabled readonly value="${escapeHtml(order.customer_name || '')}" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2.5 text-white text-xs cursor-default outline-none font-bold">
@@ -3132,9 +3167,11 @@ function renderVisitorOrderModalContent(order, liveInventory, mode = (window.cur
         </div>
         <div>
             <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات الطلب</label>
-            <textarea id="vo-edit-notes" disabled readonly rows="3" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2 text-white/90 text-xs cursor-default outline-none resize-none">${escapeHtml(order.notes || '')}</textarea>
+            <textarea id="vo-edit-notes" disabled readonly rows="3" class="w-full bg-devo-dark/50 border border-devo-gray/50 rounded-xl px-3.5 py-2 text-white/90 text-xs cursor-default outline-none resize-none">${escapeHtml(orderMeta.cleanNotes || '')}</textarea>
         </div>
     ` : `
+        ${workerInfoBanner}
+        ${depositInfoBanner}
         <div>
             <label class="block text-xs font-bold text-devo-muted mb-1">اسم العميل / المحل</label>
             <input type="text" id="vo-edit-name" value="${escapeHtml(order.customer_name || '')}" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-devo-orange outline-none font-bold transition-colors">
@@ -3153,7 +3190,7 @@ function renderVisitorOrderModalContent(order, liveInventory, mode = (window.cur
         </div>
         <div>
             <label class="block text-xs font-bold text-devo-muted mb-1">ملاحظات الطلب</label>
-            <textarea id="vo-edit-notes" rows="3" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2 text-white text-xs focus:border-devo-orange outline-none resize-none transition-colors">${escapeHtml(order.notes || '')}</textarea>
+            <textarea id="vo-edit-notes" rows="3" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3.5 py-2 text-white text-xs focus:border-devo-orange outline-none resize-none transition-colors">${escapeHtml(orderMeta.cleanNotes || '')}</textarea>
         </div>
     `;
 
@@ -3584,17 +3621,24 @@ window.approveVisitorOrder = async (orderId) => {
         const totalSeries = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
         const totalPrice = items.reduce((sum, i) => sum + ((Number(i.quantity) || 0) * (Number(i.price_per_series) || 0)), 0);
 
+        const voMeta = parseWaitingOrderMeta(notes, order);
+        const targetWorkerId = voMeta.worker_id || order.worker_id || currentUserProfile?.id || null;
+        const targetDeposit = Number(voMeta.deposit || order.deposit || 0);
+        const targetReceiver = voMeta.deposit_receiver || order.deposit_receiver || null;
+        const cleanNotesText = voMeta.cleanNotes || (notes || '').replace(/\[DEVO_META:[\s\S]*?\]/, '').trim();
+        const approvalNote = voMeta.worker_name ? `فاتورة انتظار معتمدة (أنشأها: ${voMeta.worker_name})` : 'طلب موقع إلكتروني (زائر معتمد)';
+
         const orderData = {
             customer_name: customerName,
             phone_1: phone1,
             phone_2: phone2,
             address: address,
-            deposit: 0,
-            deposit_receiver: null,
-            notes: (notes ? notes + ' | ' : '') + 'طلب موقع إلكتروني (زائر معتمد)',
+            deposit: targetDeposit,
+            deposit_receiver: targetReceiver,
+            notes: (cleanNotesText ? cleanNotesText + ' | ' : '') + approvalNote,
             total_price: totalPrice,
             total_series: totalSeries,
-            worker_id: currentUserProfile?.id || null
+            worker_id: targetWorkerId
         };
 
         const orderItemsData = items.map(item => {

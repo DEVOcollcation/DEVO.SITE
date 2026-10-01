@@ -253,9 +253,11 @@ async function startScanning() {
             fps: 15,
             qrbox: function(width, height) {
                 // Focus area optimized for both 1D barcodes and 2D QR codes (min 100x80)
+                const safeW = Math.max(100, Math.min((width || 280) * 0.85, 320));
+                const safeH = Math.max(80, Math.min((height || 220) * 0.65, 240));
                 return {
-                    width: Math.max(100, Math.min((width || 300) * 0.9, 360)),
-                    height: Math.max(80, Math.min((height || 300) * 0.65, 260))
+                    width: Math.floor(safeW),
+                    height: Math.floor(safeH)
                 };
             },
             aspectRatio: 1.333333
@@ -269,6 +271,23 @@ async function startScanning() {
                 // Ignore scanning cycle failures/no code detected
             }
         );
+
+        // ضبط عنصر الفيديو للتأكد من ملاءمته الدقيقة لشاشات كافة الموبايلات
+        const videoEl = document.querySelector('#barcode-reader video');
+        if (videoEl) {
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            videoEl.style.maxWidth = '100%';
+            videoEl.style.maxHeight = '100%';
+            videoEl.style.objectFit = 'cover';
+        }
+
+        // تصفير أي إزاحة أفقية قد تنشأ على أجهزة شاومي أو غيرها
+        if (typeof window !== 'undefined') {
+            window.scrollTo(0, 0);
+            if (document.documentElement) document.documentElement.scrollLeft = 0;
+            if (document.body) document.body.scrollLeft = 0;
+        }
 
         isScannerRunning = true;
         isScannerLocked = false;

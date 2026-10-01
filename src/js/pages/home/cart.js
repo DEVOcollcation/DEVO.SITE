@@ -4,12 +4,16 @@ import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js'; 
 import { printOrderCustomerInvoice } from '../../utils/print.js?v=2';
 import { resolveImageUrl, bindImageToCache } from '../../services/offline_store.js';
+import { saveWaitingOrderDraft } from '../../services/waiting_orders.js';
 
 let currentUser = null;
 let cartItems = [];
 let itemToDeleteIndex = null;
 let editingOrderId = null; 
 let currentLoadedEditOrderId = null;
+let editingWaitingOrderId = null;
+let currentLoadedWaitingOrderId = null;
+let currentWaitingOrderData = null;
 let cartRealtimeChannel = null;
 let lastOrderForPrinting = null;
 
@@ -23,7 +27,7 @@ let currentCartFilter = 'all'; // 'all', 'ok', 'error'
 // 🌟 إدارة ومزامنة مسودة بيانات العميل في السلة 🌟
 // ==========================================
 function saveCustomerFormData() {
-    if (editingOrderId) return;
+    if (editingOrderId || editingWaitingOrderId) return;
     const name = document.getElementById('c-name')?.value ?? '';
     const phone1 = document.getElementById('c-phone1')?.value ?? '';
     const phone2 = document.getElementById('c-phone2')?.value ?? '';
@@ -49,7 +53,7 @@ function saveCustomerFormData() {
 }
 
 function restoreCustomerFormData() {
-    if (editingOrderId) return;
+    if (editingOrderId || editingWaitingOrderId) return;
     try {
         const saved = localStorage.getItem('devo_cart_customer_draft');
         if (!saved) return;
@@ -110,11 +114,43 @@ export function initCart() {
         window.showInvoiceModal = showInvoiceModal;
         window.setCartFilter = setCartFilter;
         window.filterCartItems = filterCartItems;
+        window.switchCartSection = switchCartSection;
+        window.saveCurrentCartAsWaitingOrder = saveCurrentCartAsWaitingOrder;
+        window.cancelWaitingOrderEdit = cancelWaitingOrderEdit;
 
         loadAndRenderCart();
         setupCartRealtime(); 
     }
 }
+
+export function switchCartSection(section) {
+    const secItems = document.getElementById('cart-section-items');
+    const secCustomer = document.getElementById('cart-section-customer');
+    const btnItems = document.getElementById('btn-cart-sec-items');
+    const btnCustomer = document.getElementById('btn-cart-sec-customer');
+
+    if (section === 'items') {
+        if (secItems) secItems.classList.remove('hidden');
+        if (secCustomer) secCustomer.classList.add('hidden');
+        if (btnItems) {
+            btnItems.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer';
+        }
+        if (btnCustomer) {
+            btnCustomer.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
+        }
+    } else {
+        if (secItems) secItems.classList.add('hidden');
+        if (secCustomer) secCustomer.classList.remove('hidden');
+        if (btnCustomer) {
+            btnCustomer.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer';
+        }
+        if (btnItems) {
+            btnItems.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+window.switchCartSection = switchCartSection;
 
 // ==========================================
 // 🌟 1. الرادار اللحظي للسلة
@@ -201,13 +237,19 @@ async function loadAndRenderCart() {
     if (saved) { try { cartItems = JSON.parse(saved); } catch(e) { cartItems = []; } }
 
     let originalOrderData = null;
+    let waitingOrderData = null;
     const savedOrderData = localStorage.getItem('devo_edit_order_data');
+    const savedWaitingData = localStorage.getItem('devo_edit_waiting_order_data');
+
     if (savedOrderData) {
         try {
             originalOrderData = JSON.parse(savedOrderData);
             const isNewEdit = (currentLoadedEditOrderId !== originalOrderData.id);
             editingOrderId = originalOrderData.id;
             currentLoadedEditOrderId = originalOrderData.id;
+            editingWaitingOrderId = null;
+            currentLoadedWaitingOrderId = null;
+            currentWaitingOrderData = null;
 
             if (isNewEdit) {
                 document.getElementById('c-name').value = originalOrderData.customer_name || '';
@@ -222,13 +264,39 @@ async function loadAndRenderCart() {
                 if (recEl) recEl.required = depVal > 0;
             }
         } catch(e) {}
+    } else if (savedWaitingData) {
+        try {
+            waitingOrderData = JSON.parse(savedWaitingData);
+            const isNewWaitingEdit = (currentLoadedWaitingOrderId !== waitingOrderData.id);
+            editingWaitingOrderId = waitingOrderData.id;
+            currentLoadedWaitingOrderId = waitingOrderData.id;
+            currentWaitingOrderData = waitingOrderData;
+            editingOrderId = null;
+            currentLoadedEditOrderId = null;
+
+            if (isNewWaitingEdit) {
+                document.getElementById('c-name').value = waitingOrderData.customer_name || '';
+                document.getElementById('c-phone1').value = waitingOrderData.phone_1 || '';
+                document.getElementById('c-phone2').value = waitingOrderData.phone_2 || '';
+                document.getElementById('c-address').value = waitingOrderData.address || '';
+                document.getElementById('c-notes').value = waitingOrderData.notes || '';
+                document.getElementById('c-deposit').value = waitingOrderData.deposit || 0;
+                document.getElementById('c-receiver').value = waitingOrderData.deposit_receiver || '';
+                const depVal = parseFloat(waitingOrderData.deposit) || 0;
+                const recEl = document.getElementById('c-receiver');
+                if (recEl) recEl.required = depVal > 0;
+            }
+        } catch(e) {}
     } else {
         editingOrderId = null;
         currentLoadedEditOrderId = null;
+        editingWaitingOrderId = null;
+        currentLoadedWaitingOrderId = null;
+        currentWaitingOrderData = null;
         restoreCustomerFormData();
     }
 
-    updateCartHeaderEditState(editingOrderId, originalOrderData?.invoice_number);
+    updateCartHeaderEditState(editingOrderId, originalOrderData?.invoice_number, editingWaitingOrderId, waitingOrderData);
 
     const container = document.getElementById('cart-items-container');
     const checkoutBtn = document.getElementById('btn-checkout');
@@ -283,26 +351,69 @@ async function loadAndRenderCart() {
     if(window.filterCartItems) window.filterCartItems();
 }
 
-function updateCartHeaderEditState(editingOrderId, invoiceNumber) {
+function updateCartHeaderEditState(editingOrderId, invoiceNumber, editingWaitingOrderId, waitingOrderData) {
     const clearBtnText = document.getElementById('btn-clear-cart-text');
     const clearBtnIcon = document.getElementById('btn-clear-cart-icon');
     const clearBtn = document.getElementById('btn-clear-cart');
     const editBanner = document.getElementById('cart-edit-mode-banner');
+    const saveOrderTitle = document.getElementById('btn-save-order-title');
+    const saveOrderSub = document.getElementById('btn-save-order-sub');
+    const saveWaitingBtn = document.getElementById('btn-save-waiting-order');
+    const saveWaitingTitle = document.getElementById('btn-save-waiting-title');
+    const saveWaitingSub = document.getElementById('btn-save-waiting-sub');
 
     if (editingOrderId) {
         if (clearBtnText) clearBtnText.textContent = 'إلغاء تعديل الأوردر';
         if (clearBtnIcon) clearBtnIcon.className = 'ph ph-x-circle text-xl';
         if (clearBtn) clearBtn.title = 'إلغاء تعديل الأوردر وإفراغ السلة';
         
+        if (saveOrderTitle) saveOrderTitle.textContent = 'حفظ التعديلات وإصدار الفاتورة';
+        if (saveOrderSub) saveOrderSub.textContent = 'تحديث الفاتورة الأساسية وإعادة حساب المخزون';
+        if (saveWaitingBtn) {
+            saveWaitingBtn.classList.add('hidden');
+        }
+
         if (editBanner) {
             editBanner.classList.remove('hidden');
             editBanner.innerHTML = `
                 <div class="bg-amber-500/10 border border-amber-500/30 text-amber-400 p-3.5 rounded-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold shadow-sm animate-pulse">
                     <div class="flex items-center gap-2">
                         <i class="ph ph-note-pencil text-xl text-amber-400"></i>
-                        <span>أنت تقوم حالياً بتعديل الفاتورة رقم: <strong class="font-mono text-white underline">#${invoiceNumber || ''}</strong></span>
+                        <span>أنت تقوم حالياً بتعديل الفاتورة الأساسية رقم: <strong class="font-mono text-white underline">#${invoiceNumber || ''}</strong></span>
                     </div>
-                    <span class="bg-amber-500/20 text-amber-300 px-3 py-1 rounded-lg text-xs font-bold border border-amber-500/40 whitespace-nowrap">وضع التعديل نشط</span>
+                    <span class="bg-amber-500/20 text-amber-300 px-3 py-1 rounded-lg text-xs font-bold border border-amber-500/40 whitespace-nowrap">وضع تعديل الفاتورة</span>
+                </div>
+            `;
+        }
+    } else if (editingWaitingOrderId) {
+        if (clearBtnText) clearBtnText.textContent = 'إلغاء وضع الاستكمال';
+        if (clearBtnIcon) clearBtnIcon.className = 'ph ph-x-circle text-xl';
+        if (clearBtn) clearBtn.title = 'إلغاء استكمال فاتورة الانتظار وإفراغ السلة';
+
+        if (saveOrderTitle) saveOrderTitle.textContent = 'تأكيد وتحويل إلى فاتورة أساسية';
+        if (saveOrderSub) saveOrderSub.textContent = 'خصم فوري للمخزون وإصدار رقم الفاتورة النهائي';
+
+        if (saveWaitingBtn) {
+            saveWaitingBtn.classList.remove('hidden');
+        }
+        if (saveWaitingTitle) saveWaitingTitle.textContent = 'تحديث وحفظ في قائمة الانتظار';
+        if (saveWaitingSub) saveWaitingSub.textContent = 'حفظ التعديلات بدون أي خصم من المخزن';
+
+        if (editBanner) {
+            editBanner.classList.remove('hidden');
+            const shortCode = waitingOrderData?.short_id || (editingWaitingOrderId.split('-')[0].toUpperCase());
+            editBanner.innerHTML = `
+                <div class="bg-amber-500/15 border border-amber-500/40 text-amber-300 p-3.5 rounded-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold shadow-sm">
+                    <div class="flex items-center gap-2">
+                        <i class="ph ph-clock-countdown text-2xl text-amber-400 animate-pulse"></i>
+                        <div>
+                            <span>استكمال فاتورة الانتظار: <strong class="font-mono text-white underline">#${shortCode}</strong></span>
+                            <span class="block text-[11px] text-amber-400/80 font-normal">العميل: ${waitingOrderData?.customer_name || ''} — مسودة مؤقتة لم يُخصم مخزونها بعد</span>
+                        </div>
+                    </div>
+                    <button type="button" onclick="window.cancelWaitingOrderEdit()" class="bg-amber-500/20 hover:bg-amber-500 hover:text-black text-amber-300 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-500/40 transition-colors whitespace-nowrap cursor-pointer">
+                        <i class="ph ph-x-circle"></i> إلغاء الاستكمال
+                    </button>
                 </div>
             `;
         }
@@ -310,6 +421,15 @@ function updateCartHeaderEditState(editingOrderId, invoiceNumber) {
         if (clearBtnText) clearBtnText.textContent = 'إفراغ السلة';
         if (clearBtnIcon) clearBtnIcon.className = 'ph ph-trash text-xl';
         if (clearBtn) clearBtn.title = 'إفراغ السلة';
+
+        if (saveOrderTitle) saveOrderTitle.textContent = 'حفظ وإصدار الفاتورة الأساسية';
+        if (saveOrderSub) saveOrderSub.textContent = 'خصم فوري من المخزون وإصدار رقم الفاتورة النهائي';
+
+        if (saveWaitingBtn) {
+            saveWaitingBtn.classList.remove('hidden');
+        }
+        if (saveWaitingTitle) saveWaitingTitle.textContent = 'حفظ في قائمة الانتظار (مؤقت)';
+        if (saveWaitingSub) saveWaitingSub.textContent = 'بدون أي خصم من المخزن مع إمكانية استكمالها أو اعتمادها لاحقاً';
 
         if (editBanner) {
             editBanner.classList.add('hidden');
@@ -320,15 +440,16 @@ function updateCartHeaderEditState(editingOrderId, invoiceNumber) {
 
 // 🌟 دالة إفراغ السلة بالكامل وإلغاء وضع التعديل 🌟
 window.clearEntireCart = async () => {
-    if (cartItems.length === 0 && !editingOrderId) {
+    if (cartItems.length === 0 && !editingOrderId && !editingWaitingOrderId) {
         return showToast('السلة فارغة بالفعل', 'info');
     }
 
     const isEditMode = !!editingOrderId;
-    const title = isEditMode ? 'إلغاء تعديل الأوردر' : 'إفراغ السلة';
+    const isWaitingMode = !!editingWaitingOrderId;
+    const title = isEditMode ? 'إلغاء تعديل الأوردر' : (isWaitingMode ? 'إلغاء استكمال فاتورة الانتظار' : 'إفراغ السلة');
     const message = isEditMode 
         ? 'هل أنت متأكد من رغبتك في إلغاء تعديل الأوردر وإفراغ السلة؟ سيتم إلغاء التعديل وإعادة فتح الأوردر بحالة (تم الإنشاء).' 
-        : 'هل أنت متأكد من رغبتك في إفراغ السلة بالكامل؟';
+        : (isWaitingMode ? 'هل أنت متأكد من رغبتك في إلغاء استكمال فاتورة الانتظار وإفراغ السلة؟ ستبقى الفاتورة محفوظة كما هي في قائمة الانتظار.' : 'هل أنت متأكد من رغبتك في إفراغ السلة بالكامل؟');
 
     const confirmed = await confirmDialog({ 
         title: title, 
@@ -348,17 +469,25 @@ window.clearEntireCart = async () => {
         cartItems = [];
         editingOrderId = null;
         currentLoadedEditOrderId = null;
+        editingWaitingOrderId = null;
+        currentLoadedWaitingOrderId = null;
+        currentWaitingOrderData = null;
         localStorage.removeItem('devo_cart');
         localStorage.removeItem('devo_edit_order_data');
         localStorage.removeItem('devo_edit_order_data_cache');
+        localStorage.removeItem('devo_edit_waiting_order_data');
         
         clearCustomerFormData();
         
         updateFloatingCart();
         loadAndRenderCart();
-        showToast(isEditMode ? 'تم إلغاء تعديل الأوردر وإعادة فتحه وإفراغ السلة بنجاح' : 'تم إفراغ السلة بنجاح', 'success');
+        showToast(isEditMode ? 'تم إلغاء تعديل الأوردر وإعادة فتحه وإفراغ السلة بنجاح' : (isWaitingMode ? 'تم إلغاء استكمال فاتورة الانتظار' : 'تم إفراغ السلة بنجاح'), 'success');
     }
 };
+
+export function cancelWaitingOrderEdit() {
+    window.clearEntireCart();
+}
 
 function renderCartItems(dbInventory, dbModels, originalOrderData) {
     const container = document.getElementById('cart-items-container');
@@ -542,6 +671,15 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
     if (sumSeriesEl) sumSeriesEl.textContent = totalSeriesCount;
     if (itemsCountEl) itemsCountEl.textContent = `${groupedMap.size} موديلات في الأوردر (${totalSeriesCount} سيريه)`;
 
+    const navCount = document.getElementById('cart-nav-models-count');
+    if (navCount) navCount.textContent = groupedMap.size;
+    const fModels = document.getElementById('cart-footer-models');
+    if (fModels) fModels.textContent = groupedMap.size;
+    const fSeries = document.getElementById('cart-footer-series');
+    if (fSeries) fSeries.textContent = totalSeriesCount;
+    const fPrice = document.getElementById('cart-footer-price');
+    if (fPrice) fPrice.textContent = totalOrderPrice.toLocaleString();
+
     const errorBadge = document.getElementById('cart-error-badge');
     if (errorBadge) {
         if (errorModelsCount > 0) {
@@ -560,7 +698,7 @@ function renderCartItems(dbInventory, dbModels, originalOrderData) {
             checkoutBtn.classList.remove('bg-devo-orange', 'hover:bg-devo-orangeHover');
         } else {
             checkoutBtn.disabled = false;
-            checkoutBtn.innerHTML = editingOrderId ? `حفظ التعديلات وإصدار الفاتورة` : `تأكيد وإصدار الفاتورة`;
+            checkoutBtn.innerHTML = editingOrderId ? `حفظ التعديلات وإصدار الفاتورة` : (editingWaitingOrderId ? `تأكيد وتحويل إلى فاتورة أساسية` : `تأكيد وإصدار الفاتورة`);
             checkoutBtn.classList.remove('bg-devo-gray', 'cursor-not-allowed');
             checkoutBtn.classList.add('bg-devo-orange', 'hover:bg-devo-orangeHover');
         }
@@ -787,6 +925,21 @@ async function handleCheckout(e) {
             await supabase.rpc('release_order_lock', { p_order_id: editingOrderId });
         }
 
+        if (editingWaitingOrderId) {
+            // تحديث حالة فاتورة الانتظار بقاعدة البيانات إلى معتمدة
+            const myName = currentUser?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || 'موظف';
+            await supabase.from('visitor_orders').update({
+                status: 'approved',
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: myName
+            }).eq('id', editingWaitingOrderId);
+
+            localStorage.removeItem('devo_edit_waiting_order_data');
+            editingWaitingOrderId = null;
+            currentLoadedWaitingOrderId = null;
+            currentWaitingOrderData = null;
+        }
+
         cartItems = [];
         saveCart();
         clearCustomerFormData();
@@ -822,7 +975,111 @@ async function handleCheckout(e) {
         }
     } finally {
         btn.disabled = false;
-        btn.innerHTML = editingOrderId ? `حفظ التعديلات` : `تأكيد وإصدار الفاتورة`;
+        btn.innerHTML = editingOrderId ? `حفظ التعديلات` : (editingWaitingOrderId ? `تأكيد وتحويل إلى فاتورة أساسية` : `تأكيد وإصدار الفاتورة`);
+    }
+}
+
+// ==========================================
+// 🌟 حفظ السلة الحالية كفاتورة في قائمة الانتظار 🌟
+// ==========================================
+export async function saveCurrentCartAsWaitingOrder() {
+    if (cartItems.length === 0) {
+        return showToast('السلة فارغة! يرجى إضافة موديلات أولاً.', 'warning');
+    }
+
+    const name = document.getElementById('c-name')?.value?.trim();
+    const phone1 = document.getElementById('c-phone1')?.value?.trim();
+    const address = document.getElementById('c-address')?.value?.trim();
+
+    if (!name) {
+        showToast('يرجى إدخال اسم العميل / المحل لحفظ الفاتورة بالانتظار', 'warning');
+        window.switchCartSection('customer');
+        document.getElementById('c-name')?.focus();
+        return;
+    }
+    if (!phone1) {
+        showToast('يرجى إدخال رقم الهاتف', 'warning');
+        window.switchCartSection('customer');
+        document.getElementById('c-phone1')?.focus();
+        return;
+    }
+
+    const waitingBtn = document.getElementById('btn-save-waiting-order');
+    const originalWaitingHtml = waitingBtn?.innerHTML;
+    if (waitingBtn) {
+        waitingBtn.disabled = true;
+        waitingBtn.innerHTML = `<div class="flex items-center gap-2"><i class="ph ph-spinner animate-spin text-xl text-amber-400"></i><span>جاري حفظ الفاتورة في قائمة الانتظار...</span></div>`;
+    }
+
+    try {
+        const phone2 = document.getElementById('c-phone2')?.value?.trim() || null;
+        const deposit = parseFloat(document.getElementById('c-deposit')?.value) || 0;
+        const depositReceiver = document.getElementById('c-receiver')?.value?.trim() || null;
+        const notes = document.getElementById('c-notes')?.value?.trim() || '';
+
+        const result = await saveWaitingOrderDraft({
+            existingOrderId: editingWaitingOrderId,
+            customerName: name,
+            phone1,
+            phone2,
+            address,
+            deposit,
+            depositReceiver,
+            notes,
+            cartItems,
+            currentUser
+        });
+
+        const isUpdate = result.isUpdate;
+        const shortCode = (result.orderId || '').split('-')[0].toUpperCase();
+
+        // إفراغ السلة وتصفير حالة التعديل
+        cartItems = [];
+        saveCart();
+        clearCustomerFormData();
+        localStorage.removeItem('devo_edit_waiting_order_data');
+        editingWaitingOrderId = null;
+        currentLoadedWaitingOrderId = null;
+        currentWaitingOrderData = null;
+
+        renderCartFromCacheOrFetch();
+        window.switchCartSection('items');
+
+        const successMsg = isUpdate 
+            ? `🎉 تم تحديث وحفظ فاتورة الانتظار (#${shortCode}) بنجاح بدون خصم من المخزن!`
+            : `🎉 تم حفظ الفاتورة (#${shortCode}) في قائمة الانتظار بنجاح بدون أي خصم من المخزن!`;
+
+        showToast(successMsg, 'success');
+
+        if (window.refreshWorkerOrders) {
+            window.refreshWorkerOrders();
+        }
+
+        // إتاحة خيار فتح فواتير الانتظار مباشرة أو الاستمرار في المعرض
+        const goToWaiting = await confirmDialog({
+            title: 'تم الحفظ في قائمة الانتظار',
+            message: `${successMsg}\n\nيمكنك العودة للفاتورة واستكمالها أو تأكيدها في أي وقت من قسم (فواتير الانتظار).\nهل تريد فتح قائمة فواتير الانتظار الآن؟`,
+            confirmText: 'عرض فواتير الانتظار',
+            cancelText: 'إنشاء فاتورة جديدة'
+        });
+
+        if (goToWaiting) {
+            if (window.switchOrdersTab) {
+                window.switchOrdersTab('waiting');
+            }
+            if (window.switchSiteView) {
+                window.switchSiteView('view-orders');
+            }
+        }
+
+    } catch (err) {
+        console.error('[Cart] saveCurrentCartAsWaitingOrder error:', err);
+        showToast('خطأ أثناء حفظ الفاتورة في الانتظار: ' + (err.message || 'خطأ غير معروف'), 'error');
+    } finally {
+        if (waitingBtn) {
+            waitingBtn.disabled = false;
+            waitingBtn.innerHTML = originalWaitingHtml;
+        }
     }
 }
 

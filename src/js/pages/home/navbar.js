@@ -113,7 +113,9 @@ export async function initNavbar() {
         if (target) {
             target.classList.remove('hidden');
             target.classList.add('block');
-            window.scrollTo(0, 0);
+            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+            if (document.documentElement) document.documentElement.scrollLeft = 0;
+            if (document.body) document.body.scrollLeft = 0;
         }
 
         // تمييز وتظليل التبويب النشط فورياً في جميع الـ Layouts

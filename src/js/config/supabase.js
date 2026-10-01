@@ -13,3 +13,4 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         heartbeatIntervalMs: 15000 // Send heartbeat every 15s to keep connections alive on mobile/WiFi
     }
 });
+

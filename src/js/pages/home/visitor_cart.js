@@ -7,6 +7,7 @@ import { printHtmlInIframe } from '../../utils/print.js';
 let visitorCartItems = [];
 let currentVisitorCartFilter = 'all';
 let currentVisitorSubTab = 'cart';
+let currentVisitorCartSection = 'items';
 let cachedVisitorHistoryOrders = [];
 
 // ==========================================
@@ -36,6 +37,7 @@ export function initVisitorCart() {
     window.removeVisitorModelFromCart = removeVisitorModelFromCart;
     window.setVisitorCartFilter = setVisitorCartFilter;
     window.filterVisitorCartItems = filterVisitorCartItems;
+    window.switchVisitorCartSection = switchVisitorCartSection;
 
     // دوال سجل الطلبات والاستعلام والطباعة
     window.switchVisitorCartSubTab = switchVisitorCartSubTab;
@@ -56,15 +58,21 @@ export function initVisitorCart() {
 // ==========================================
 // 🌟 إدارة التخزين المحلي
 // ==========================================
+let isVisitorCartLoaded = false;
+
 function loadVisitorCart() {
     const saved = localStorage.getItem('devo_visitor_cart');
     if (saved) {
         try { visitorCartItems = JSON.parse(saved); } catch (e) { visitorCartItems = []; }
+    } else {
+        visitorCartItems = [];
     }
+    isVisitorCartLoaded = true;
 }
 
 function saveVisitorCart() {
     localStorage.setItem('devo_visitor_cart', JSON.stringify(visitorCartItems));
+    isVisitorCartLoaded = true;
     updateVisitorFloatingCart();
 }
 
@@ -95,7 +103,9 @@ function updateVisitorFloatingCart() {
 }
 
 export function getVisitorCartQtyForColor(modelId, colorId) {
-    loadVisitorCart();
+    if (!isVisitorCartLoaded) {
+        loadVisitorCart();
+    }
     const item = visitorCartItems.find(
         i => String(i.modelId) === String(modelId) && String(i.colorId) === String(colorId)
     );
@@ -139,9 +149,15 @@ window.visitorAddToCart = (event, modelId, colorId) => {
     const factoryCode = model.factory_code || model.system_code || '';
 
     let colorName = 'لون';
-    if (inv.colors?.name) colorName = inv.colors.name;
-    else if (Array.isArray(inv.colors) && inv.colors[0]?.name) colorName = inv.colors[0].name;
-    else if (inv.color_name && inv.color_name !== 'لون') colorName = inv.color_name;
+    if (typeof window.getResolvedColorName === 'function') {
+        colorName = window.getResolvedColorName(inv, colorId);
+    } else if (inv.colors?.name) {
+        colorName = inv.colors.name;
+    } else if (Array.isArray(inv.colors) && inv.colors[0]?.name) {
+        colorName = inv.colors[0].name;
+    } else if (inv.color_name && inv.color_name !== 'لون') {
+        colorName = inv.color_name;
+    }
 
     const existingIdx = visitorCartItems.findIndex(
         i => String(i.modelId) === String(modelId) && String(i.colorId) === String(colorId)
@@ -182,6 +198,108 @@ window.visitorAddToCart = (event, modelId, colorId) => {
     }
 };
 
+export function saveVisitorModelCart(modelId, btn, btnText, unlockBtn) {
+    const unlock = () => {
+        if (typeof unlockBtn === 'function') unlockBtn();
+        else if (btn) { btn.disabled = false; delete btn.dataset.locked; }
+    };
+
+    const allModels = window.allGalleryModels || [];
+    const model = allModels.find(m => String(m.id) === String(modelId));
+    if (!model || !model.model_inventory) {
+        unlock();
+        return showToast('حدث خطأ في تحميل بيانات الموديل!', 'error');
+    }
+
+    loadVisitorCart();
+
+    const classSizes = model.classes?.class_sizes || [];
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
+    const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
+    const factoryCode = model.factory_code || model.system_code || '';
+
+    let totalSeriesInModel = 0;
+
+    model.model_inventory.forEach(inv => {
+        const input = document.getElementById('vqty-' + inv.color_id);
+        if (!input) return;
+
+        const dbAvailable = inv.available_series || 0;
+        let chosenQty = parseInt(input.value) || 0;
+        if (chosenQty < 0) chosenQty = 0;
+        if (chosenQty > dbAvailable) chosenQty = dbAvailable;
+
+        let colorName = 'لون';
+        if (typeof window.getResolvedColorName === 'function') {
+            colorName = window.getResolvedColorName(inv, inv.color_id);
+        } else if (inv.colors?.name) {
+            colorName = inv.colors.name;
+        } else if (Array.isArray(inv.colors) && inv.colors[0]?.name) {
+            colorName = inv.colors[0].name;
+        } else if (inv.color_name && inv.color_name !== 'لون') {
+            colorName = inv.color_name;
+        }
+
+        const existingIdx = visitorCartItems.findIndex(
+            i => String(i.modelId) === String(model.id) && String(i.colorId) === String(inv.color_id)
+        );
+
+        if (chosenQty > 0) {
+            totalSeriesInModel += chosenQty;
+            if (existingIdx > -1) {
+                visitorCartItems[existingIdx].qty = chosenQty;
+            } else {
+                visitorCartItems.push({
+                    modelId: model.id,
+                    colorId: inv.color_id,
+                    modelName: model.name,
+                    colorName,
+                    price: model.price,
+                    image: mainImg,
+                    qty: chosenQty,
+                    sizesCount,
+                    factoryCode
+                });
+            }
+        } else {
+            if (existingIdx > -1) {
+                visitorCartItems.splice(existingIdx, 1);
+            }
+        }
+    });
+
+    saveVisitorCart();
+    if (window.refreshVisitorCartView) window.refreshVisitorCartView();
+    if (typeof window.refreshVisitorColorsContainer === 'function') {
+        window.refreshVisitorColorsContainer(model.id);
+    } else if (typeof window.updateModelSaveButtonSummary === 'function') {
+        window.updateModelSaveButtonSummary(model.id);
+    }
+
+    if (btn) {
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="ph ph-check-circle text-base sm:text-lg"></i> <span>تم الحفظ في السلة</span>`;
+        btn.classList.replace('from-devo-orange', 'from-devo-success');
+        btn.classList.replace('to-orange-600', 'to-green-600');
+
+        setTimeout(() => {
+            btn.innerHTML = origHtml;
+            btn.classList.replace('from-devo-success', 'from-devo-orange');
+            btn.classList.replace('to-green-600', 'to-orange-600');
+            unlock();
+        }, 900);
+    } else {
+        unlock();
+    }
+
+    if (totalSeriesInModel > 0) {
+        showToast(`تم حفظ الموديل بالسلة (${totalSeriesInModel} سيريه)`, 'success');
+    } else {
+        showToast('تم تحديث السلة بنجاح', 'info');
+    }
+}
+window.saveVisitorModelCart = saveVisitorModelCart;
+
 window.visitorAddSetToCart = (event, modelId) => {
     const btn = event?.currentTarget || event?.target;
     if (btn) {
@@ -200,70 +318,33 @@ window.visitorAddSetToCart = (event, modelId) => {
     const setQtyInput = document.getElementById('vset-qty-' + model.id);
     const setCount = parseInt(setQtyInput?.value) || 1;
 
-    loadVisitorCart();
-    const mainImg = resolveImageUrl(model.model_images?.[0]?.image_url);
-    const classSizes = model.classes?.class_sizes || [];
-    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
-    const factoryCode = model.factory_code || model.system_code || '';
-
-    let addedCount = 0;
-    let skippedColors = [];
-
+    let appliedCount = 0;
     model.model_inventory.forEach(inv => {
+        const input = document.getElementById('vqty-' + inv.color_id);
         const dbAvailable = inv.available_series || 0;
-        let colorName = 'لون';
-        if (inv.colors?.name) colorName = inv.colors.name;
-        else if (Array.isArray(inv.colors) && inv.colors[0]?.name) colorName = inv.colors[0].name;
-        else if (inv.color_name && inv.color_name !== 'لون') colorName = inv.color_name;
+        if (dbAvailable <= 0) return;
 
-        if (dbAvailable <= 0) { skippedColors.push(colorName); return; }
-
-        const currentInCart = getVisitorCartQtyForColor(model.id, inv.color_id);
-        const spaceLeft = dbAvailable - currentInCart;
-        if (spaceLeft <= 0) { skippedColors.push(colorName); return; }
-
-        const qtyToAdd = Math.min(setCount, spaceLeft);
-        const existingIdx = visitorCartItems.findIndex(
-            i => String(i.modelId) === String(model.id) && String(i.colorId) === String(inv.color_id)
-        );
-        if (existingIdx > -1) {
-            visitorCartItems[existingIdx].qty += qtyToAdd;
-        } else {
-            visitorCartItems.push({
-                modelId: model.id, colorId: inv.color_id,
-                modelName: model.name, colorName,
-                price: model.price, image: mainImg,
-                qty: qtyToAdd, sizesCount, factoryCode
-            });
+        if (input) {
+            const currentVal = parseInt(input.value) || 0;
+            const spaceLeft = dbAvailable - currentVal;
+            if (spaceLeft <= 0) return;
+            const addVal = Math.min(setCount, spaceLeft);
+            input.value = currentVal + addVal;
+            if (typeof window.updateColorRowUI === 'function') {
+                window.updateColorRowUI(input);
+            }
+            appliedCount++;
         }
-        addedCount++;
     });
 
-    if (addedCount === 0) {
-        showToast('جميع الألوان نفذت كميتها أو مضافة بالفعل!', 'error');
-    } else {
-        saveVisitorCart();
-        if (window.refreshVisitorCartView) window.refreshVisitorCartView();
-        if (typeof window.refreshVisitorColorsContainer === 'function') {
-            window.refreshVisitorColorsContainer(model.id);
-        }
-        let msg = 'تم إضافة ' + setCount + ' طقم (' + addedCount + ' لون) للسلة بنجاح!';
-        if (skippedColors.length > 0) msg += ' (تجاوزنا ' + skippedColors.length + ' لون لنفاذ الكمية)';
-        showToast(msg, 'success');
+    if (appliedCount === 0) {
+        if (btn) { btn.disabled = false; delete btn.dataset.locked; }
+        return showToast('جميع الألوان مضافة بالفعل بأقصى حد بالسلة!', 'info');
     }
 
-    if (btn) {
-        const orig = btn.innerHTML;
-        btn.innerHTML = '<i class="ph ph-check text-base"></i> تمت الإضافة';
-        btn.classList.replace('from-devo-orange', 'from-devo-success');
-        btn.classList.replace('to-orange-600', 'to-green-600');
-        setTimeout(() => {
-            btn.innerHTML = orig;
-            btn.classList.replace('from-devo-success', 'from-devo-orange');
-            btn.classList.replace('to-green-600', 'to-orange-600');
-            btn.disabled = false; delete btn.dataset.locked;
-        }, 1000);
-    }
+    saveVisitorModelCart(modelId, btn, null, () => {
+        if (btn) { btn.disabled = false; delete btn.dataset.locked; }
+    });
 };
 
 // ==========================================
@@ -282,6 +363,12 @@ async function loadAndRenderVisitorCart() {
 
     if (visitorCartItems.length === 0) {
         if (toolsContainer) toolsContainer.classList.add('hidden');
+        const nav = document.getElementById('vcart-subsections-nav');
+        if (nav) nav.classList.add('hidden');
+        const footerSummary = document.getElementById('visitor-cart-items-footer-summary');
+        if (footerSummary) footerSummary.classList.add('hidden');
+        switchVisitorCartSection('items');
+
         if (container) container.innerHTML = `
             <div class="text-center py-12 text-devo-muted">
                 <i class="ph ph-shopping-cart-simple text-5xl mb-3 opacity-40 block"></i>
@@ -295,6 +382,11 @@ async function loadAndRenderVisitorCart() {
         if (checkoutBtn) { checkoutBtn.disabled = true; checkoutBtn.classList.add('opacity-50', 'cursor-not-allowed'); }
         return;
     }
+
+    const nav = document.getElementById('vcart-subsections-nav');
+    if (nav) nav.classList.remove('hidden');
+    const footerSummary = document.getElementById('visitor-cart-items-footer-summary');
+    if (footerSummary) footerSummary.classList.remove('hidden');
 
     if (toolsContainer) toolsContainer.classList.remove('hidden');
     if (container) container.innerHTML = `<div class="text-center py-8"><i class="ph ph-spinner animate-spin text-2xl text-devo-orange"></i><p class="text-xs text-devo-muted mt-2">جاري التحقق من المخزون...</p></div>`;
@@ -417,6 +509,38 @@ function renderVisitorCart(dbInventory, dbModels) {
     if (sumPriceEl) sumPriceEl.textContent = totalPrice.toLocaleString();
     if (sumModelsEl) sumModelsEl.textContent = groupedMap.size;
     if (sumSeriesEl) sumSeriesEl.textContent = totalSeries;
+
+    const navCount = document.getElementById('vcart-nav-models-count');
+    if (navCount) navCount.textContent = groupedMap.size;
+
+    const fModels = document.getElementById('v-items-footer-models');
+    if (fModels) fModels.textContent = groupedMap.size;
+    const fSeries = document.getElementById('v-items-footer-series');
+    if (fSeries) fSeries.textContent = totalSeries;
+    const fPrice = document.getElementById('v-items-footer-price');
+    if (fPrice) fPrice.textContent = totalPrice.toLocaleString();
+
+    // تحديث قائمة الموديلات المصغرة في قسم بيانات العميل
+    const previewContainer = document.getElementById('v-customer-preview-models-list');
+    if (previewContainer) {
+        let phtml = '';
+        groupedMap.forEach((group) => {
+            const mTotalSeries = group.colors.reduce((s, c) => s + c.qty, 0);
+            const mPrice = (parseFloat(group.price) || 0) * (parseInt(group.sizesCount) || 1) * mTotalSeries;
+            phtml += `
+            <div class="flex items-center justify-between p-2 bg-devo-black border border-devo-gray/40 rounded-xl gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <img src="${group.image}" class="w-8 h-8 rounded-lg object-cover bg-devo-dark shrink-0" onerror="this.src='./src/assets/icons/devo.png'">
+                    <div class="min-w-0">
+                        <p class="text-white font-bold truncate text-xs">${group.modelName}</p>
+                        <p class="text-[10px] text-devo-muted">${mTotalSeries} سيريه (${group.colors.length} لون)</p>
+                    </div>
+                </div>
+                <span class="text-devo-orange font-bold text-xs shrink-0 whitespace-nowrap">${mPrice.toLocaleString()} ج.م</span>
+            </div>`;
+        });
+        previewContainer.innerHTML = phtml;
+    }
 
     const errorBadge = document.getElementById('vcart-error-badge');
     if (errorBadge) {
@@ -934,28 +1058,56 @@ export function prefillCustomerCheckoutForm() {
     if (addrInput && !addrInput.value && last.address) addrInput.value = last.address;
 }
 
+export function switchVisitorCartSection(section) {
+    if (section === 'customer' && (!visitorCartItems || visitorCartItems.length === 0)) {
+        showToast('سلتك فارغة، أضف موديلات أولاً!', 'warning');
+        return;
+    }
+
+    currentVisitorCartSection = section;
+    const secItems = document.getElementById('visitor-cart-section-items');
+    const secCustomer = document.getElementById('visitor-cart-section-customer');
+    const btnItems = document.getElementById('btn-vcart-sec-items');
+    const btnCustomer = document.getElementById('btn-vcart-sec-customer');
+
+    if (section === 'items') {
+        if (secItems) secItems.classList.remove('hidden');
+        if (secCustomer) secCustomer.classList.add('hidden');
+        if (btnItems) {
+            btnItems.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer';
+        }
+        if (btnCustomer) {
+            btnCustomer.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
+        }
+    } else {
+        if (secItems) secItems.classList.add('hidden');
+        if (secCustomer) secCustomer.classList.remove('hidden');
+        if (btnCustomer) {
+            btnCustomer.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer';
+        }
+        if (btnItems) {
+            btnItems.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+window.switchVisitorCartSection = switchVisitorCartSection;
+
 export function switchVisitorCartSubTab(tab) {
     currentVisitorSubTab = tab;
-    const btnCart = document.getElementById('tab-btn-vcart-current');
     const btnHistory = document.getElementById('tab-btn-vcart-history');
     const wrapCart = document.getElementById('visitor-cart-main-wrapper');
     const wrapHistory = document.getElementById('visitor-history-main-wrapper');
 
     if (tab === 'cart') {
-        if (btnCart) {
-            btnCart.className = 'px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all bg-devo-orange text-white shadow-md cursor-pointer';
-        }
         if (btnHistory) {
-            btnHistory.className = 'px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
+            btnHistory.className = 'px-3.5 py-2 rounded-xl font-bold text-xs text-devo-muted hover:text-white bg-devo-black/50 hover:bg-devo-gray/40 border border-devo-gray/50 flex items-center gap-1.5 transition-all cursor-pointer';
         }
         if (wrapCart) wrapCart.classList.remove('hidden');
         if (wrapHistory) wrapHistory.classList.add('hidden');
     } else {
         if (btnHistory) {
-            btnHistory.className = 'px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all bg-devo-orange text-white shadow-md cursor-pointer';
-        }
-        if (btnCart) {
-            btnCart.className = 'px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
+            btnHistory.className = 'px-3.5 py-2 rounded-xl font-bold text-xs text-white bg-devo-orange border border-devo-orange flex items-center gap-1.5 transition-all shadow-md cursor-pointer';
         }
         if (wrapCart) wrapCart.classList.add('hidden');
         if (wrapHistory) wrapHistory.classList.remove('hidden');
