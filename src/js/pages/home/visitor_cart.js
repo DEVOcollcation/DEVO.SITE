@@ -111,6 +111,17 @@ export function getVisitorCartQtyForColor(modelId, colorId) {
     );
     return item ? item.qty : 0;
 }
+window.getVisitorCartQtyForColor = getVisitorCartQtyForColor;
+
+export function getVisitorCartQtyForModel(modelId) {
+    if (!isVisitorCartLoaded) {
+        loadVisitorCart();
+    }
+    return visitorCartItems
+        .filter(i => String(i.modelId) === String(modelId))
+        .reduce((sum, i) => sum + (parseInt(i.qty) || 0), 0);
+}
+window.getVisitorCartQtyForModel = getVisitorCartQtyForModel;
 
 // ==========================================
 // 🌟 إضافة للسلة
@@ -328,23 +339,30 @@ window.visitorAddSetToCart = (event, modelId) => {
             const currentVal = parseInt(input.value) || 0;
             const spaceLeft = dbAvailable - currentVal;
             if (spaceLeft <= 0) return;
-            const addVal = Math.min(setCount, spaceLeft);
-            input.value = currentVal + addVal;
-            if (typeof window.updateColorRowUI === 'function') {
+            const newVal = currentVal + addVal;
+            input.value = newVal;
+            if (typeof window.syncColorQtyAndAutoSave === 'function') {
+                window.syncColorQtyAndAutoSave(model.id, inv.color_id, newVal);
+            } else if (typeof window.updateColorRowUI === 'function') {
                 window.updateColorRowUI(input);
             }
             appliedCount++;
         }
     });
 
+    if (btn) { btn.disabled = false; delete btn.dataset.locked; }
+
     if (appliedCount === 0) {
-        if (btn) { btn.disabled = false; delete btn.dataset.locked; }
         return showToast('جميع الألوان مضافة بالفعل بأقصى حد بالسلة!', 'info');
     }
 
-    saveVisitorModelCart(modelId, btn, null, () => {
-        if (btn) { btn.disabled = false; delete btn.dataset.locked; }
-    });
+    if (typeof window.syncColorQtyAndAutoSave !== 'function') {
+        saveVisitorModelCart(modelId, btn, null, () => {
+            if (btn) { btn.disabled = false; delete btn.dataset.locked; }
+        });
+    } else {
+        showToast(`تمت إضافة الطقم وحفظه في السلة تلقائياً (${appliedCount} لون)`, 'success');
+    }
 };
 
 // ==========================================
