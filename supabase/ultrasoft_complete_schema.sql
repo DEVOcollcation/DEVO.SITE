@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
     address text,
     deposit numeric DEFAULT 0,
     deposit_receiver text,
+    deposit_payment_method text DEFAULT 'نقدي',
     notes text,
     total_price numeric NOT NULL,
     total_series integer NOT NULL,

@@ -167,12 +167,14 @@ export function applyDepositFilters() {
             const custPhone = String(order.customer_phone || order.phone_1 || order.phone || '').toLowerCase();
             const workerName = String(order.system_users?.full_name || '').toLowerCase();
             const receiverName = String(order.deposit_receiver || '').toLowerCase();
+            const depMethod = String(order.deposit_payment_method || '').toLowerCase();
 
             const matches = orderNum.includes(searchVal) ||
                             custName.includes(searchVal) ||
                             custPhone.includes(searchVal) ||
                             workerName.includes(searchVal) ||
-                            receiverName.includes(searchVal);
+                            receiverName.includes(searchVal) ||
+                            depMethod.includes(searchVal);
 
             if (!matches) return false;
         }
@@ -225,6 +227,13 @@ function renderDepositTable(orders) {
         const custPhone = o.customer_phone || o.phone_1 || '-';
         const workerName = o.system_users?.full_name || 'غير معروف';
         const depositReceiver = o.deposit_receiver || '-';
+        const depositMethod = o.deposit_payment_method || 'نقدي';
+
+        let methodBadgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+        if (depositMethod.includes('محفظة')) methodBadgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+        else if (depositMethod.includes('انستا باي') || depositMethod.toLowerCase().includes('instapay')) methodBadgeClass = 'bg-purple-500/15 text-purple-400 border-purple-500/30';
+        else if (depositMethod.includes('تحويل') || depositMethod.includes('بنك')) methodBadgeClass = 'bg-sky-500/15 text-sky-400 border-sky-500/30';
+        else if (depositMethod === 'آخر' || depositMethod.startsWith('آخر')) methodBadgeClass = 'bg-slate-500/15 text-slate-300 border-slate-500/30';
 
         return `
             <tr class="hover:bg-devo-dark/50 transition-colors border-b border-devo-gray/40 text-sm">
@@ -241,6 +250,11 @@ function renderDepositTable(orders) {
                         ${depositReceiver}
                     </span>
                 </td>
+                <td class="px-4 py-3">
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold border ${methodBadgeClass} inline-block">
+                        ${depositMethod}
+                    </span>
+                </td>
                 <td class="px-4 py-3 font-bold text-devo-success text-base whitespace-nowrap">
                     ${depositVal.toLocaleString('ar-EG')} ج.م
                 </td>
@@ -253,7 +267,7 @@ function renderDepositTable(orders) {
     if (tFooter) {
         tFooter.innerHTML = `
             <tr class="bg-devo-dark font-bold text-white border-t-2 border-devo-orange/50">
-                <td colspan="6" class="px-4 py-3 text-left">إجمالي مبالغ العربون (المفلترة):</td>
+                <td colspan="7" class="px-4 py-3 text-left">إجمالي مبالغ العربون (المفلترة):</td>
                 <td class="px-4 py-3 text-devo-success text-lg whitespace-nowrap">
                     ${totalDepositSum.toLocaleString('ar-EG')} ج.م
                 </td>
@@ -316,6 +330,7 @@ function printDepositReport() {
                 <td style="padding: 4px 6px; border: 1px solid #333; text-align: center; font-family: monospace;" dir="ltr">${o.customer_phone || o.phone_1 || '-'}</td>
                 <td style="padding: 4px 6px; border: 1px solid #333;">${o.system_users?.full_name || 'غير معروف'}</td>
                 <td style="padding: 4px 6px; border: 1px solid #333; text-align: center;">${o.deposit_receiver || '-'}</td>
+                <td style="padding: 4px 6px; border: 1px solid #333; text-align: center;">${o.deposit_payment_method || 'نقدي'}</td>
                 <td style="padding: 4px 6px; border: 1px solid #333; text-align: center; font-weight: bold; background: #f0fdf4 !important; -webkit-print-color-adjust: exact;">${depositVal.toLocaleString('ar-EG')} ج.م</td>
             </tr>
         `;
@@ -442,6 +457,7 @@ function printDepositReport() {
                         <th style="width: 90px;">رقم العميل</th>
                         <th style="width: 100px;">أنشأ الأوردر</th>
                         <th style="width: 100px;">مستلم العربون</th>
+                        <th style="width: 90px;">طريقة الدفع</th>
                         <th style="width: 90px;">قيمة العربون</th>
                     </tr>
                 </thead>
@@ -450,7 +466,7 @@ function printDepositReport() {
                 </tbody>
                 <tfoot>
                     <tr class="tfoot-sum">
-                        <td colspan="7" style="padding: 6px; border: 1px solid #333; text-align: left;">الإجمالي الكلي لجميع العربونات بالتقرير:</td>
+                        <td colspan="8" style="padding: 6px; border: 1px solid #333; text-align: left;">الإجمالي الكلي لجميع العربونات بالتقرير:</td>
                         <td style="padding: 6px; border: 1px solid #333; text-align: center; color: #15803d; font-size: 13px;">${totalSum.toLocaleString('ar-EG')} ج.م</td>
                     </tr>
                 </tfoot>

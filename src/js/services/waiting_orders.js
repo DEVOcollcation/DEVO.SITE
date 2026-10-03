@@ -26,6 +26,7 @@ export function parseWaitingOrderMeta(notesStr = '', orderObj = null) {
         worker_name: orderObj?.worker_name || '',
         deposit: Number(orderObj?.deposit ?? 0),
         deposit_receiver: orderObj?.deposit_receiver || '',
+        deposit_payment_method: orderObj?.deposit_payment_method || 'نقدي',
         is_worker_waiting: false,
         saved_at: orderObj?.created_at || null,
         cleanNotes: ''
@@ -41,6 +42,7 @@ export function parseWaitingOrderMeta(notesStr = '', orderObj = null) {
             if (!meta.worker_name && parsed.worker_name) meta.worker_name = parsed.worker_name;
             if (meta.deposit === 0 && parsed.deposit !== undefined) meta.deposit = Number(parsed.deposit) || 0;
             if (!meta.deposit_receiver && parsed.deposit_receiver) meta.deposit_receiver = parsed.deposit_receiver;
+            if (parsed.deposit_payment_method) meta.deposit_payment_method = parsed.deposit_payment_method;
             if (parsed.is_worker_waiting) meta.is_worker_waiting = true;
             if (parsed.saved_at) meta.saved_at = parsed.saved_at;
         } catch (e) {
@@ -67,6 +69,7 @@ export function encodeWaitingOrderNotes(rawNotes = '', metaObj = {}) {
         worker_name: metaObj.worker_name || 'موظف',
         deposit: Number(metaObj.deposit || 0),
         deposit_receiver: metaObj.deposit_receiver || '',
+        deposit_payment_method: metaObj.deposit_payment_method || 'نقدي',
         is_worker_waiting: true,
         saved_at: new Date().toISOString()
     };
@@ -84,6 +87,7 @@ export async function saveWaitingOrderDraft({
     address = null,
     deposit = 0,
     depositReceiver = null,
+    depositPaymentMethod = 'نقدي',
     notes = '',
     cartItems = [],
     currentUser
@@ -106,6 +110,7 @@ export async function saveWaitingOrderDraft({
         worker_name: workerName,
         deposit: Number(deposit) || 0,
         deposit_receiver: depositReceiver ? depositReceiver.trim() : '',
+        deposit_payment_method: depositPaymentMethod || 'نقدي',
         is_worker_waiting: true
     };
 
@@ -313,6 +318,7 @@ export async function convertWaitingOrderToPermanent({
         total_series: Number(waitingOrder.total_series) || 0,
         deposit: Number(meta.deposit || waitingOrder.deposit || 0),
         deposit_receiver: meta.deposit_receiver || waitingOrder.deposit_receiver || null,
+        deposit_payment_method: meta.deposit_payment_method || waitingOrder.deposit_payment_method || 'نقدي',
         status: 'created'
     };
 

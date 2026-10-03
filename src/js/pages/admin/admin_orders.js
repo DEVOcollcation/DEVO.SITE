@@ -22,6 +22,7 @@ let localEditingCustomerData = {
     address: '',
     deposit: 0,
     deposit_receiver: '',
+    deposit_payment_method: 'نقدي',
     notes: ''
 };
 let currentAdminTab = 'active';
@@ -969,6 +970,12 @@ window.viewAdminOrderDetails = async (id) => {
                                 <span class="text-devo-muted">مستلم العربون:</span>
                                 <span class="text-white font-medium">${escapeHtml(o.deposit_receiver || 'غير محدد')}</span>
                             </div>
+                            ${(parseFloat(o.deposit) || 0) > 0 ? `
+                                <div class="flex justify-between items-center">
+                                    <span class="text-devo-muted">طريقة دفع العربون:</span>
+                                    <span class="text-emerald-400 font-bold">${escapeHtml(o.deposit_payment_method || 'نقدي')}</span>
+                                </div>
+                            ` : ''}
                             <div class="flex justify-between items-center">
                                 <span class="text-devo-muted">تاريخ الإنشاء:</span>
                                 <span class="text-devo-muted font-mono" dir="ltr">${orderDateStr}</span>
@@ -1253,6 +1260,7 @@ window.printAdminOrder = async (id, type) => {
                         <div class="info-row">
                             <span class="label">العربون:</span> <span class="val" style="font-family: monospace; font-weight: bold;">${Number(o.deposit || 0).toLocaleString()} ج.م</span>
                             ${o.deposit_receiver ? `<span style="color: #cbd5e1; margin: 0 4px;">|</span><span class="label">المستلم:</span> <span class="val">${o.deposit_receiver}</span>` : ''}
+                            ${o.deposit_payment_method ? `<span style="color: #cbd5e1; margin: 0 4px;">|</span><span class="label">طريقة الدفع:</span> <span class="val">${o.deposit_payment_method}</span>` : ''}
                         </div>
                     </div>
                 </div>
@@ -1670,6 +1678,7 @@ window.triggerLocalEdit = async () => {
         address: o.address || '',
         deposit: Number(o.deposit) || 0,
         deposit_receiver: o.deposit_receiver || '',
+        deposit_payment_method: o.deposit_payment_method || 'نقدي',
         notes: o.notes || ''
     };
 
@@ -1730,6 +1739,7 @@ window.duplicateAdminOrder = async (orderId) => {
         address: o.address || '',
         deposit: Number(o.deposit) || 0,
         deposit_receiver: o.deposit_receiver || '',
+        deposit_payment_method: o.deposit_payment_method || 'نقدي',
         notes: o.notes || ''
     };
 
@@ -1901,9 +1911,19 @@ async function renderLocalEditModal(o) {
                                     <input type="number" step="any" min="0" id="ao-edit-deposit" value="${localEditingCustomerData.deposit}" oninput="handleLocalDepositChange(this.value)" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-devo-success font-black font-mono text-sm focus:border-devo-orange outline-none transition-colors">
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-bold text-devo-muted mb-1">مستلم العربون</label>
-                                    <input type="text" id="ao-edit-deposit-receiver" value="${escapeHtml(localEditingCustomerData.deposit_receiver)}" placeholder="اسم المستلم / الخزينة..." class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors">
+                                    <label class="block text-[11px] font-bold text-devo-muted mb-1">طريقة الدفع</label>
+                                    <select id="ao-edit-deposit-method" class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors cursor-pointer">
+                                        <option value="نقدي" ${localEditingCustomerData.deposit_payment_method === 'نقدي' ? 'selected' : ''}>نقدي</option>
+                                        <option value="محفظة" ${localEditingCustomerData.deposit_payment_method === 'محفظة' ? 'selected' : ''}>محفظة</option>
+                                        <option value="انستا باي" ${localEditingCustomerData.deposit_payment_method === 'انستا باي' ? 'selected' : ''}>انستا باي</option>
+                                        <option value="تحويل بنكي" ${localEditingCustomerData.deposit_payment_method === 'تحويل بنكي' ? 'selected' : ''}>تحويل بنكي</option>
+                                        <option value="آخر" ${(!['نقدي','محفظة','انستا باي','تحويل بنكي'].includes(localEditingCustomerData.deposit_payment_method) && localEditingCustomerData.deposit_payment_method) || localEditingCustomerData.deposit_payment_method === 'آخر' ? 'selected' : ''}>آخر</option>
+                                    </select>
                                 </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-devo-muted mb-1">مستلم العربون</label>
+                                <input type="text" id="ao-edit-deposit-receiver" value="${escapeHtml(localEditingCustomerData.deposit_receiver)}" placeholder="اسم المستلم / الخزينة..." class="w-full bg-devo-dark border border-devo-gray rounded-xl px-3 py-2 text-white text-xs focus:border-devo-orange outline-none transition-colors">
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-devo-muted mb-1">ملاحظات وتعليمات الأوردر</label>
@@ -2485,6 +2505,7 @@ window.saveLocalOrderEdits = async (orderId) => {
     const address = document.getElementById('ao-edit-address')?.value?.trim() || null;
     const deposit = parseFloat(document.getElementById('ao-edit-deposit')?.value) || 0;
     const depositReceiver = document.getElementById('ao-edit-deposit-receiver')?.value?.trim() || null;
+    const depositMethod = document.getElementById('ao-edit-deposit-method')?.value || 'نقدي';
     const notes = document.getElementById('ao-edit-notes')?.value?.trim() || null;
 
     if (!customerName) {
@@ -2565,6 +2586,7 @@ window.saveLocalOrderEdits = async (orderId) => {
             address: address,
             deposit: deposit,
             deposit_receiver: depositReceiver,
+            deposit_payment_method: depositMethod,
             notes: notes,
             total_price: calculateLocalTotalPrice(),
             total_series: calculateLocalTotalSeries(),

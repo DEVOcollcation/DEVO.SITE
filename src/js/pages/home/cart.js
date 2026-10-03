@@ -26,6 +26,44 @@ let currentCartFilter = 'all'; // 'all', 'ok', 'error'
 // ==========================================
 // 🌟 إدارة ومزامنة مسودة بيانات العميل في السلة 🌟
 // ==========================================
+function getDepositMethodValue() {
+    const select = document.getElementById('c-deposit-method');
+    const method = select?.value || 'نقدي';
+    if (method === 'آخر') {
+        const custom = document.getElementById('c-deposit-method-custom')?.value?.trim();
+        return custom ? `آخر (${custom})` : 'آخر';
+    }
+    return method;
+}
+
+function setDepositMethodValue(val) {
+    const select = document.getElementById('c-deposit-method');
+    const customWrap = document.getElementById('c-deposit-method-custom-wrap');
+    const customInput = document.getElementById('c-deposit-method-custom');
+    if (!select) return;
+
+    if (!val || val === 'نقدي') {
+        select.value = 'نقدي';
+        if (customWrap) customWrap.classList.add('hidden');
+        if (customInput) customInput.value = '';
+        return;
+    }
+
+    const standard = ['نقدي', 'محفظة', 'انستا باي', 'تحويل بنكي'];
+    if (standard.includes(val)) {
+        select.value = val;
+        if (customWrap) customWrap.classList.add('hidden');
+        if (customInput) customInput.value = '';
+    } else {
+        select.value = 'آخر';
+        if (customWrap) customWrap.classList.remove('hidden');
+        if (customInput) {
+            const match = String(val).match(/^آخر\s*\((.*)\)$/);
+            customInput.value = match ? match[1] : (val === 'آخر' ? '' : val);
+        }
+    }
+}
+
 function saveCustomerFormData() {
     if (editingOrderId || editingWaitingOrderId) return;
     const name = document.getElementById('c-name')?.value ?? '';
@@ -34,9 +72,10 @@ function saveCustomerFormData() {
     const address = document.getElementById('c-address')?.value ?? '';
     const deposit = document.getElementById('c-deposit')?.value ?? '0';
     const receiver = document.getElementById('c-receiver')?.value ?? '';
+    const depositMethod = getDepositMethodValue();
     const notes = document.getElementById('c-notes')?.value ?? '';
 
-    const hasData = name.trim() || phone1.trim() || phone2.trim() || address.trim() || (deposit && deposit !== '0') || receiver.trim() || notes.trim();
+    const hasData = name.trim() || phone1.trim() || phone2.trim() || address.trim() || (deposit && deposit !== '0') || receiver.trim() || notes.trim() || (depositMethod && depositMethod !== 'نقدي');
     if (hasData) {
         localStorage.setItem('devo_cart_customer_draft', JSON.stringify({
             customer_name: name,
@@ -45,6 +84,7 @@ function saveCustomerFormData() {
             address: address,
             deposit: deposit,
             deposit_receiver: receiver,
+            deposit_payment_method: depositMethod,
             notes: notes
         }));
     } else {
@@ -74,6 +114,7 @@ function restoreCustomerFormData() {
         if (addrEl && !addrEl.value && draft.address) addrEl.value = draft.address;
         if (depEl && (!depEl.value || depEl.value === '0') && draft.deposit !== undefined) depEl.value = draft.deposit;
         if (recEl && !recEl.value && draft.deposit_receiver) recEl.value = draft.deposit_receiver;
+        if (draft.deposit_payment_method) setDepositMethodValue(draft.deposit_payment_method);
         if (notesEl && !notesEl.value && draft.notes) notesEl.value = draft.notes;
 
         if (recEl && depEl) {
@@ -89,6 +130,7 @@ function clearCustomerFormData() {
     localStorage.removeItem('devo_cart_customer_draft');
     const form = document.getElementById('checkout-form');
     if (form) form.reset();
+    setDepositMethodValue('نقدي');
     const receiverEl = document.getElementById('c-receiver');
     if (receiverEl) receiverEl.required = false;
 }
@@ -108,6 +150,22 @@ export function initCart() {
                 if (recEl) recEl.required = val > 0;
             });
             form.addEventListener('change', saveCustomerFormData);
+        }
+
+        const methodSelect = document.getElementById('c-deposit-method');
+        if (methodSelect) {
+            methodSelect.addEventListener('change', () => {
+                const customWrap = document.getElementById('c-deposit-method-custom-wrap');
+                if (customWrap) {
+                    if (methodSelect.value === 'آخر') {
+                        customWrap.classList.remove('hidden');
+                        document.getElementById('c-deposit-method-custom')?.focus();
+                    } else {
+                        customWrap.classList.add('hidden');
+                    }
+                }
+                saveCustomerFormData();
+            });
         }
 
         window.refreshCartView = loadAndRenderCart;
@@ -259,6 +317,7 @@ async function loadAndRenderCart() {
                 document.getElementById('c-notes').value = originalOrderData.notes || ''; 
                 document.getElementById('c-deposit').value = originalOrderData.deposit || 0;
                 document.getElementById('c-receiver').value = originalOrderData.deposit_receiver || '';
+                setDepositMethodValue(originalOrderData.deposit_payment_method || 'نقدي');
                 const depVal = parseFloat(originalOrderData.deposit) || 0;
                 const recEl = document.getElementById('c-receiver');
                 if (recEl) recEl.required = depVal > 0;
@@ -282,6 +341,7 @@ async function loadAndRenderCart() {
                 document.getElementById('c-notes').value = waitingOrderData.notes || '';
                 document.getElementById('c-deposit').value = waitingOrderData.deposit || 0;
                 document.getElementById('c-receiver').value = waitingOrderData.deposit_receiver || '';
+                setDepositMethodValue(waitingOrderData.deposit_payment_method || 'نقدي');
                 const depVal = parseFloat(waitingOrderData.deposit) || 0;
                 const recEl = document.getElementById('c-receiver');
                 if (recEl) recEl.required = depVal > 0;
@@ -859,6 +919,7 @@ async function handleCheckout(e) {
             total_series: cartItems.reduce((sum, item) => sum + item.qty, 0),
             deposit: parseFloat(document.getElementById('c-deposit').value) || 0,
             deposit_receiver: document.getElementById('c-receiver').value || null,
+            deposit_payment_method: getDepositMethodValue(),
             status: 'created'
         };
 
@@ -1015,6 +1076,7 @@ export async function saveCurrentCartAsWaitingOrder() {
         const phone2 = document.getElementById('c-phone2')?.value?.trim() || null;
         const deposit = parseFloat(document.getElementById('c-deposit')?.value) || 0;
         const depositReceiver = document.getElementById('c-receiver')?.value?.trim() || null;
+        const depositPaymentMethod = getDepositMethodValue();
         const notes = document.getElementById('c-notes')?.value?.trim() || '';
 
         const result = await saveWaitingOrderDraft({
@@ -1025,6 +1087,7 @@ export async function saveCurrentCartAsWaitingOrder() {
             address,
             deposit,
             depositReceiver,
+            depositPaymentMethod,
             notes,
             cartItems,
             currentUser
@@ -1269,7 +1332,13 @@ async function showInvoiceModal(order, items) {
     const invTotal = document.getElementById('inv-total-price');
     if (invTotal) invTotal.textContent = Number(oToUse.total_price || 0).toLocaleString() + ' ج.م';
     const invDeposit = document.getElementById('inv-deposit');
-    if (invDeposit) invDeposit.textContent = Number(oToUse.deposit || 0).toLocaleString() + ' ج.م';
+    if (invDeposit) {
+        const depVal = Number(oToUse.deposit || 0);
+        invDeposit.textContent = depVal.toLocaleString() + ' ج.م';
+        if (depVal > 0 && oToUse.deposit_payment_method) {
+            invDeposit.textContent += ` (${oToUse.deposit_payment_method})`;
+        }
+    }
     const invRem = document.getElementById('inv-remaining');
     if (invRem) invRem.textContent = Number((oToUse.total_price || 0) - (oToUse.deposit || 0)).toLocaleString() + ' ج.م';
 

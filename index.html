@@ -863,14 +863,30 @@
                                         <label class="block text-xs font-bold text-devo-muted mb-1">العنوان <span class="text-devo-error">*</span></label>
                                         <input type="text" id="c-address" required class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
                                     </div>
-                                    <div class="grid grid-cols-2 gap-3 pt-3 border-t border-devo-gray">
-                                        <div>
-                                            <label class="block text-xs font-bold text-devo-muted mb-1">العربون (المدفوع)</label>
-                                            <input type="number" id="c-deposit" value="0" min="0" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-devo-success font-bold focus:border-devo-orange outline-none text-sm transition-colors">
+                                    <div class="space-y-3 pt-3 border-t border-devo-gray">
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label class="block text-xs font-bold text-devo-muted mb-1">العربون (المدفوع)</label>
+                                                <input type="number" id="c-deposit" value="0" min="0" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-devo-success font-bold focus:border-devo-orange outline-none text-sm transition-colors">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-devo-muted mb-1">طريقة الدفع</label>
+                                                <select id="c-deposit-method" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors cursor-pointer">
+                                                    <option value="نقدي">نقدي</option>
+                                                    <option value="محفظة">محفظة</option>
+                                                    <option value="انستا باي">انستا باي</option>
+                                                    <option value="تحويل بنكي">تحويل بنكي</option>
+                                                    <option value="آخر">آخر</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div id="c-deposit-method-custom-wrap" class="hidden">
+                                            <label class="block text-xs font-bold text-devo-muted mb-1">حدد طريقة الدفع الأخرى</label>
+                                            <input type="text" id="c-deposit-method-custom" placeholder="اكتب طريقة الدفع..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2 text-white focus:border-devo-orange outline-none text-xs transition-colors">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-bold text-devo-muted mb-1">مستلم العربون</label>
-                                            <input type="text" id="c-receiver" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
+                                            <input type="text" id="c-receiver" placeholder="اسم مستلم العربون / الخزينة..." class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm transition-colors">
                                         </div>
                                     </div>
                                     <div>

@@ -723,7 +723,9 @@ document.getElementById('btn-confirm-edit')?.addEventListener('click', async () 
         customer_name: targetOrder.customer_name,
         phone_1: targetOrder.phone_1, phone_2: targetOrder.phone_2,
         address: targetOrder.address, deposit: targetOrder.deposit,
-        deposit_receiver: targetOrder.deposit_receiver, notes: targetOrder.notes,
+        deposit_receiver: targetOrder.deposit_receiver,
+        deposit_payment_method: targetOrder.deposit_payment_method || 'نقدي',
+        notes: targetOrder.notes,
         original_items: targetOrder.order_items // 🌟 السطر السحري: تمرير ما يملكه الأوردر للسلة 🌟
     };
     localStorage.setItem('devo_edit_order_data', JSON.stringify(orderData));
@@ -1087,7 +1089,8 @@ window.resumeWaitingOrderToCart = async (id) => {
         address: vo.address || '',
         notes: meta.cleanNotes || '',
         deposit: meta.deposit || 0,
-        deposit_receiver: meta.deposit_receiver || ''
+        deposit_receiver: meta.deposit_receiver || '',
+        deposit_payment_method: meta.deposit_payment_method || 'نقدي'
     };
 
     localStorage.setItem('devo_cart', JSON.stringify(newCart));

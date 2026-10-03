@@ -749,8 +749,9 @@ export function applyDepositsFilters() {
             const phone = String(o.phone_1 || o.customer_phone || '').toLowerCase();
             const worker = String(o.system_users?.full_name || o.system_users?.username || '').toLowerCase();
             const receiver = String(o.deposit_receiver || '').toLowerCase();
+            const depMethod = String(o.deposit_payment_method || '').toLowerCase();
 
-            const match = num.includes(searchVal) || cust.includes(searchVal) || phone.includes(searchVal) || worker.includes(searchVal) || receiver.includes(searchVal);
+            const match = num.includes(searchVal) || cust.includes(searchVal) || phone.includes(searchVal) || worker.includes(searchVal) || receiver.includes(searchVal) || depMethod.includes(searchVal);
             if (!match) return false;
         }
 
@@ -781,7 +782,7 @@ function renderDepositsView(orders) {
     if (orders.length === 0) {
         tBody.innerHTML = `
             <tr>
-                <td colspan="8" class="p-8 text-center text-devo-muted">
+                <td colspan="9" class="p-8 text-center text-devo-muted">
                     <i class="ph ph-hand-coins text-4xl mb-2 block text-devo-gray"></i>
                     <span>لا توجد تقارير عربون تطابق خيارات الفلترة المحددة</span>
                 </td>
@@ -800,12 +801,30 @@ function renderDepositsView(orders) {
         const phone = o.phone_1 || o.customer_phone || '-';
         const workerName = o.system_users?.full_name || o.system_users?.username || 'غير محدد';
         const depositReceiver = o.deposit_receiver || '-';
+        const depositMethod = o.deposit_payment_method || 'نقدي';
         const depositVal = parseFloat(o.deposit) || 0;
         const totalVal = parseFloat(o.total_price) || 0;
         const remVal = totalVal - depositVal;
         const archiveBadge = o.is_archived
             ? '<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold ml-1 inline-block">أرشيف</span>'
             : '<span class="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] px-1.5 py-0.5 rounded font-sans font-bold ml-1 inline-block">نشط</span>';
+
+        let methodBadgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+        let methodIcon = '<i class="ph ph-money text-xs"></i>';
+
+        if (depositMethod.includes('محفظة')) {
+            methodBadgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+            methodIcon = '<i class="ph ph-wallet text-xs"></i>';
+        } else if (depositMethod.includes('انستا باي') || depositMethod.toLowerCase().includes('instapay')) {
+            methodBadgeClass = 'bg-purple-500/15 text-purple-400 border-purple-500/30';
+            methodIcon = '<i class="ph ph-lightning text-xs"></i>';
+        } else if (depositMethod.includes('تحويل') || depositMethod.includes('بنك')) {
+            methodBadgeClass = 'bg-sky-500/15 text-sky-400 border-sky-500/30';
+            methodIcon = '<i class="ph ph-bank text-xs"></i>';
+        } else if (depositMethod === 'آخر' || depositMethod.startsWith('آخر')) {
+            methodBadgeClass = 'bg-slate-500/15 text-slate-300 border-slate-500/30';
+            methodIcon = '<i class="ph ph-dots-three-circle text-xs"></i>';
+        }
 
         return `
             <tr class="hover:bg-devo-dark/50 transition-colors border-b border-devo-gray/40 text-xs">
@@ -825,6 +844,12 @@ function renderDepositsView(orders) {
                         ${depositReceiver}
                     </span>
                 </td>
+                <td class="px-3 py-3 whitespace-nowrap">
+                    <span class="px-2.5 py-1 rounded-md text-[11px] font-bold border ${methodBadgeClass} inline-flex items-center gap-1">
+                        ${methodIcon}
+                        <span>${depositMethod}</span>
+                    </span>
+                </td>
                 <td class="px-3 py-3 font-bold text-devo-success text-sm whitespace-nowrap">
                     ${depositVal.toLocaleString('ar-EG')} ج.م
                 </td>
@@ -839,7 +864,7 @@ function renderDepositsView(orders) {
     if (tFoot) {
         tFoot.innerHTML = `
             <tr class="bg-devo-dark font-bold text-white border-t-2 border-devo-orange/50 text-xs">
-                <td colspan="6" class="px-4 py-3 text-left">إجمالي مبالغ العربون المحصلة (${count} حركة):</td>
+                <td colspan="7" class="px-4 py-3 text-left">إجمالي مبالغ العربون المحصلة (${count} حركة):</td>
                 <td class="px-3 py-3 text-devo-success text-base whitespace-nowrap">${totalSum.toLocaleString('ar-EG')} ج.م</td>
                 <td></td>
             </tr>
@@ -1494,6 +1519,7 @@ export function executeActiveReportPrint(withCards = true) {
                     <th>الهاتف</th>
                     <th>الموظف</th>
                     <th>مستلم العربون</th>
+                    <th>طريقة الدفع</th>
                     <th>قيمة العربون</th>
                 </tr>
             `;
@@ -1512,6 +1538,7 @@ export function executeActiveReportPrint(withCards = true) {
                         <td class="text-center font-mono" dir="ltr">${o.phone_1 || o.customer_phone || '-'}</td>
                         <td>${o.system_users?.full_name || '-'}</td>
                         <td class="text-center font-bold">${o.deposit_receiver || '-'}</td>
+                        <td class="text-center font-bold">${o.deposit_payment_method || 'نقدي'}</td>
                         <td class="text-center font-bold bg-green-light">${(parseFloat(o.deposit) || 0).toLocaleString('ar-EG')} ج.م</td>
                     </tr>
                 `;
@@ -1519,7 +1546,7 @@ export function executeActiveReportPrint(withCards = true) {
 
             tableFootersHtml = `
                 <tr class="footer-row">
-                    <td colspan="7" style="text-align: left;">إجمالي مبالغ العربون المحصلة (${filteredDepositsData.length} حركة):</td>
+                    <td colspan="8" style="text-align: left;">إجمالي مبالغ العربون المحصلة (${filteredDepositsData.length} حركة):</td>
                     <td class="text-center font-bold">${totalDep.toLocaleString('ar-EG')} ج.م</td>
                 </tr>
             `;
