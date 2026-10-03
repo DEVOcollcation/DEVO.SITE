@@ -2860,13 +2860,30 @@
 
             <!-- شريط البحث والتصفية -->
             <div class="sticky top-[-32px] z-40 bg-devo-black/95 backdrop-blur-md border-b border-devo-gray py-3">
-                <div class="flex flex-wrap gap-2.5 items-center">
-                    <div class="relative flex-[2] min-w-[220px]">
-                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
-                        <input type="text" id="inbound-search" autocomplete="off" placeholder="بحث برقم الفاتورة، اسم المورد، الملاحظات..." 
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center">
+                    <!-- 1. بحث عام (رقم الفاتورة، اسم المورد، الملاحظات) -->
+                    <div class="relative lg:col-span-4 min-w-0">
+                        <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base pointer-events-none"></i>
+                        <input type="text" id="inbound-search" autocomplete="off" placeholder="بحث برقم الفاتورة، الملاحظات..." 
                             class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
                     </div>
-                    <div class="flex items-center bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl px-2.5 py-1 gap-1.5 min-w-[240px] transition-all">
+
+                    <!-- 2. بحث بكود مصنع الموديل -->
+                    <div class="relative lg:col-span-2 min-w-0">
+                        <i class="ph ph-barcode absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base pointer-events-none"></i>
+                        <input type="text" id="inbound-search-code" autocomplete="off" placeholder="كود مصنع الموديل..." 
+                            class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                    </div>
+
+                    <!-- 3. بحث باسم الموديل -->
+                    <div class="relative lg:col-span-3 min-w-0">
+                        <i class="ph ph-tag absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base pointer-events-none"></i>
+                        <input type="text" id="inbound-search-name" autocomplete="off" placeholder="اسم الموديل..." 
+                            class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                    </div>
+
+                    <!-- 4. تصفية التاريخ من وإلى -->
+                    <div class="flex items-center bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl px-2.5 py-1 gap-1.5 lg:col-span-3 min-w-0 transition-all">
                         <div class="flex items-center gap-1.5 flex-1 min-w-0">
                             <span class="text-xs text-devo-muted font-bold whitespace-nowrap shrink-0">من:</span>
                             <input type="date" id="inbound-date-from" dir="ltr" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer w-full text-center">

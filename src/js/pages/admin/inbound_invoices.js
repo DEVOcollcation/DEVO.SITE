@@ -27,6 +27,12 @@ export async function initInboundInvoicesView() {
     const searchInput = document.getElementById('inbound-search');
     if (searchInput) searchInput.addEventListener('input', renderInboundInvoicesList);
 
+    const searchCodeInput = document.getElementById('inbound-search-code');
+    if (searchCodeInput) searchCodeInput.addEventListener('input', renderInboundInvoicesList);
+
+    const searchNameInput = document.getElementById('inbound-search-name');
+    if (searchNameInput) searchNameInput.addEventListener('input', renderInboundInvoicesList);
+
     const dateFrom = document.getElementById('inbound-date-from');
     if (dateFrom) dateFrom.addEventListener('input', renderInboundInvoicesList);
 
@@ -73,12 +79,16 @@ export async function loadInboundData() {
             `;
         }
 
-        // 1. Fetch Inbound Invoices
+        // 1. Fetch Inbound Invoices along with their items & models
         const { data: invoicesData, error: invoicesError } = await supabase
             .from('inbound_invoices')
             .select(`
                 id, invoice_number, supplier_name, total_series, notes, created_at,
-                system_users:worker_id(id, full_name)
+                system_users:worker_id(id, full_name),
+                inbound_invoice_items(
+                    id, model_id, quantity,
+                    models(id, name, factory_code)
+                )
             `)
             .order('created_at', { ascending: false });
 
@@ -145,23 +155,51 @@ function updateStats() {
     }
 }
 
-// 🌟 Render table list of Inbound Invoices 🌟
+// 🌟 Render table list of Inbound Invoices with Multi-field Filtering 🌟
 function renderInboundInvoicesList() {
     const tbody = document.getElementById('inbound-list-tbody');
     if (!tbody) return;
 
     const searchQuery = document.getElementById('inbound-search')?.value.toLowerCase().trim() || '';
+    const searchCode = document.getElementById('inbound-search-code')?.value.toLowerCase().trim() || '';
+    const searchName = document.getElementById('inbound-search-name')?.value.toLowerCase().trim() || '';
     const dateFromVal = document.getElementById('inbound-date-from')?.value || '';
     const dateToVal = document.getElementById('inbound-date-to')?.value || '';
 
     // Filter invoices locally
     const filteredInvoices = inboundInvoices.filter(inv => {
-        // Search filter
+        // 1. General search (invoice number, supplier name, notes, employee)
         const matchesSearch = !searchQuery || 
-            inv.invoice_number.toLowerCase().includes(searchQuery) ||
+            (inv.invoice_number && inv.invoice_number.toLowerCase().includes(searchQuery)) ||
+            (inv.supplier_name && inv.supplier_name.toLowerCase().includes(searchQuery)) ||
+            (inv.notes && inv.notes.toLowerCase().includes(searchQuery)) ||
             (inv.system_users?.full_name && inv.system_users.full_name.toLowerCase().includes(searchQuery));
 
-        // Date filter
+        // Get list of models for this invoice
+        const items = inv.inbound_invoice_items || [];
+        const invoiceModels = items.map(item => {
+            return item.models || modelsCache.find(m => m.id === item.model_id);
+        }).filter(Boolean);
+
+        // 2. Search by model factory code
+        let matchesCode = true;
+        if (searchCode) {
+            matchesCode = invoiceModels.some(model => {
+                const code = model.factory_code ? String(model.factory_code).toLowerCase().trim() : '';
+                return code.includes(searchCode);
+            });
+        }
+
+        // 3. Search by model name
+        let matchesName = true;
+        if (searchName) {
+            matchesName = invoiceModels.some(model => {
+                const name = model.name ? String(model.name).toLowerCase().trim() : '';
+                return name.includes(searchName);
+            });
+        }
+
+        // 4. Date filter
         let matchesDate = true;
         if (dateFromVal) {
             const fromDate = new Date(dateFromVal + 'T00:00:00');
@@ -174,7 +212,7 @@ function renderInboundInvoicesList() {
             matchesDate = matchesDate && (invDate <= toDate);
         }
 
-        return matchesSearch && matchesDate;
+        return matchesSearch && matchesCode && matchesName && matchesDate;
     });
 
     if (filteredInvoices.length === 0) {
@@ -196,6 +234,36 @@ function renderInboundInvoicesList() {
             year: 'numeric', month: 'short', day: 'numeric',
             hour: '2-digit', minute: '2-digit'
         });
+
+        // Collect distinct models for visual tags
+        const seenModelKeys = new Set();
+        const distinctModels = [];
+        (inv.inbound_invoice_items || []).forEach(item => {
+            const m = item.models || modelsCache.find(mc => mc.id === item.model_id);
+            if (m && !seenModelKeys.has(m.id)) {
+                seenModelKeys.add(m.id);
+                distinctModels.push(m);
+            }
+        });
+
+        const modelsChipsHtml = distinctModels.length > 0 ? `
+            <div class="flex flex-wrap gap-1 mt-1.5">
+                ${distinctModels.slice(0, 3).map(m => {
+                    const isCodeMatch = searchCode && m.factory_code && String(m.factory_code).toLowerCase().includes(searchCode);
+                    const isNameMatch = searchName && m.name && String(m.name).toLowerCase().includes(searchName);
+                    const highlightClass = (isCodeMatch || isNameMatch) 
+                        ? 'border-devo-orange/80 bg-devo-orange/15 text-devo-orange font-bold shadow-sm' 
+                        : 'border-devo-gray/60 bg-devo-black/60 text-devo-muted';
+                    return `
+                        <span class="inline-flex items-center gap-1 border px-1.5 py-0.5 rounded text-[10px] ${highlightClass}">
+                            <span class="font-mono text-devo-orange">[${m.factory_code || ''}]</span>
+                            <span class="truncate max-w-[120px] text-white">${m.name || ''}</span>
+                        </span>
+                    `;
+                }).join('')}
+                ${distinctModels.length > 3 ? `<span class="text-[10px] text-devo-muted self-center">+${distinctModels.length - 3} أخرى</span>` : ''}
+            </div>
+        ` : '';
 
         const viewBtn = `
             <button type="button" onclick="event.preventDefault(); viewInboundInvoiceDetails('${inv.id}')" 
@@ -230,7 +298,10 @@ function renderInboundInvoicesList() {
 
         return `
             <tr class="hover:bg-devo-gray/25 transition-colors border-b border-devo-gray/30">
-                <td class="p-4 font-bold text-devo-orange">${inv.invoice_number}</td>
+                <td class="p-4">
+                    <span class="font-bold text-devo-orange text-sm">${inv.invoice_number}</span>
+                    ${modelsChipsHtml}
+                </td>
                 <td class="p-4 font-black">${inv.total_series} سري</td>
                 <td class="p-4 text-devo-muted">${inv.system_users?.full_name || 'غير معروف'}</td>
                 <td class="p-4 text-xs text-devo-muted" dir="ltr">${dateStr}</td>
