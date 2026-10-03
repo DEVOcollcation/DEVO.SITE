@@ -1,4 +1,4 @@
-﻿supabase link --project-ref abxbhtysmqzrswzsdrzi
+supabase link --project-ref abxbhtysmqzrswzsdrzi
 
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
@@ -2077,52 +2077,145 @@ AS $$
 DECLARE
     v_invoice_id uuid;
     v_invoice_number text;
+    v_diff_record record;
     v_item record;
-    v_old_item record;
     v_current_stock int;
     v_model_name text;
     v_color_name text;
 BEGIN
-    -- ط£) ط¥ظ†ط´ط§ط، ط¬ط¯ظˆظ„ ظ…ط¤ظ‚طھ ظ„طھط®ط²ظٹظ† ط§ظ„ط£طµظ†ط§ظپ ط§ظ„ظ…طھط£ط«ط±ط© ظ„ظ„طھط­ظ‚ظ‚ ط§ظ„ظ†ظ‡ط§ط¦ظٹ ظ…ظ† ط§ظ„ظ…ط®ط²ظˆظ†
-    CREATE TEMP TABLE affected_items_temp ON COMMIT DROP AS
-    SELECT DISTINCT model_id, color_id FROM (
-        SELECT model_id, color_id FROM public.inbound_invoice_items WHERE inbound_invoice_id = p_invoice_id
-        UNION ALL
-        SELECT model_id, color_id 
-        FROM jsonb_to_recordset(p_invoice_items) AS x(model_id uuid, color_id uuid, qty int)
-    ) AS tmp WHERE model_id IS NOT NULL AND color_id IS NOT NULL;
-
-    -- ط¨) ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ظˆط¶ط¹ ط§ظ„طھط¹ط¯ظٹظ„ ظ…ظ‚ط§ط¨ظ„ ط§ظ„ط¥ظ†ط´ط§ط، ط§ظ„ط¬ط¯ظٹط¯
+    -- 1) وضع التعديل (Update Existing Inbound Invoice)
     IF p_invoice_id IS NOT NULL THEN
         v_invoice_id := p_invoice_id;
-        SELECT invoice_number INTO v_invoice_number FROM public.inbound_invoices WHERE id = v_invoice_id;
-        
-        -- ط¥ط±ط¬ط§ط¹/ط®طµظ… ط§ظ„ظƒظ…ظٹط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ظ…ظ† ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ†
-        FOR v_old_item IN SELECT * FROM public.inbound_invoice_items WHERE inbound_invoice_id = v_invoice_id LOOP
-            UPDATE public.model_inventory
-            SET available_series = available_series - v_old_item.quantity
-            WHERE model_id = v_old_item.model_id AND color_id = v_old_item.color_id;
-            
-            -- طھط³ط¬ظٹظ„ ط­ط±ظƒط© ط§ظ„ظ…ط®ط²ظˆظ† ظƒط­ط±ظƒط© ظ…ط®ط±ط¬ط§طھ ظ…ط¤ظ‚طھط© ظ„ظ„طھطµط­ظٹط­
-            INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-            VALUES (v_old_item.model_id, v_old_item.color_id, 'out', v_old_item.quantity, 'طھط¹ط¯ظٹظ„ ظپط§طھظˆط±ط© ط¯ط®ظ„ (ط¥ط±ط¬ط§ط¹ ظƒظ…ظٹط© ظ‚ط¯ظٹظ…ط©): ' || v_invoice_number);
+
+        SELECT invoice_number INTO v_invoice_number
+        FROM public.inbound_invoices
+        WHERE id = v_invoice_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'فاتورة الدخل المراد تعديلها غير موجودة.';
+        END IF;
+
+        -- أ) التحقق المسبق من الأصناف التي سيتم تخفيض كمياتها: هل رصيد المخزن الحالي يكفي؟
+        FOR v_diff_record IN
+            SELECT 
+                COALESCE(new_items.model_id, old_items.model_id) AS model_id,
+                COALESCE(new_items.color_id, old_items.color_id) AS color_id,
+                COALESCE(new_items.qty, 0) - COALESCE(old_items.quantity, 0) AS diff
+            FROM (
+                SELECT 
+                    (x->>'model_id')::uuid AS model_id, 
+                    (x->>'color_id')::uuid AS color_id, 
+                    SUM((x->>'qty')::int)::int AS qty
+                FROM jsonb_array_elements(p_invoice_items) AS x
+                WHERE (x->>'qty')::int > 0
+                GROUP BY (x->>'model_id')::uuid, (x->>'color_id')::uuid
+            ) new_items
+            FULL OUTER JOIN (
+                SELECT 
+                    model_id, 
+                    color_id, 
+                    SUM(quantity)::int AS quantity
+                FROM public.inbound_invoice_items
+                WHERE inbound_invoice_id = v_invoice_id
+                GROUP BY model_id, color_id
+            ) old_items 
+            ON new_items.model_id = old_items.model_id AND new_items.color_id = old_items.color_id
+        LOOP
+            IF v_diff_record.diff < 0 THEN
+                SELECT available_series INTO v_current_stock
+                FROM public.model_inventory
+                WHERE model_id = v_diff_record.model_id AND color_id = v_diff_record.color_id
+                FOR UPDATE;
+
+                v_current_stock := COALESCE(v_current_stock, 0);
+
+                IF v_current_stock < ABS(v_diff_record.diff) THEN
+                    SELECT name INTO v_model_name FROM public.models WHERE id = v_diff_record.model_id;
+                    SELECT name INTO v_color_name FROM public.colors WHERE id = v_diff_record.color_id;
+
+                    RAISE EXCEPTION 'لا يمكن تعديل الفاتورة. الموديل (%) لون (%) تم بيع كميات منه، والرصيد المتوفر حالياً بالمخزن (%) أقل من الكمية المراد تخفيضها (%). أقصى كمية يمكن تخفيضها هي (%).',
+                        COALESCE(v_model_name, 'غير معروف'),
+                        COALESCE(v_color_name, 'غير معروف'),
+                        v_current_stock,
+                        ABS(v_diff_record.diff),
+                        v_current_stock;
+                END IF;
+            END IF;
         END LOOP;
-        
-        -- طھط­ط¯ظٹط« طھظپط§طµظٹظ„ ط§ظ„ظپط§طھظˆط±ط© ط§ظ„ط±ط¦ظٹط³ظٹط©
+
+        -- ب) تطبيق الفروقات الصافية مباشرة على المخزون بشكل ذري
+        FOR v_diff_record IN
+            SELECT 
+                COALESCE(new_items.model_id, old_items.model_id) AS model_id,
+                COALESCE(new_items.color_id, old_items.color_id) AS color_id,
+                COALESCE(new_items.qty, 0) - COALESCE(old_items.quantity, 0) AS diff
+            FROM (
+                SELECT 
+                    (x->>'model_id')::uuid AS model_id, 
+                    (x->>'color_id')::uuid AS color_id, 
+                    SUM((x->>'qty')::int)::int AS qty
+                FROM jsonb_array_elements(p_invoice_items) AS x
+                WHERE (x->>'qty')::int > 0
+                GROUP BY (x->>'model_id')::uuid, (x->>'color_id')::uuid
+            ) new_items
+            FULL OUTER JOIN (
+                SELECT 
+                    model_id, 
+                    color_id, 
+                    SUM(quantity)::int AS quantity
+                FROM public.inbound_invoice_items
+                WHERE inbound_invoice_id = v_invoice_id
+                GROUP BY model_id, color_id
+            ) old_items 
+            ON new_items.model_id = old_items.model_id AND new_items.color_id = old_items.color_id
+        LOOP
+            IF v_diff_record.diff <> 0 THEN
+                INSERT INTO public.model_inventory (model_id, color_id, available_series)
+                VALUES (v_diff_record.model_id, v_diff_record.color_id, 0)
+                ON CONFLICT (model_id, color_id) DO NOTHING;
+
+                UPDATE public.model_inventory
+                SET available_series = available_series + v_diff_record.diff
+                WHERE model_id = v_diff_record.model_id AND color_id = v_diff_record.color_id;
+
+                INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
+                VALUES (
+                    v_diff_record.model_id,
+                    v_diff_record.color_id,
+                    CASE WHEN v_diff_record.diff > 0 THEN 'in' ELSE 'out' END,
+                    ABS(v_diff_record.diff),
+                    CASE 
+                        WHEN v_diff_record.diff > 0 THEN 'تعديل فاتورة دخل (زيادة كمية): ' || v_invoice_number
+                        ELSE 'تعديل فاتورة دخل (تخفيض كمية): ' || v_invoice_number
+                    END
+                );
+            END IF;
+        END LOOP;
+
+        -- ج) تحديث بيانات الفاتورة الرئيسية
         UPDATE public.inbound_invoices SET
             supplier_name = p_invoice_data->>'supplier_name',
             notes = p_invoice_data->>'notes',
             total_series = (p_invoice_data->>'total_series')::integer,
             updated_at = now()
         WHERE id = v_invoice_id;
-        
-        -- ظ…ط³ط­ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ظ‚ط¯ظٹظ…ط©
+
+        -- د) إعادة بناء أصناف الفاتورة
         DELETE FROM public.inbound_invoice_items WHERE inbound_invoice_id = v_invoice_id;
-        
+
+        INSERT INTO public.inbound_invoice_items (inbound_invoice_id, model_id, color_id, quantity)
+        SELECT 
+            v_invoice_id,
+            (x->>'model_id')::uuid,
+            (x->>'color_id')::uuid,
+            (x->>'qty')::int
+        FROM jsonb_array_elements(p_invoice_items) AS x
+        WHERE (x->>'qty')::int > 0;
+
+    -- 2) وضع الإنشاء الجديد (Create New Inbound Invoice)
     ELSE
-        -- ط¥ظ†ط´ط§ط، ط¬ط¯ظٹط¯
         v_invoice_number := 'IN-' || nextval('public.inbound_invoice_number_seq')::text;
-        
+
         INSERT INTO public.inbound_invoices (invoice_number, supplier_name, notes, total_series, worker_id)
         VALUES (
             v_invoice_number,
@@ -2131,52 +2224,36 @@ BEGIN
             (p_invoice_data->>'total_series')::integer,
             (p_invoice_data->>'worker_id')::uuid
         ) RETURNING id INTO v_invoice_id;
-    END IF;
-    
-    -- ط¬) ط¥ط¯ط®ط§ظ„ ط§ظ„ظƒظ…ظٹط§طھ ط§ظ„ط¬ط¯ظٹط¯ط© ظˆطھط­ط¯ظٹط« ط§ظ„ط±طµظٹط¯ ط§ظ„ظپط¹ظ„ظٹ
-    FOR v_item IN SELECT * FROM jsonb_to_recordset(p_invoice_items) AS x(model_id uuid, color_id uuid, qty int)
-    LOOP
-        -- ط¥ط¯ط±ط§ط¬ ط§ظ„ط¹ظ†طµط±
-        INSERT INTO public.inbound_invoice_items (inbound_invoice_id, model_id, color_id, quantity)
-        VALUES (v_invoice_id, v_item.model_id, v_item.color_id, v_item.qty);
-        
-        -- طھط­ط¯ظٹط« ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† (ظˆط¥ظ†ط´ط§ط¦ظ‡ ط¥ظ† ظ„ظ… ظٹظƒظ† ظ…ظˆط¬ظˆط¯ط§ظ‹)
-        IF EXISTS (SELECT 1 FROM public.model_inventory WHERE model_id = v_item.model_id AND color_id = v_item.color_id) THEN
-            UPDATE public.model_inventory
-            SET available_series = available_series + v_item.qty
-            WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
-        ELSE
+
+        FOR v_item IN 
+            SELECT 
+                (x->>'model_id')::uuid AS model_id, 
+                (x->>'color_id')::uuid AS color_id, 
+                (x->>'qty')::int AS qty
+            FROM jsonb_array_elements(p_invoice_items) AS x
+            WHERE (x->>'qty')::int > 0
+        LOOP
+            INSERT INTO public.inbound_invoice_items (inbound_invoice_id, model_id, color_id, quantity)
+            VALUES (v_invoice_id, v_item.model_id, v_item.color_id, v_item.qty);
+
             INSERT INTO public.model_inventory (model_id, color_id, available_series)
-            VALUES (v_item.model_id, v_item.color_id, v_item.qty);
-        END IF;
-        
-        -- طھط³ط¬ظٹظ„ ط§ظ„ط­ط±ظƒط© ظƒظ…ط¯ط®ظ„ط§طھ
-        INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-        VALUES (v_item.model_id, v_item.color_id, 'in', v_item.qty, 'ظپط§طھظˆط±ط© ط¯ط®ظ„: ' || v_invoice_number);
-    END LOOP;
-    
-    -- ط¯) ط§ظ„طھط­ظ‚ظ‚ ط§ظ„ط£ظ…ظ†ظٹ ط§ظ„ط­ط±ط¬: ط§ظ„طھط£ظƒط¯ ط£ظ† ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† ط§ظ„ظپط¹ظ„ظٹ ظ„ظ… ظٹظ‚ظ„ ط¹ظ† ط§ظ„طµظپط± ظ„ط£ظٹ طµظ†ظپ طھط£ط«ط± ط¨ط§ظ„طھط¹ط¯ظٹظ„
-    FOR v_item IN SELECT * FROM affected_items_temp
-    LOOP
-        SELECT available_series INTO v_current_stock FROM public.model_inventory
-        WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
-        
-        IF v_current_stock < 0 THEN
-            SELECT name INTO v_model_name FROM public.models WHERE id = v_item.model_id;
-            SELECT name INTO v_color_name FROM public.colors WHERE id = v_item.color_id;
-            
-            RAISE EXCEPTION 'ظ„ط§ ظٹظ…ظƒظ† طھط¹ط¯ظٹظ„ ط§ظ„ظپط§طھظˆط±ط©. ط§ظ„ظ…ظˆط¯ظٹظ„ (%) ظ„ظˆظ† (%) طھظ… ط³ط­ط¨ ط±طµظٹط¯ ظ…ظ†ظ‡ ظ…ط³ط¨ظ‚ط§ظ‹طŒ ظˆط§ظ„ظƒظ…ظٹط© ط§ظ„ط¬ط¯ظٹط¯ط© ط§ظ„ظ…ظ‚طھط±ط­ط© ط³طھط¬ط¹ظ„ ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† ط¨ط§ظ„ط³ط§ظ„ط¨ (%).', 
-                COALESCE(v_model_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
-                COALESCE(v_color_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
-                v_current_stock;
-        END IF;
-    END LOOP;
-    
+            VALUES (v_item.model_id, v_item.color_id, v_item.qty)
+            ON CONFLICT (model_id, color_id) DO UPDATE
+            SET available_series = model_inventory.available_series + EXCLUDED.available_series;
+
+            INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
+            VALUES (v_item.model_id, v_item.color_id, 'in', v_item.qty, 'فاتورة دخل: ' || v_invoice_number);
+        END LOOP;
+    END IF;
+
     RETURN jsonb_build_object('success', true, 'invoice_number', v_invoice_number, 'inbound_invoice_id', v_invoice_id);
 END;
 $$;
 
--- 7. Delete Inbound Invoice Safely Function (ط­ط°ظپ ط¢ظ…ظ† ظ„ظ„ظپظˆط§طھظٹط± ظ…ط¹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط¹ط¯ظ… طھط±ظƒ ط±طµظٹط¯ ط³ط§ظ„ط¨)
+ALTER FUNCTION public.process_inbound_transaction(uuid, jsonb, jsonb) SECURITY DEFINER;
+
+
+-- 7. Delete Inbound Invoice Safely Function
 CREATE OR REPLACE FUNCTION public.delete_inbound_invoice_safely(
     p_invoice_id uuid
 )
@@ -2193,41 +2270,59 @@ DECLARE
 BEGIN
     SELECT invoice_number INTO v_invoice_number FROM public.inbound_invoices WHERE id = p_invoice_id;
     IF v_invoice_number IS NULL THEN
-        RAISE EXCEPTION 'ظپط§طھظˆط±ط© ط§ظ„ط¯ط®ظ„ ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©.';
+        RAISE EXCEPTION 'فاتورة الدخل غير موجودة.';
     END IF;
 
-    -- ط£) ط®طµظ… ط§ظ„ظƒظ…ظٹط§طھ ظ…ظ† ط±طµظٹط¯ ط§ظ„ظ…ط®ط²ظ† ظ…ط¤ظ‚طھط§ظ‹ ظˆطھط³ط¬ظٹظ„ ط§ظ„ط­ط±ظƒط§طھ
-    FOR v_item IN SELECT * FROM public.inbound_invoice_items WHERE inbound_invoice_id = p_invoice_id LOOP
+    -- أ) التحقق أولاً من أن رصيد المخزن الحالي يكفي لخصم كميات الفاتورة دون حدوث عجز سالب
+    FOR v_item IN 
+        SELECT model_id, color_id, SUM(quantity)::int AS quantity
+        FROM public.inbound_invoice_items 
+        WHERE inbound_invoice_id = p_invoice_id
+        GROUP BY model_id, color_id
+    LOOP
+        SELECT available_series INTO v_current_stock 
+        FROM public.model_inventory
+        WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
+
+        v_current_stock := COALESCE(v_current_stock, 0);
+
+        IF v_current_stock < v_item.quantity THEN
+            SELECT name INTO v_model_name FROM public.models WHERE id = v_item.model_id;
+            SELECT name INTO v_color_name FROM public.colors WHERE id = v_item.color_id;
+
+            RAISE EXCEPTION 'لا يمكن حذف الفاتورة (%) لأن الموديل (%) لون (%) تم بيع أجزاء منه، والرصيد المتوفر حالياً بالمخزن (%) أقل من كمية الفاتورة (%). أقصى كمية يمكن خصمها هي (%).', 
+                v_invoice_number,
+                COALESCE(v_model_name, 'غير معروف'), 
+                COALESCE(v_color_name, 'غير معروف'), 
+                v_current_stock,
+                v_item.quantity,
+                v_current_stock;
+        END IF;
+    END LOOP;
+
+    -- ب) خصم الكميات من رصيد المخزن وتسجيل الحركات
+    FOR v_item IN 
+        SELECT model_id, color_id, SUM(quantity)::int AS quantity
+        FROM public.inbound_invoice_items 
+        WHERE inbound_invoice_id = p_invoice_id
+        GROUP BY model_id, color_id
+    LOOP
         UPDATE public.model_inventory
         SET available_series = available_series - v_item.quantity
         WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
 
         INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
-        VALUES (v_item.model_id, v_item.color_id, 'out', v_item.quantity, 'ط­ط°ظپ ظپط§طھظˆط±ط© ط¯ط®ظ„: ' || v_invoice_number);
+        VALUES (v_item.model_id, v_item.color_id, 'out', v_item.quantity, 'حذف فاتورة دخل: ' || v_invoice_number);
     END LOOP;
 
-    -- b) ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط£ظ† ط§ظ„ط®طµظ… ظ„ظ… ظٹطھط³ط¨ط¨ ظپظٹ ط±طµظٹط¯ ظ…ط®ط²ظ† ط³ط§ظ„ط¨
-    FOR v_item IN SELECT * FROM public.inbound_invoice_items WHERE inbound_invoice_id = p_invoice_id LOOP
-        SELECT available_series INTO v_current_stock FROM public.model_inventory
-        WHERE model_id = v_item.model_id AND color_id = v_item.color_id;
-
-        IF v_current_stock < 0 THEN
-            SELECT name INTO v_model_name FROM public.models WHERE id = v_item.model_id;
-            SELECT name INTO v_color_name FROM public.colors WHERE id = v_item.color_id;
-
-            RAISE EXCEPTION 'ظ„ط§ ظٹظ…ظƒظ† ط­ط°ظپ ط§ظ„ظپط§طھظˆط±ط© (%) ظ„ط£ظ† ط§ظ„ظ…ظˆط¯ظٹظ„ (%) ظ„ظˆظ† (%) طھظ… ط¨ظٹط¹ ط£ط¬ط²ط§ط، ظ…ظ†ظ‡ ظˆط³ظٹطھط³ط¨ط¨ ط§ظ„ط­ط°ظپ ظپظٹ ط±طµظٹط¯ ط³ط§ظ„ط¨ ظ„ظ„ظƒظ…ظٹط© ط¨ط§ظ„ظ…ط®ط²ظ† (%).', 
-                v_invoice_number,
-                COALESCE(v_model_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
-                COALESCE(v_color_name, 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ'), 
-                v_current_stock;
-        END IF;
-    END LOOP;
-
-    -- ط¬) ط§ظ„ط­ط°ظپ ط§ظ„ظپط¹ظ„ظٹ ظ„ظ„ظپط§طھظˆط±ط© ظˆط¹ظ†ط§طµط±ظ‡ط§ (ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰ cascade delete)
+    -- ج) الحذف الفعلي للفاتورة وعناصرها
     DELETE FROM public.inbound_invoices WHERE id = p_invoice_id;
 
     RETURN true;
 END;
 $$;
+
+ALTER FUNCTION public.delete_inbound_invoice_safely(uuid) SECURITY DEFINER;
+
 
 

@@ -340,6 +340,7 @@ function handleAddModelToInvoice() {
             color_id: inv.color_id,
             color_name: inv.colors?.name || 'بدون اسم',
             qty: 0,
+            original_qty: 0,
             current_stock: inv.available_series || 0
         });
     });
@@ -367,14 +368,19 @@ window.updateDraftItemQty = (modelId, colorId, val) => {
 
         // Update expected stock cell directly in DOM to keep input fast and non-laggy
         const currentStock = item.current_stock || 0;
-        const expectedStock = currentStock + qty;
+        const originalQty = item.original_qty || 0;
+        const diff = qty - originalQty;
+        const expectedStock = currentStock + diff;
         const cell = document.getElementById(`expected-stock-${modelId}-${colorId}`);
         if (cell) {
-            cell.textContent = `${expectedStock} سري`;
-            if (expectedStock > currentStock) {
-                cell.className = "py-2 font-bold text-devo-success";
+            if (expectedStock < 0) {
+                cell.innerHTML = `<span class="text-devo-error font-bold">${expectedStock} سري (عجز بالمخزن)</span>`;
+            } else if (diff > 0) {
+                cell.innerHTML = `<span class="text-devo-success font-bold">${expectedStock} سري (+${diff})</span>`;
+            } else if (diff < 0) {
+                cell.innerHTML = `<span class="text-amber-400 font-bold">${expectedStock} سري (${diff})</span>`;
             } else {
-                cell.className = "py-2 font-bold text-devo-muted";
+                cell.innerHTML = `<span class="text-devo-muted font-bold">${expectedStock} سري</span>`;
             }
         }
 
@@ -441,15 +447,29 @@ function renderDraftItems() {
                             <tr class="text-devo-muted font-bold">
                                 <th class="pb-2">اللون</th>
                                 <th class="pb-2">الرصيد الحالي بالمخزن</th>
-                                <th class="pb-2">الكمية المضافة للدفعة (سري)</th>
-                                <th class="pb-2">الرصيد بعد الإضافة (الرصيد المتوقع)</th>
+                                <th class="pb-2">الكمية بالفاتورة (سري)</th>
+                                <th class="pb-2">الرصيد بعد الحفظ</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-devo-gray/30">
                             ${m.colors.map(c => {
                                 const currentStock = c.current_stock || 0;
+                                const originalQty = c.original_qty || 0;
                                 const addedQty = c.qty || 0;
-                                const expectedStock = currentStock + addedQty;
+                                const diff = addedQty - originalQty;
+                                const expectedStock = currentStock + diff;
+
+                                let stockStatusHtml = '';
+                                if (expectedStock < 0) {
+                                    stockStatusHtml = `<span class="text-devo-error font-bold">${expectedStock} سري (عجز بالمخزن)</span>`;
+                                } else if (diff > 0) {
+                                    stockStatusHtml = `<span class="text-devo-success font-bold">${expectedStock} سري (+${diff})</span>`;
+                                } else if (diff < 0) {
+                                    stockStatusHtml = `<span class="text-amber-400 font-bold">${expectedStock} سري (${diff})</span>`;
+                                } else {
+                                    stockStatusHtml = `<span class="text-devo-muted font-bold">${expectedStock} سري</span>`;
+                                }
+
                                 return `
                                     <tr class="align-middle">
                                         <td class="py-2 text-white font-bold">${c.color_name}</td>
@@ -460,9 +480,8 @@ function renderDraftItems() {
                                                 id="input-qty-${m.model_id}-${c.color_id}"
                                                 class="w-24 bg-devo-black border border-devo-gray rounded px-2.5 py-1.5 text-white text-xs outline-none focus:border-devo-orange transition-all text-center">
                                         </td>
-                                        <td class="py-2 font-bold ${expectedStock > currentStock ? 'text-devo-success' : 'text-devo-muted'}" 
-                                            id="expected-stock-${m.model_id}-${c.color_id}">
-                                            ${expectedStock} سري
+                                        <td class="py-2" id="expected-stock-${m.model_id}-${c.color_id}">
+                                            ${stockStatusHtml}
                                         </td>
                                     </tr>
                                 `;
@@ -490,6 +509,19 @@ async function handleSaveInboundInvoice() {
 
     if (totalSeries <= 0) {
         showToast('يرجى إدخال كمية مضافة أكبر من الصفر لصنف واحد على الأقل', 'warning');
+        return;
+    }
+
+    // التحقق المسبق من عدم وجود عجز سالب في أي صنف
+    const deficitItem = draftInvoice.items.find(item => {
+        const currentStock = item.current_stock || 0;
+        const originalQty = item.original_qty || 0;
+        const newQty = item.qty || 0;
+        return (currentStock + (newQty - originalQty)) < 0;
+    });
+
+    if (deficitItem) {
+        showToast(`لا يمكن الحفظ: الكمية المدخلة للموديل [${deficitItem.model_code}] لون (${deficitItem.color_name}) ستتسبب في عجز سالب بالمخزن لأن الرصيد المتوفر حالياً هو ${deficitItem.current_stock} سري فقط.`, 'error', 7000);
         return;
     }
 
@@ -522,7 +554,7 @@ async function handleSaveInboundInvoice() {
         if (error) throw error;
 
         if (data && data.success) {
-            showToast(draftInvoice.id ? 'تمت تعديل فاتورة الدخل بنجاح' : 'تم حفظ فاتورة الدخل وإضافة الرصيد بنجاح', 'success');
+            showToast(draftInvoice.id ? 'تم تعديل فاتورة الدخل بنجاح' : 'تم حفظ فاتورة الدخل وإضافة الرصيد بنجاح', 'success');
             closeInboundInvoiceForm();
             await loadInboundData();
             
@@ -536,12 +568,7 @@ async function handleSaveInboundInvoice() {
 
     } catch (err) {
         console.error("Save Inbound Invoice Error:", err);
-        // Display nice readable database error message (e.g. negative stock exception)
-        if (err.message && err.message.includes('سيصبح بالسالب')) {
-            showToast(err.message, 'error', 7000);
-        } else {
-            showToast(err.message || 'خطأ أثناء حفظ فاتورة الدخل', 'error');
-        }
+        showToast(err.message || 'خطأ أثناء حفظ فاتورة الدخل', 'error', 7000);
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalContent;
@@ -570,19 +597,11 @@ async function editInboundInvoice(invoiceId) {
         if (itemsError) throw itemsError;
 
         // Fetch current model stock map to show current inventory correctly
-        // (note: current inventory is loaded in modelsCache. We will lookup there)
         const items = itemsData.map(item => {
             const modelCache = modelsCache.find(m => m.id === item.model_id);
             const invRecord = modelCache?.model_inventory?.find(i => i.color_id === item.color_id);
             
-            // Since database quantity is already included in available_series,
-            // we calculate the base stock (without this invoice's quantity) so the form shows correct values.
-            // But wait, the form shows: Current Stock + Added Qty = Expected Stock.
-            // If we are editing, "Current Stock" should be the stock BEFORE this invoice's quantity was added!
-            // That is: available_series - quantity.
-            // This is perfect!
             const currentAvailable = invRecord ? (invRecord.available_series || 0) : 0;
-            const baseStock = currentAvailable - item.quantity;
 
             return {
                 model_id: item.model_id,
@@ -591,7 +610,8 @@ async function editInboundInvoice(invoiceId) {
                 color_id: item.color_id,
                 color_name: item.colors?.name || 'بدون اسم',
                 qty: item.quantity,
-                current_stock: baseStock
+                original_qty: item.quantity,
+                current_stock: currentAvailable
             };
         });
 

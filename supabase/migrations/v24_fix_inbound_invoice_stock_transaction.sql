@@ -1,42 +1,22 @@
--- Migration: Create Inbound Invoices and Items tables + Safety functions
--- Author: Antigravity AI
--- Date: 2026-07-23
+-- =========================================================================
+-- 🌟 MIGRATION V24: FIX INBOUND INVOICE EDITING & DELETION STOCK TRANSACTION 🌟
+-- =========================================================================
+-- تاريخ الإنشاء: 2026-10-03
+-- الإصدار: v24.0
+-- المشكلة المعالجة:
+-- 1. عند تعديل فاتورة دخل سابقة، كانت الدالة السابقة تقوم أولاً بخصم كامل الكمية القديمة من المخزون
+--    (SET available_series = available_series - v_old_item.quantity).
+--    فإذا كان قد تم بيع جزء من هذا الرصيد، كان الرصيد يهبط بالسالب لحظياً (مثال: 13 - 25 = -12)،
+--    مما يسبب كسر قيد قاعدة البيانات (chk_positive_available_series) وفشل الحفظ بالخطأ:
+--    violates check constraint "chk_positive_available_series" (Error Code 23514).
+-- 2. الحل:
+--    أ) حساب الفروقات الصافية (Diff = New - Old) مباشرة لكل صنف.
+--    ب) التحقق المسبق قبل إجراء أي تعديل: التأكد أن التخفيض لن يتجاوز الرصيد المتوفر حالياً بالمخزن.
+--    ج) تطبيق التعديل الصافي بشكل ذري وآمن (Atomic Net Update) يمنع الهبوط السالب اللحظي.
+--    د) تحديث دالة الحذف delete_inbound_invoice_safely للتحقق أولاً قبل الخصم.
+-- =========================================================================
 
--- 1. Create sequence for inbound invoice numbering
-CREATE SEQUENCE IF NOT EXISTS public.inbound_invoice_number_seq START WITH 1001;
-
--- 2. Create inbound_invoices table
-CREATE TABLE IF NOT EXISTS public.inbound_invoices (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    invoice_number text NOT NULL UNIQUE,
-    supplier_name text,
-    notes text,
-    total_series integer NOT NULL DEFAULT 0,
-    worker_id uuid REFERENCES public.system_users(id) ON DELETE SET NULL,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT inbound_invoices_pkey PRIMARY KEY (id)
-);
-
--- 3. Create inbound_invoice_items table
-CREATE TABLE IF NOT EXISTS public.inbound_invoice_items (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    inbound_invoice_id uuid REFERENCES public.inbound_invoices(id) ON DELETE CASCADE,
-    model_id uuid REFERENCES public.models(id) ON DELETE CASCADE,
-    color_id uuid REFERENCES public.colors(id) ON DELETE CASCADE,
-    quantity integer NOT NULL CHECK (quantity >= 0),
-    created_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT inbound_invoice_items_pkey PRIMARY KEY (id)
-);
-
--- 4. Create index to optimize queries
-CREATE INDEX IF NOT EXISTS idx_inbound_invoice_items_invoice_id ON public.inbound_invoice_items(inbound_invoice_id);
-
--- 5. Disable Row Level Security (RLS) to support custom app authentication (anonymous client)
-ALTER TABLE public.inbound_invoices DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.inbound_invoice_items DISABLE ROW LEVEL SECURITY;
-
--- 7. Define process_inbound_transaction function
+-- 1. إعادة تعريف دالة معالجة فواتير الدخل (process_inbound_transaction)
 CREATE OR REPLACE FUNCTION public.process_inbound_transaction(
     p_invoice_id uuid,
     p_invoice_data jsonb,
@@ -55,7 +35,9 @@ DECLARE
     v_model_name text;
     v_color_name text;
 BEGIN
-    -- 1) وضع التعديل (Update Existing Inbound Invoice)
+    -- =========================================================
+    -- الحالة الأولى: وضع التعديل (Update Existing Inbound Invoice)
+    -- =========================================================
     IF p_invoice_id IS NOT NULL THEN
         v_invoice_id := p_invoice_id;
 
@@ -93,6 +75,7 @@ BEGIN
             ) old_items 
             ON new_items.model_id = old_items.model_id AND new_items.color_id = old_items.color_id
         LOOP
+            -- إذا كان diff < 0، فهذا يعني أننا نقوم بإنقاص كمية كانت مضافة مسبقاً
             IF v_diff_record.diff < 0 THEN
                 SELECT available_series INTO v_current_stock
                 FROM public.model_inventory
@@ -101,6 +84,7 @@ BEGIN
 
                 v_current_stock := COALESCE(v_current_stock, 0);
 
+                -- التحقق من عدم حدوث عجز
                 IF v_current_stock < ABS(v_diff_record.diff) THEN
                     SELECT name INTO v_model_name FROM public.models WHERE id = v_diff_record.model_id;
                     SELECT name INTO v_color_name FROM public.colors WHERE id = v_diff_record.color_id;
@@ -115,7 +99,7 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- ب) تطبيق الفروقات الصافية مباشرة على المخزون بشكل ذري
+        -- ب) تطبيق الفروقات الصافية مباشرة على المخزون (تعديل ذري يمنع حدوث رصيد سالب لحظي)
         FOR v_diff_record IN
             SELECT 
                 COALESCE(new_items.model_id, old_items.model_id) AS model_id,
@@ -142,14 +126,17 @@ BEGIN
             ON new_items.model_id = old_items.model_id AND new_items.color_id = old_items.color_id
         LOOP
             IF v_diff_record.diff <> 0 THEN
+                -- التأكد من وجود صف المخزون
                 INSERT INTO public.model_inventory (model_id, color_id, available_series)
                 VALUES (v_diff_record.model_id, v_diff_record.color_id, 0)
                 ON CONFLICT (model_id, color_id) DO NOTHING;
 
+                -- تطبيق الفرق الصافي (سواء زيادة أو نقص)
                 UPDATE public.model_inventory
                 SET available_series = available_series + v_diff_record.diff
                 WHERE model_id = v_diff_record.model_id AND color_id = v_diff_record.color_id;
 
+                -- تسجيل الحركة في سجل حركات المخزون
                 INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
                 VALUES (
                     v_diff_record.model_id,
@@ -184,7 +171,9 @@ BEGIN
         FROM jsonb_array_elements(p_invoice_items) AS x
         WHERE (x->>'qty')::int > 0;
 
-    -- 2) وضع الإنشاء الجديد (Create New Inbound Invoice)
+    -- =========================================================
+    -- الحالة الثانية: وضع الإنشاء الجديد (Create New Inbound Invoice)
+    -- =========================================================
     ELSE
         v_invoice_number := 'IN-' || nextval('public.inbound_invoice_number_seq')::text;
 
@@ -208,11 +197,13 @@ BEGIN
             INSERT INTO public.inbound_invoice_items (inbound_invoice_id, model_id, color_id, quantity)
             VALUES (v_invoice_id, v_item.model_id, v_item.color_id, v_item.qty);
 
+            -- تحديث رصيد المخزن أو إدراجه
             INSERT INTO public.model_inventory (model_id, color_id, available_series)
             VALUES (v_item.model_id, v_item.color_id, v_item.qty)
             ON CONFLICT (model_id, color_id) DO UPDATE
             SET available_series = model_inventory.available_series + EXCLUDED.available_series;
 
+            -- تسجيل الحركة كمدخلات
             INSERT INTO public.stock_movements (model_id, color_id, movement_type, quantity, reference)
             VALUES (v_item.model_id, v_item.color_id, 'in', v_item.qty, 'فاتورة دخل: ' || v_invoice_number);
         END LOOP;
@@ -224,7 +215,8 @@ $$;
 
 ALTER FUNCTION public.process_inbound_transaction(uuid, jsonb, jsonb) SECURITY DEFINER;
 
--- 8. Define delete_inbound_invoice_safely function
+
+-- 2. تحديث دالة حذف فاتورة الدخل الآمن (delete_inbound_invoice_safely)
 CREATE OR REPLACE FUNCTION public.delete_inbound_invoice_safely(
     p_invoice_id uuid
 )
@@ -286,7 +278,7 @@ BEGIN
         VALUES (v_item.model_id, v_item.color_id, 'out', v_item.quantity, 'حذف فاتورة دخل: ' || v_invoice_number);
     END LOOP;
 
-    -- ج) الحذف الفعلي للفاتورة وعناصرها
+    -- ج) الحذف الفعلي للفاتورة وعناصرها (عبر cascade delete أو الحذف المباشر)
     DELETE FROM public.inbound_invoices WHERE id = p_invoice_id;
 
     RETURN true;
@@ -294,4 +286,3 @@ END;
 $$;
 
 ALTER FUNCTION public.delete_inbound_invoice_safely(uuid) SECURITY DEFINER;
-
