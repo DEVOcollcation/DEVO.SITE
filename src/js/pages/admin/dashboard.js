@@ -1,10 +1,87 @@
 import { getCurrentSession } from '../../services/auth.js';
 
 let clockInterval = null;
+let dhikrInterval = null;
+let chosenGreeting = null;
+
+const GREETINGS = {
+    morning: [
+        'صباح الخير', 'صباح الخير ☀️', 'صباح النور', 'صباح الورد', 'صباح الفل',
+        'طاب صباحك', 'طاب يومك', 'طاب يومك ☀️', 'صباحك سعيد', 'أسعد الله صباحك',
+        'يومك سعيد', 'صباح الخير والسرور'
+    ],
+    noon: [
+        'طاب يومك', 'طاب يومك 🌤️', 'نهارك سعيد', 'طاب نهارك', 'يومك سعيد',
+        'أسعد الله نهارك', 'طاب وقتك', 'يوم سعيد', 'أهلاً بك، طاب يومك',
+        'نهارك جميل', 'ظهيرة سعيدة', 'يوم موفق'
+    ],
+    evening: [
+        'مساء الخير', 'مساء الخير 🌇', 'مساء النور', 'مساء الورد', 'مساء الفل',
+        'طاب مساؤك', 'طاب يومك', 'مساؤك سعيد', 'أسعد الله مساءك',
+        'مساء الياسمين', 'أمسية سعيدة', 'طاب مساؤك 🌇'
+    ],
+    night: [
+        'مساء الخير', 'مساء الخير 🌙', 'مساء النور', 'مساء الورد', 'طاب مساؤك',
+        'طاب يومك', 'ليلة سعيدة', 'أسعد الله مساءك', 'مساؤك سعيد',
+        'تصبح على خير', 'طابت ليلتك', 'طاب مساؤك 🌙'
+    ]
+};
+
+const ADHKAR = [
+    'سبحان الله وبحمده، سبحان الله العظيم',
+    'لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير',
+    'لا حول ولا قوة إلا بالله',
+    'أستغفر الله العظيم وأتوب إليه',
+    'اللهم صلِّ وسلِّم على نبينا محمد',
+    'الحمد لله حمدًا كثيرًا طيبًا مباركًا فيه',
+    'حسبي الله لا إله إلا هو عليه توكلت وهو رب العرش العظيم',
+    'سبحان الله، والحمد لله، ولا إله إلا الله، والله أكبر',
+    'رب اغفر لي وتب علي إنك أنت التواب الرحيم',
+    'اللهم إني أسألك علمًا نافعًا ورزقًا طيبًا وعملًا متقبلًا',
+    'يا حي يا قيوم برحمتك أستغيث',
+    'اللهم أعني على ذكرك وشكرك وحسن عبادتك',
+    'سبحان الله',
+    'الحمد لله',
+    'الله أكبر',
+    'لا إله إلا الله',
+    'سبحان الله وبحمده عدد خلقه ورضا نفسه وزنة عرشه ومداد كلماته',
+    'اللهم إنك عفوٌّ تحب العفو فاعفُ عني',
+    'ربنا آتنا في الدنيا حسنة وفي الآخرة حسنة وقنا عذاب النار',
+    'اللهم اجعل لي في كل خير نصيبًا',
+    'توكلت على الله ولا حول ولا قوة إلا بالله',
+    'اللهم بارك لنا فيما رزقتنا وقنا عذاب النار',
+    'رضيت بالله ربًّا وبالإسلام دينًا وبمحمد ﷺ نبيًّا',
+    'اللهم يسِّر لي أمري واشرح لي صدري',
+    'يا رب لك الحمد كما ينبغي لجلال وجهك وعظيم سلطانك',
+    'اللهم ثبِّت قلبي على دينك',
+    'اللهم اكفني بحلالك عن حرامك وأغنني بفضلك عمن سواك',
+    'لا إله إلا أنت سبحانك إني كنت من الظالمين'
+];
+
+const DHIKR_INTERVAL_MS = 15000;
 
 export async function initDashboard() {
     startLiveClock();
     updateWelcomeGreeting();
+    startAdhkar();
+}
+
+function startAdhkar() {
+    const el = document.getElementById('dash-dhikr-text');
+    if (!el) return;
+    if (dhikrInterval) clearInterval(dhikrInterval);
+    let idx = Math.floor(Math.random() * ADHKAR.length);
+    el.textContent = ADHKAR[idx];
+    dhikrInterval = setInterval(() => {
+        idx = (idx + 1) % ADHKAR.length;
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(6px)';
+        setTimeout(() => {
+            el.textContent = ADHKAR[idx];
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+        }, 500);
+    }, DHIKR_INTERVAL_MS);
 }
 
 export function fetchDashboardData() {
@@ -22,16 +99,16 @@ function updateWelcomeGreeting() {
 
     const timeGreetingEl = document.getElementById('dash-time-greeting');
     if (timeGreetingEl) {
-        const hour = new Date().getHours();
-        let greeting = 'أهلاً بك';
-        if (hour >= 4 && hour < 12) {
-            greeting = 'صباح الخير';
-        } else if (hour >= 12 && hour < 17) {
-            greeting = 'طاب يومك';
-        } else {
-            greeting = 'مساء الخير';
+        if (!chosenGreeting) {
+            const hour = new Date().getHours();
+            let list;
+            if (hour >= 4 && hour < 12) list = GREETINGS.morning;
+            else if (hour >= 12 && hour < 17) list = GREETINGS.noon;
+            else if (hour >= 17 && hour < 21) list = GREETINGS.evening;
+            else list = GREETINGS.night;
+            chosenGreeting = list[Math.floor(Math.random() * list.length)];
         }
-        timeGreetingEl.textContent = greeting;
+        timeGreetingEl.textContent = chosenGreeting;
     }
 }
 
