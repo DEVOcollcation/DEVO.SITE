@@ -87,6 +87,9 @@ export async function initAdminOrdersView() {
         'ao-search-invoice',
         'ao-search-customer',
         'ao-search-phone',
+        'ao-search-model',
+        'ao-filter-min-price',
+        'ao-filter-max-price',
         'ao-filter-worker',
         'ao-status',
         'ao-date-from',
@@ -100,6 +103,26 @@ export async function initAdminOrdersView() {
             el.addEventListener('change', applyAdminOrdersFilter);
         }
     });
+
+    // استعادة حالة فتح/إغلاق البحث المتقدم المحفوظة
+    try {
+        const isAdvOpen = localStorage.getItem('devo_admin_orders_adv_search_open') === 'true';
+        if (isAdvOpen) {
+            const panel = document.getElementById('ao-advanced-filters-panel');
+            const icon = document.getElementById('ao-toggle-adv-icon');
+            const btn = document.getElementById('ao-btn-toggle-advanced');
+            if (panel) {
+                panel.classList.remove('hidden');
+                if (icon) {
+                    icon.classList.remove('ph-caret-down');
+                    icon.classList.add('ph-caret-up');
+                }
+                if (btn) {
+                    btn.classList.add('border-devo-orange', 'bg-devo-gray/30');
+                }
+            }
+        }
+    } catch (e) {}
 
     await Promise.all([
         populateWorkerFilter(),
@@ -568,16 +591,93 @@ function updateVisitorBadges() {
     }
 }
 
+// 🌟 دالة مساعدة لتطبيع وتوحيد النصوص العربية والأحرف عند البحث 🌟
+function normalizeSearchText(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .trim()
+        .toLowerCase()
+        .replace(/[إأآا]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/[\u064B-\u065F]/g, ''); // إزالة الحركات التشكيلية
+}
+
+// 🌟 تبديل فتح/إغلاق شريط البحث المتقدم 🌟
+window.toggleAdminOrdersAdvancedSearch = () => {
+    const panel = document.getElementById('ao-advanced-filters-panel');
+    const icon = document.getElementById('ao-toggle-adv-icon');
+    const btn = document.getElementById('ao-btn-toggle-advanced');
+    if (!panel) return;
+
+    const isHidden = panel.classList.contains('hidden');
+    if (isHidden) {
+        panel.classList.remove('hidden');
+        if (icon) {
+            icon.classList.remove('ph-caret-down');
+            icon.classList.add('ph-caret-up');
+        }
+        if (btn) {
+            btn.classList.add('border-devo-orange', 'bg-devo-gray/30');
+        }
+        try { localStorage.setItem('devo_admin_orders_adv_search_open', 'true'); } catch (e) {}
+    } else {
+        panel.classList.add('hidden');
+        if (icon) {
+            icon.classList.remove('ph-caret-up');
+            icon.classList.add('ph-caret-down');
+        }
+        if (btn) {
+            btn.classList.remove('border-devo-orange', 'bg-devo-gray/30');
+        }
+        try { localStorage.setItem('devo_admin_orders_adv_search_open', 'false'); } catch (e) {}
+    }
+};
+
 window.applyAdminOrdersFilter = () => {
-    const invoiceTerm = document.getElementById('ao-search-invoice')?.value.trim().toLowerCase() || '';
-    const customerTerm = document.getElementById('ao-search-customer')?.value.trim().toLowerCase() || '';
+    const rawInvoiceTerm = document.getElementById('ao-search-invoice')?.value || '';
+    const invoiceTerm = normalizeSearchText(rawInvoiceTerm);
+
+    const rawCustomerTerm = document.getElementById('ao-search-customer')?.value || '';
+    const customerTerm = normalizeSearchText(rawCustomerTerm);
+
     const phoneTerm = document.getElementById('ao-search-phone')?.value.trim() || '';
+
+    const rawModelTerm = document.getElementById('ao-search-model')?.value || '';
+    const modelTerm = normalizeSearchText(rawModelTerm);
+
+    const minPriceRaw = document.getElementById('ao-filter-min-price')?.value.trim();
+    const maxPriceRaw = document.getElementById('ao-filter-max-price')?.value.trim();
+    const minPrice = (minPriceRaw !== '' && minPriceRaw !== undefined && !isNaN(Number(minPriceRaw))) ? Number(minPriceRaw) : null;
+    const maxPrice = (maxPriceRaw !== '' && maxPriceRaw !== undefined && !isNaN(Number(maxPriceRaw))) ? Number(maxPriceRaw) : null;
+
     const workerVal = document.getElementById('ao-filter-worker')?.value || '';
     const statusFilter = document.getElementById('ao-status')?.value || '';
     const dateFrom = document.getElementById('ao-date-from')?.value;
     const dateTo = document.getElementById('ao-date-to')?.value;
 
-    const hasAnyFilter = Boolean(invoiceTerm || customerTerm || phoneTerm || workerVal || statusFilter || dateFrom || dateTo);
+    const hasAnyFilter = Boolean(invoiceTerm || customerTerm || phoneTerm || modelTerm || minPrice !== null || maxPrice !== null || workerVal || statusFilter || dateFrom || dateTo);
+
+    // 🌟 حساب وإظهار شارة عدد الفلاتر المتقدمة النشطة 🌟
+    let advCount = 0;
+    if (modelTerm) advCount++;
+    if (minPrice !== null || maxPrice !== null) advCount++;
+    if (workerVal) advCount++;
+    if (statusFilter) advCount++;
+
+    const advBadge = document.getElementById('ao-adv-filters-badge');
+    const advBtn = document.getElementById('ao-btn-toggle-advanced');
+    if (advBadge) {
+        if (advCount > 0) {
+            advBadge.textContent = advCount;
+            advBadge.classList.remove('hidden');
+            if (advBtn) advBtn.classList.add('border-devo-orange/80');
+        } else {
+            advBadge.classList.add('hidden');
+            if (advBtn && document.getElementById('ao-advanced-filters-panel')?.classList.contains('hidden')) {
+                advBtn.classList.remove('border-devo-orange/80', 'bg-devo-gray/30');
+            }
+        }
+    }
 
     // ==========================================
     // 🌟 فرع فلترة طلبات الزوار
@@ -585,11 +685,11 @@ window.applyAdminOrdersFilter = () => {
     if (currentAdminTab === 'visitors') {
         const filtered = allVisitorOrders.filter(vo => {
             if (invoiceTerm) {
-                const shortId = (vo.id || '').toLowerCase();
+                const shortId = normalizeSearchText(vo.id || '');
                 if (!shortId.includes(invoiceTerm)) return false;
             }
             if (customerTerm) {
-                const cust = String(vo.customer_name || '').toLowerCase();
+                const cust = normalizeSearchText(vo.customer_name || '');
                 if (!cust.includes(customerTerm)) return false;
             }
             if (phoneTerm) {
@@ -597,6 +697,24 @@ window.applyAdminOrdersFilter = () => {
                 const p2 = String(vo.phone_2 || '');
                 if (!p1.includes(phoneTerm) && !p2.includes(phoneTerm)) return false;
             }
+
+            // فلترة الموديل في طلبات الزوار
+            if (modelTerm) {
+                const hasMatchingModel = Array.isArray(vo.visitor_order_items) && vo.visitor_order_items.some(item => {
+                    const m = item.models;
+                    if (!m) return false;
+                    const factoryCode = normalizeSearchText(m.factory_code);
+                    const systemCode = normalizeSearchText(m.system_code);
+                    const modelName = normalizeSearchText(m.name);
+                    return factoryCode.includes(modelTerm) || systemCode.includes(modelTerm) || modelName.includes(modelTerm);
+                });
+                if (!hasMatchingModel) return false;
+            }
+
+            // فلترة القيمة في طلبات الزوار
+            const voTotal = Number(vo.total_price) || 0;
+            if (minPrice !== null && voTotal < minPrice) return false;
+            if (maxPrice !== null && voTotal > maxPrice) return false;
 
             // فحص الحالة بحسب الفلتر المنسدل أو التبويب الفرعي لطلبات الزوار
             if (statusFilter) {
@@ -651,13 +769,13 @@ window.applyAdminOrdersFilter = () => {
 
         // 1. البحث برقم الأوردر (Invoice / Order ID)
         if (invoiceTerm) {
-            const inv = String(o.invoice_number || '').toLowerCase();
+            const inv = normalizeSearchText(o.invoice_number || '');
             if (!inv.includes(invoiceTerm)) return false;
         }
 
         // 2. البحث باسم العميل / المحل (Customer Name)
         if (customerTerm) {
-            const cust = String(o.customer_name || '').toLowerCase();
+            const cust = normalizeSearchText(o.customer_name || '');
             if (!cust.includes(customerTerm)) return false;
         }
 
@@ -668,17 +786,35 @@ window.applyAdminOrdersFilter = () => {
             if (!p1.includes(phoneTerm) && !p2.includes(phoneTerm)) return false;
         }
 
-        // 4. سلكتور الموظف البائع (Salesperson / Worker)
+        // 4. فلترة الموديل (Model Code / Factory Code / Name)
+        if (modelTerm) {
+            const hasMatchingModel = Array.isArray(o.order_items) && o.order_items.some(item => {
+                const m = item.models;
+                if (!m) return false;
+                const factoryCode = normalizeSearchText(m.factory_code);
+                const systemCode = normalizeSearchText(m.system_code);
+                const modelName = normalizeSearchText(m.name);
+                return factoryCode.includes(modelTerm) || systemCode.includes(modelTerm) || modelName.includes(modelTerm);
+            });
+            if (!hasMatchingModel) return false;
+        }
+
+        // 5. فلترة القيمة (Order Total Value Min / Max)
+        const orderTotal = Number(o.total_price) || 0;
+        if (minPrice !== null && orderTotal < minPrice) return false;
+        if (maxPrice !== null && orderTotal > maxPrice) return false;
+
+        // 6. سلكتور الموظف البائع (Salesperson / Worker)
         if (workerVal) {
             const matchesWorker = (o.worker_id && o.worker_id === workerVal) || 
                                   (o.assigned_worker_id && o.assigned_worker_id === workerVal);
             if (!matchesWorker) return false;
         }
 
-        // 5. فلتر الحالة (Status)
+        // 7. فلتر الحالة (Status)
         if (statusFilter && o.status !== statusFilter) return false;
 
-        // 6. فلتر التاريخ (Date Range)
+        // 8. فلتر التاريخ (Date Range)
         if (dateFrom || dateTo) {
             const oDate = new Date(o.created_at);
             oDate.setHours(0, 0, 0, 0);
@@ -711,6 +847,9 @@ window.resetAdminOrdersFilters = () => {
         'ao-search-invoice',
         'ao-search-customer',
         'ao-search-phone',
+        'ao-search-model',
+        'ao-filter-min-price',
+        'ao-filter-max-price',
         'ao-filter-worker',
         'ao-status',
         'ao-date-from',

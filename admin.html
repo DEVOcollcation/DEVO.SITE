@@ -1257,74 +1257,115 @@
             </div>
         </div>
 
-        <!-- شريط البحث المتقدم والفلترة المخصصة -->
+        <!-- شريط البحث والفلترة (الأساسي والمتقدم) -->
         <div class="sticky top-[-32px] z-40 bg-devo-black/95 backdrop-blur-md border-b border-devo-gray py-3 space-y-2.5">
-            <!-- السطر الأول: حقول البحث السريع -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <!-- 🌟 شريط البحث الأساسي (في سطر واحد متكامل) 🌟 -->
+            <div class="flex flex-wrap lg:flex-nowrap items-center gap-2">
                 <!-- 1. بحث برقم الأوردر -->
-                <div class="relative">
+                <div class="relative flex-1 min-w-[110px] w-full sm:w-auto">
                     <i class="ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
                     <input type="text" id="ao-search-invoice" autocomplete="off" placeholder="رقم الأوردر..." 
-                        class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                        class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-8 pl-2.5 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
                 </div>
 
                 <!-- 2. بحث باسم العميل -->
-                <div class="relative">
+                <div class="relative flex-[1.2] min-w-[130px] w-full sm:w-auto">
                     <i class="ph ph-user absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
                     <input type="text" id="ao-search-customer" autocomplete="off" placeholder="اسم العميل / المحل..." 
-                        class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
+                        class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-8 pl-2.5 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
                 </div>
 
                 <!-- 3. بحث برقم هاتف العميل -->
-                <div class="relative">
+                <div class="relative flex-1 min-w-[120px] w-full sm:w-auto">
                     <i class="ph ph-phone absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
                     <input type="text" id="ao-search-phone" autocomplete="off" placeholder="رقم هاتف العميل..." 
-                        class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
-                </div>
-            </div>
-
-            <!-- السطر الثاني: الفلاتر المنسدلة والتواريخ وزر إعادة الضبط -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center">
-                <!-- 4. سلكتور الموظف البائع -->
-                <div class="lg:col-span-3 relative">
-                    <select id="ao-filter-worker" class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl px-3 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs transition-all">
-                        <option value="">كل الموظفين / البائعين</option>
-                    </select>
+                        class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-8 pl-2.5 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs">
                 </div>
 
-                <!-- 5. سلكتور الحالة -->
-                <div class="lg:col-span-3">
-                    <select id="ao-status" class="w-full bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl px-3 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs transition-all">
-                        <option value="">كل الحالات</option>
-                        <option value="created">تم إنشاء الأوردر</option>
-                        <option value="in_progress">جاري العمل</option>
-                        <option value="editing">جاري التعديل</option>
-                        <option value="registered">تم التسجيل على السيستم</option>
-                        <option value="preparing">جاري تجهيز الأوردر</option>
-                        <option value="shipped">تم الشحن</option>
-                        <option value="delivered">تم التسليم</option>
-                    </select>
-                </div>
-
-                <!-- 6. التاريخ من وإلى -->
-                <div class="lg:col-span-4 flex items-center bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl px-2.5 py-1 gap-1.5 transition-all">
-                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                <!-- 4. التاريخ من وإلى -->
+                <div class="flex items-center bg-devo-dark border border-devo-gray hover:border-devo-gray-hover rounded-xl px-2 py-1 gap-1 transition-all focus-within:border-devo-orange shrink-0 min-w-[190px] w-full sm:w-auto">
+                    <div class="flex items-center gap-1 flex-1 min-w-0">
                         <span class="text-xs text-devo-muted font-bold whitespace-nowrap shrink-0">من:</span>
                         <input type="date" id="ao-date-from" dir="ltr" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer w-full text-center">
                     </div>
                     <span class="text-devo-muted/40 font-light select-none px-0.5">|</span>
-                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                    <div class="flex items-center gap-1 flex-1 min-w-0">
                         <span class="text-xs text-devo-muted font-bold whitespace-nowrap shrink-0">إلى:</span>
                         <input type="date" id="ao-date-to" dir="ltr" class="bg-transparent text-white outline-none text-xs py-1 cursor-pointer w-full text-center">
                     </div>
                 </div>
 
-                <!-- 7. زر إعادة ضبط الفلاتر -->
-                <div class="lg:col-span-2">
-                    <button type="button" id="ao-reset-filters" onclick="resetAdminOrdersFilters()" class="w-full bg-devo-gray/60 hover:bg-devo-orange/20 text-devo-muted hover:text-devo-orange border border-devo-gray hover:border-devo-orange/40 rounded-xl py-2 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm" title="مسح كافة الفلاتر">
-                        <i class="ph ph-arrow-counter-clockwise text-sm"></i>
-                        <span>إعادة ضبط</span>
-                    </button>
+                <!-- 5. زر تبديل البحث المتقدم -->
+                <button type="button" id="ao-btn-toggle-advanced" onclick="toggleAdminOrdersAdvancedSearch()" 
+                    class="bg-devo-dark hover:bg-devo-gray/40 text-white border border-devo-gray hover:border-devo-orange rounded-xl py-2 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm group shrink-0 whitespace-nowrap w-full sm:w-auto">
+                    <i class="ph ph-faders text-devo-orange group-hover:rotate-12 transition-transform text-sm"></i>
+                    <span id="ao-toggle-adv-text">بحث متقدم</span>
+                    <span id="ao-adv-filters-badge" class="hidden bg-devo-orange text-black font-black text-[10px] px-1.5 py-0.5 rounded-full leading-none">0</span>
+                    <i id="ao-toggle-adv-icon" class="ph ph-caret-down text-devo-muted text-xs transition-transform duration-200"></i>
+                </button>
+
+                <!-- 6. زر إعادة ضبط الفلاتر -->
+                <button type="button" id="ao-reset-filters" onclick="resetAdminOrdersFilters()" 
+                    class="bg-devo-gray/60 hover:bg-devo-orange/20 text-devo-muted hover:text-devo-orange border border-devo-gray hover:border-devo-orange/40 rounded-xl py-2 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shrink-0 whitespace-nowrap w-full sm:w-auto" title="مسح كافة الفلاتر الأساسية والمتقدمة">
+                    <i class="ph ph-arrow-counter-clockwise text-sm"></i>
+                    <span>إعادة ضبط</span>
+                </button>
+            </div>
+
+            <!-- 🌟 شريط البحث المتقدم (Advanced Search Panel) 🌟 -->
+            <div id="ao-advanced-filters-panel" class="hidden bg-devo-dark/95 border border-devo-gray/80 rounded-2xl p-3 space-y-2.5 transition-all shadow-inner">
+                <div class="flex items-center justify-between text-xs text-devo-muted pb-1.5 border-b border-devo-gray/40">
+                    <span class="flex items-center gap-1.5 font-bold text-devo-orange">
+                        <i class="ph-fill ph-funnel"></i> وسائل الفلترة المتقدمة
+                    </span>
+                    <span class="text-[11px] text-devo-muted">فلترة الموديلات، القيمة، الموظفين، وحالات الأوردر</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center">
+                    <!-- 1. بحث برقم / كود الموديل -->
+                    <div class="lg:col-span-3 relative">
+                        <i class="ph ph-tag absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base"></i>
+                        <input type="text" id="ao-search-model" autocomplete="off" placeholder="رقم / كود الموديل..." 
+                            class="w-full bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl pr-9 pl-3 py-2 text-white focus:border-devo-orange outline-none transition-all text-xs"
+                            title="البحث برقم أو كود الموديل لعرض الفواتير المحتوية عليه">
+                    </div>
+
+                    <!-- 2. فلترة القيمة (المبلغ من وإلى) -->
+                    <div class="lg:col-span-3 flex items-center bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl px-2.5 py-1 gap-1.5 transition-all focus-within:border-devo-orange">
+                        <i class="ph ph-currency-circle-dollar text-devo-muted text-base shrink-0"></i>
+                        <div class="flex items-center gap-1 flex-1 min-w-0">
+                            <span class="text-[11px] text-devo-muted font-bold whitespace-nowrap shrink-0">من:</span>
+                            <input type="number" id="ao-filter-min-price" placeholder="أقل مبلغ..." min="0" 
+                                class="bg-transparent text-white outline-none text-xs py-1 w-full text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+                        </div>
+                        <span class="text-devo-muted/40 font-light select-none px-0.5">|</span>
+                        <div class="flex items-center gap-1 flex-1 min-w-0">
+                            <span class="text-[11px] text-devo-muted font-bold whitespace-nowrap shrink-0">إلى:</span>
+                            <input type="number" id="ao-filter-max-price" placeholder="أقصى مبلغ..." min="0" 
+                                class="bg-transparent text-white outline-none text-xs py-1 w-full text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+                        </div>
+                    </div>
+
+                    <!-- 3. سلكتور الموظف البائع -->
+                    <div class="lg:col-span-3 relative">
+                        <select id="ao-filter-worker" class="w-full bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl px-3 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs transition-all">
+                            <option value="">كل الموظفين / البائعين</option>
+                        </select>
+                    </div>
+
+                    <!-- 4. سلكتور الحالة -->
+                    <div class="lg:col-span-3">
+                        <select id="ao-status" class="w-full bg-devo-black border border-devo-gray hover:border-devo-gray-hover rounded-xl px-3 py-2 text-white outline-none focus:border-devo-orange cursor-pointer text-xs transition-all">
+                            <option value="">كل الحالات</option>
+                            <option value="created">تم إنشاء الأوردر</option>
+                            <option value="in_progress">جاري العمل</option>
+                            <option value="editing">جاري التعديل</option>
+                            <option value="registered">تم التسجيل على السيستم</option>
+                            <option value="preparing">جاري تجهيز الأوردر</option>
+                            <option value="shipped">تم الشحن</option>
+                            <option value="delivered">تم التسليم</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
