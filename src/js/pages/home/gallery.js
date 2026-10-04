@@ -166,7 +166,7 @@ async function fetchGalleryModels() {
                     categories(name),
                     classes(name, class_sizes(sizes(name))),
                     model_sizes(sizes(name)),
-                    model_inventory(color_id, available_series, colors(name)),
+                    model_inventory(*, colors(name)),
                     model_images(image_url)
                 `)
                 .eq('is_active', true)
@@ -301,7 +301,7 @@ function processRealtimeGalleryModelsQueue() {
                     .from('models')
                     .select(`
                         *, categories(name), classes(name, class_sizes(sizes(name))),
-                        model_sizes(sizes(name)), model_inventory(color_id, available_series, colors(name)), model_images(image_url)
+                        model_sizes(sizes(name)), model_inventory(*, colors(name)), model_images(image_url)
                     `)
                     .in('id', chunk);
 
@@ -404,11 +404,15 @@ function setupGalleryRealtime() {
                 const invIndex = model.model_inventory.findIndex(i => String(i.color_id) === String(payload.new.color_id));
                 if (invIndex > -1) {
                     model.model_inventory[invIndex].available_series = payload.new.available_series;
+                    if (payload.new.initial_series !== undefined) {
+                        model.model_inventory[invIndex].initial_series = payload.new.initial_series;
+                    }
                 } else {
                     const colorName = globalColorsMap[String(payload.new.color_id)] || 'لون';
                     model.model_inventory.push({
                         color_id: payload.new.color_id,
                         available_series: payload.new.available_series,
+                        initial_series: payload.new.initial_series !== undefined ? payload.new.initial_series : payload.new.available_series,
                         colors: { name: colorName }
                     });
                 }
@@ -440,13 +444,16 @@ async function reconcileGalleryInventory() {
     try {
         const { data: latestInv, error } = await supabase
             .from('model_inventory')
-            .select('model_id, color_id, available_series');
+            .select('*');
 
         if (error || !latestInv) return;
 
         const invMap = new Map();
         latestInv.forEach(row => {
-            invMap.set(`${row.model_id}_${row.color_id}`, row.available_series);
+            invMap.set(`${row.model_id}_${row.color_id}`, {
+                available_series: row.available_series,
+                initial_series: row.initial_series
+            });
         });
 
         const changedIds = new Set();
@@ -455,9 +462,17 @@ async function reconcileGalleryInventory() {
                 model.model_inventory.forEach(inv => {
                     const key = `${model.id}_${inv.color_id}`;
                     const serverVal = invMap.get(key);
-                    if (serverVal !== undefined && serverVal !== inv.available_series) {
-                        inv.available_series = serverVal;
-                        changedIds.add(model.id);
+                    if (serverVal !== undefined) {
+                        let changed = false;
+                        if (serverVal.available_series !== inv.available_series) {
+                            inv.available_series = serverVal.available_series;
+                            changed = true;
+                        }
+                        if (serverVal.initial_series !== undefined && serverVal.initial_series !== inv.initial_series) {
+                            inv.initial_series = serverVal.initial_series;
+                            changed = true;
+                        }
+                        if (changed) changedIds.add(model.id);
                     }
                 });
             }
@@ -888,6 +903,51 @@ window.changeGalleryPage = (newPage) => {
     document.getElementById('gal-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
+// 🌟 جلب مبيعات الموديل من فواتير المبيعات لحساب الأساسي بدقة (الأساسي = المتبقي + المباع) 🌟
+async function fetchModelSalesMap(modelId) {
+    const salesMap = {};
+    if (!modelId) return salesMap;
+
+    // 1. فحص عناصر فواتير المبيعات الفعلية (order_items)
+    try {
+        const { data: orderItems } = await supabase
+            .from('order_items')
+            .select('color_id, quantity')
+            .eq('model_id', modelId);
+
+        if (orderItems && orderItems.length > 0) {
+            orderItems.forEach(item => {
+                const cid = String(item.color_id);
+                salesMap[cid] = (salesMap[cid] || 0) + (Number(item.quantity) || 0);
+            });
+            return salesMap;
+        }
+    } catch (e) {
+        console.warn('[Gallery] order_items fetch error:', e);
+    }
+
+    // 2. فحص حركات خروج المبيعات (stock_movements) كاحتياط مؤكد الصلاحية لجميع الموظفين
+    try {
+        const { data: outMovs } = await supabase
+            .from('stock_movements')
+            .select('color_id, quantity')
+            .eq('model_id', modelId)
+            .eq('movement_type', 'out');
+
+        if (outMovs && outMovs.length > 0) {
+            outMovs.forEach(m => {
+                const cid = String(m.color_id);
+                salesMap[cid] = (salesMap[cid] || 0) + (Number(m.quantity) || 0);
+            });
+            return salesMap;
+        }
+    } catch (e) {
+        console.warn('[Gallery] stock_movements fetch error:', e);
+    }
+
+    return salesMap;
+}
+
 // ==========================================
 // 🌟 4. تفاصيل الموديل والروابط العميقة 🌟
 // ==========================================
@@ -945,6 +1005,7 @@ window.openModelViewer = async (id, skipHistory = false) => {
     if (isWorkerActive) {
         loadLocalCart();
         document.getElementById('floating-cart-btn')?.classList.remove('hidden');
+        model.colorSalesMap = await fetchModelSalesMap(model.id);
     }
 
     // قسم إضافة طقم (للموظفين/الآدمن)
@@ -1101,9 +1162,13 @@ function getCartQtyForColor(modelId, colorId) {
     return item ? item.qty : 0;
 }
 
-function refreshColorsContainer(modelId) {
+async function refreshColorsContainer(modelId) {
     const model = allModels.find(m => String(m.id) === String(modelId));
     if (!model) return;
+    const isWorkerActive = checkIsWorker();
+    if (isWorkerActive && !model.colorSalesMap) {
+        model.colorSalesMap = await fetchModelSalesMap(model.id);
+    }
     const classSizes = model.classes?.class_sizes || [];
     const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
     const container = document.getElementById('viewer-colors-container');
@@ -1177,8 +1242,8 @@ function generateColorsHTML(model, sizesCount) {
 
             const hasInCart = visitorCartQty > 0;
             const availText = availableLeft === 0 && hasInCart
-                ? `<span id="vavail-${inv.color_id}" data-total-stock="${dbAvailable}" class="text-[10px] sm:text-xs text-devo-orange font-bold font-mono whitespace-nowrap">(حجزت الكل: 0)</span>`
-                : `<span id="vavail-${inv.color_id}" data-total-stock="${dbAvailable}" class="text-[10px] sm:text-xs text-devo-muted font-mono whitespace-nowrap">(متاح: ${availableLeft})</span>`;
+                ? `<span id="vavail-${inv.color_id}" data-total-stock="${dbAvailable}" class="text-[10px] sm:text-xs text-devo-orange font-bold whitespace-nowrap">(حجزت الكل)</span>`
+                : `<span id="vavail-${inv.color_id}" data-total-stock="${dbAvailable}" class="text-[10px] sm:text-xs text-devo-muted whitespace-nowrap">(متاح)</span>`;
 
             return `
             <div id="vcolor-row-${inv.color_id}" class="flex items-center justify-between p-2 sm:p-2.5 bg-devo-black border ${hasInCart ? 'border-devo-orange/40 bg-devo-orange/[0.03]' : 'border-devo-gray'} rounded-xl mb-1.5 gap-2 transition-all duration-300">
@@ -1211,6 +1276,10 @@ function generateColorsHTML(model, sizesCount) {
         const availableLeft = Math.max(0, trueTotalAvailable - cartQty);
         const isOut = maxAllowed === 0;
 
+        // احتساب الأساسي = المتبقي الإجمالي + المباع في فواتير المبيعات
+        const soldQty = (model.colorSalesMap && model.colorSalesMap[String(inv.color_id)]) || 0;
+        const baseStock = trueTotalAvailable + soldQty;
+
         if (isOut) {
             return `
             <div class="flex justify-between items-center p-2 sm:p-2.5 bg-devo-black border border-devo-error/30 opacity-70 rounded-xl mb-1.5">
@@ -1218,14 +1287,19 @@ function generateColorsHTML(model, sizesCount) {
                     <span class="w-2.5 h-2.5 rounded-full shrink-0 bg-devo-error"></span>
                     <span class="text-white text-xs sm:text-sm font-bold">${colorName}</span>
                 </div>
-                <span class="text-devo-error text-[11px] sm:text-xs font-bold px-2 py-0.5 bg-devo-error/10 border border-devo-error/20 rounded-lg">نفذت الكمية</span>
+                <span class="text-devo-error text-[11px] sm:text-xs font-bold px-2 py-0.5 bg-devo-error/10 border border-devo-error/20 rounded-lg font-mono">نفذت الكمية ${baseStock > 0 ? `(${baseStock}/0)` : ''}</span>
             </div>`;
         }
 
         const hasInCart = cartQty > 0;
-        const availText = availableLeft === 0 && hasInCart
-            ? `<span id="vavail-${inv.color_id}" data-total-stock="${trueTotalAvailable}" class="text-[10px] sm:text-xs text-devo-orange font-bold font-mono whitespace-nowrap">(حجزت الكل: 0)</span>`
-            : `<span id="vavail-${inv.color_id}" data-total-stock="${trueTotalAvailable}" class="text-[10px] sm:text-xs text-devo-muted font-mono whitespace-nowrap">(متاح: ${availableLeft})</span>`;
+        let availText = '';
+        if (hasInCart) {
+            availText = availableLeft === 0
+                ? `<span id="vavail-${inv.color_id}" data-total-stock="${trueTotalAvailable}" data-base-stock="${baseStock}" class="text-[10px] sm:text-xs text-devo-orange font-bold font-mono whitespace-nowrap">(حجزت الكل: ${baseStock}/0)</span>`
+                : `<span id="vavail-${inv.color_id}" data-total-stock="${trueTotalAvailable}" data-base-stock="${baseStock}" class="text-[10px] sm:text-xs text-devo-muted font-mono whitespace-nowrap">(متاح: ${baseStock}/${availableLeft})</span>`;
+        } else {
+            availText = `<span id="vavail-${inv.color_id}" data-total-stock="${trueTotalAvailable}" data-base-stock="${baseStock}" class="text-[10px] sm:text-xs text-devo-muted font-mono whitespace-nowrap">(متاح: ${baseStock}/${availableLeft})</span>`;
+        }
 
         return `
         <div id="vcolor-row-${inv.color_id}" class="flex items-center justify-between p-2 sm:p-2.5 bg-devo-black border ${hasInCart ? 'border-devo-orange/40 bg-devo-orange/[0.03]' : 'border-devo-gray'} rounded-xl mb-1.5 gap-2 transition-all duration-300">
@@ -1446,14 +1520,37 @@ export function updateColorRowUIFast(model, colorId) {
     // 1. تحديث نص المتاح مخصوماً منه السلة
     const availEl = document.getElementById('vavail-' + colorId);
     if (availEl) {
-        if (remaining === 0 && val > 0) {
-            availEl.textContent = `(حجزت الكل: 0)`;
-            availEl.classList.add('text-devo-orange', 'font-bold');
-            availEl.classList.remove('text-devo-muted');
+        if (!isWorkerActive) {
+            // واجهة الزائر: عدم عرض أي أرقام مخزون
+            if (remaining === 0 && val > 0) {
+                availEl.textContent = `(حجزت الكل)`;
+                availEl.classList.add('text-devo-orange', 'font-bold');
+                availEl.classList.remove('text-devo-muted');
+            } else {
+                availEl.textContent = `(متاح)`;
+                availEl.classList.remove('text-devo-orange', 'font-bold');
+                availEl.classList.add('text-devo-muted');
+            }
         } else {
-            availEl.textContent = `(متاح: ${remaining})`;
-            availEl.classList.remove('text-devo-orange', 'font-bold');
-            availEl.classList.add('text-devo-muted');
+            // واجهة الموظفين والآدمن: عرض المتبقي من الأساسي بالتنسيق المطلوب (الأساسي/المتبقي)
+            const soldQty = (model?.colorSalesMap && model.colorSalesMap[String(colorId)]) || 0;
+            const baseStock = parseInt(availEl.dataset.baseStock) || (totalStock + soldQty);
+
+            if (val > 0) {
+                if (remaining === 0) {
+                    availEl.textContent = `(حجزت الكل: ${baseStock}/0)`;
+                    availEl.classList.add('text-devo-orange', 'font-bold');
+                    availEl.classList.remove('text-devo-muted');
+                } else {
+                    availEl.textContent = `(متاح: ${baseStock}/${remaining})`;
+                    availEl.classList.remove('text-devo-orange', 'font-bold');
+                    availEl.classList.add('text-devo-muted');
+                }
+            } else {
+                availEl.textContent = `(متاح: ${baseStock}/${remaining})`;
+                availEl.classList.remove('text-devo-orange', 'font-bold');
+                availEl.classList.add('text-devo-muted');
+            }
         }
     }
 
@@ -1997,7 +2094,7 @@ export async function findModelByCode(code, matchType = 'both') {
             categories(name),
             classes(name, class_sizes(sizes(name))),
             model_sizes(sizes(name)),
-            model_inventory(color_id, available_series, colors(name)),
+            model_inventory(*, colors(name)),
             model_images(image_url)
         `).eq('is_active', true);
 
@@ -2030,7 +2127,7 @@ export async function findModelByCode(code, matchType = 'both') {
                 categories(name),
                 classes(name, class_sizes(sizes(name))),
                 model_sizes(sizes(name)),
-                model_inventory(color_id, available_series, colors(name)),
+                model_inventory(*, colors(name)),
                 model_images(image_url)
             `).eq('is_active', true).or(`factory_code.eq.${cleanCode},system_code.eq.${cleanCode},id.eq.${cleanCode}`);
 
