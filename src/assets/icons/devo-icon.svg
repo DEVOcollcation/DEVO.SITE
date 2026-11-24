@@ -1,0 +1,39 @@
+<svg viewBox="0 0 512 512" width="512" height="512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="devo-bg" x1="32" y1="16" x2="480" y2="496" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#242429"/>
+      <stop offset="55%" stop-color="#131316"/>
+      <stop offset="100%" stop-color="#08080A"/>
+    </linearGradient>
+    <linearGradient id="devo-rim" x1="36" y1="36" x2="476" y2="476" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="52%" stop-color="#F97316" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#F97316" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="devo-sheen" x1="256" y1="16" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="devo-v-accent" x1="270" y1="138" x2="424" y2="374" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="55%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Obsidian Squircle Base -->
+  <rect x="16" y="16" width="480" height="480" rx="124" fill="url(#devo-bg)"/>
+  <!-- Subtle Top Metallic Sheen -->
+  <path d="M140 22H372C437.2 22 490 74.8 490 140V192C374 230 138 230 22 192V140C22 74.8 74.8 22 140 22Z" fill="url(#devo-sheen)"/>
+  <!-- Precision Inner Metallic Rim -->
+  <rect x="24" y="24" width="464" height="464" rx="116" stroke="url(#devo-rim)" stroke-width="14"/>
+
+  <!-- Architectural White 'D' Monogram -->
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M90 138H179C239 138 271 180 271 256C271 332 239 374 179 374H90V138ZM139 185V327H175C208 327 223 301 223 256C223 211 208 185 175 185H139Z" fill="#FFFFFF"/>
+
+  <!-- Dynamic Orange 'V' Monogram -->
+  <path d="M271 138H320L348 284L376 138H425L370 374H325L271 138Z" fill="url(#devo-v-accent)"/>
+
+  <!-- Signature Accent Underline -->
+  <rect x="181" y="418" width="150" height="18" rx="9" fill="url(#devo-v-accent)" opacity="0.92"/>
+</svg>

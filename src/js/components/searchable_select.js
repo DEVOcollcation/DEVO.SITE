@@ -142,7 +142,9 @@ function wrapSelect(select) {
     
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
+    searchInput.autocomplete = 'off';
     searchInput.placeholder = 'بحث...';
+    searchInput.setAttribute('aria-label', 'بحث في القائمة');
     searchInput.className = 'w-full bg-devo-black border border-devo-gray focus:border-devo-orange outline-none rounded px-2.5 py-1.5 text-white text-xs';
     
     searchWrapper.appendChild(searchInput);
@@ -373,7 +375,9 @@ function wrapMultiSelectDropdown(dropdown) {
     
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
+    searchInput.autocomplete = 'off';
     searchInput.placeholder = 'بحث...';
+    searchInput.setAttribute('aria-label', 'بحث في القائمة');
     searchInput.className = 'w-full bg-devo-black border border-devo-gray focus:border-devo-orange outline-none rounded px-2.5 py-1.5 text-white text-xs';
     
     searchWrapper.appendChild(searchInput);

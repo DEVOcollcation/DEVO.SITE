@@ -586,25 +586,34 @@ function renderVisitorCart(dbInventory, dbModels) {
 }
 
 function updateVisitorFilterButtonsUI() {
+    const base = "px-2 sm:px-3 py-1.5 rounded-md sm:rounded-lg font-bold text-[11px] sm:text-xs transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap";
     const filters = {
         all: {
-            activeClass: "px-4 py-2 rounded-lg font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer",
-            inactiveClass: "px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer"
+            activeClass: `${base} bg-devo-orange text-white shadow-sm`,
+            inactiveClass: `${base} text-devo-muted hover:text-white hover:bg-devo-gray/20`,
+            iconInactive: ''
         },
         ok: {
-            activeClass: "px-4 py-2 rounded-lg font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer",
-            inactiveClass: "px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer"
+            activeClass: `${base} bg-devo-orange text-white shadow-sm`,
+            inactiveClass: `${base} text-devo-muted hover:text-white hover:bg-devo-gray/20`,
+            iconInactive: 'text-devo-success'
         },
         error: {
-            activeClass: "px-4 py-2 rounded-lg font-bold transition-all bg-devo-error text-white flex items-center gap-1.5 shadow-sm cursor-pointer",
-            inactiveClass: "px-4 py-2 rounded-lg font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer"
+            activeClass: `${base} bg-devo-error text-white shadow-sm`,
+            inactiveClass: `${base} text-devo-muted hover:text-white hover:bg-devo-gray/20`,
+            iconInactive: 'text-devo-error'
         }
     };
 
     Object.keys(filters).forEach(type => {
         const btn = document.getElementById(`btn-vcart-filter-${type}`);
         if (btn) {
-            btn.className = (currentVisitorCartFilter === type) ? filters[type].activeClass : filters[type].inactiveClass;
+            const isActive = currentVisitorCartFilter === type;
+            btn.className = isActive ? filters[type].activeClass : filters[type].inactiveClass;
+            const icon = btn.querySelector('i');
+            if (icon && filters[type].iconInactive) {
+                icon.classList.toggle(filters[type].iconInactive, !isActive);
+            }
         }
     });
 }
@@ -1088,24 +1097,19 @@ export function switchVisitorCartSection(section) {
     const btnItems = document.getElementById('btn-vcart-sec-items');
     const btnCustomer = document.getElementById('btn-vcart-sec-customer');
 
+    const activeTabClass = 'px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer whitespace-nowrap';
+    const inactiveTabClass = 'px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer whitespace-nowrap';
+
     if (section === 'items') {
         if (secItems) secItems.classList.remove('hidden');
         if (secCustomer) secCustomer.classList.add('hidden');
-        if (btnItems) {
-            btnItems.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer';
-        }
-        if (btnCustomer) {
-            btnCustomer.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
-        }
+        if (btnItems) btnItems.className = activeTabClass;
+        if (btnCustomer) btnCustomer.className = inactiveTabClass;
     } else {
         if (secItems) secItems.classList.add('hidden');
         if (secCustomer) secCustomer.classList.remove('hidden');
-        if (btnCustomer) {
-            btnCustomer.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all bg-devo-orange text-white shadow-sm cursor-pointer';
-        }
-        if (btnItems) {
-            btnItems.className = 'px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 cursor-pointer';
-        }
+        if (btnCustomer) btnCustomer.className = activeTabClass;
+        if (btnItems) btnItems.className = inactiveTabClass;
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 }

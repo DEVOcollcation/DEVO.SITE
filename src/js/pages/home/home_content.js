@@ -36,10 +36,12 @@ function applyHeroSettingsMap(map) {
     if (!map) return;
 
     // 1. حقن النصوص وتحديد ألوانها المخصصة
+    const isWinterEidActive = document.documentElement?.getAttribute('data-theme-preset') === 'winter-eid'
+        && document.documentElement?.getAttribute('data-seasonal-active') === 'true';
     const titleEl = document.getElementById('display-hero-title');
     const subtitleEl = document.getElementById('display-hero-subtitle');
-    const titleColor = map['hero_title_color'] || '#ffffff';
-    const subtitleColor = map['hero_subtitle_color'] || '#a3a3a3';
+    const titleColor = isWinterEidActive ? '#0f2238' : (map['hero_title_color'] || '#ffffff');
+    const subtitleColor = isWinterEidActive ? '#4a6580' : (map['hero_subtitle_color'] || '#a3a3a3');
 
     if (titleEl && map['hero_title']) {
         titleEl.innerHTML = map['hero_title'];
@@ -128,7 +130,14 @@ function applyHeroSettingsMap(map) {
 
     // تطبيق الخصائص المباشرة على كارت المحتوى الزجاجي
     if (contentCard) {
-        if (glassMode !== 'none') {
+        if (isWinterEidActive) {
+            contentCard.className = "text-center z-10 px-6 py-8 md:px-12 md:py-12 max-w-3xl mx-auto rounded-3xl transition-all duration-300";
+            contentCard.style.backgroundColor = 'rgba(255, 255, 255, 0.82)';
+            contentCard.style.backdropFilter = `blur(${Math.max(12, glassBlurVal)}px)`;
+            contentCard.style.webkitBackdropFilter = `blur(${Math.max(12, glassBlurVal)}px)`;
+            contentCard.style.border = '1px solid rgba(212, 175, 55, 0.34)';
+            contentCard.style.boxShadow = '0 20px 48px rgba(15, 34, 56, 0.08)';
+        } else if (glassMode !== 'none') {
             const opacityRatio = glassOpacityVal / 100;
             const bgAlpha = glassMode === 'heavy' ? Math.min(0.9, opacityRatio + 0.3) : opacityRatio;
             contentCard.className = "text-center z-10 px-6 py-8 md:px-12 md:py-12 max-w-3xl mx-auto rounded-3xl transition-all duration-300";

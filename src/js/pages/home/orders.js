@@ -23,8 +23,12 @@ export async function initOrdersView() {
     if (!currentUser) return;
 
     ['ord-search', 'ord-status', 'ord-date-from', 'ord-date-to'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', renderOrders);
+        document.getElementById(id)?.addEventListener('input', () => {
+            syncOrdersFilterIndicator();
+            renderOrders();
+        });
     });
+    syncOrdersFilterIndicator();
 
     try {
         const savedTab = localStorage.getItem('devo_active_orders_tab') || 'active';
@@ -165,6 +169,44 @@ function setupOrdersRealtime() {
         .subscribe();
 }
 
+function syncOrdersFilterIndicator() {
+    const status = document.getElementById('ord-status')?.value || '';
+    const dateFrom = document.getElementById('ord-date-from')?.value || '';
+    const dateTo = document.getElementById('ord-date-to')?.value || '';
+    const hasFilter = !!(status || dateFrom || dateTo);
+
+    const dot = document.getElementById('ord-active-filters-dot');
+    const clearBtn = document.getElementById('btn-clear-ord-filters');
+    if (dot) dot.classList.toggle('hidden', !hasFilter);
+    if (clearBtn) clearBtn.classList.toggle('hidden', !hasFilter);
+}
+
+window.toggleOrdersFilters = () => {
+    const panel = document.getElementById('ord-filters-panel');
+    const btn = document.getElementById('btn-toggle-ord-filters');
+    if (!panel) return;
+    const willOpen = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !willOpen);
+    if (btn) {
+        btn.setAttribute('aria-expanded', String(willOpen));
+        btn.classList.toggle('border-devo-orange', willOpen);
+        btn.classList.toggle('text-devo-orange', willOpen);
+        btn.classList.toggle('border-devo-gray', !willOpen);
+        btn.classList.toggle('text-devo-muted', !willOpen);
+    }
+};
+
+window.clearOrdersFilters = () => {
+    const statusEl = document.getElementById('ord-status');
+    const fromEl = document.getElementById('ord-date-from');
+    const toEl = document.getElementById('ord-date-to');
+    if (statusEl) statusEl.value = '';
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    syncOrdersFilterIndicator();
+    renderOrders();
+};
+
 window.switchOrdersTab = (tab) => {
     currentTab = tab;
     try {
@@ -175,11 +217,15 @@ window.switchOrdersTab = (tab) => {
     const waitingTabEl = document.getElementById('tab-orders-waiting');
     const archivedTabEl = document.getElementById('tab-orders-archived');
 
-    const activeClasses = 'px-3 py-1.5 text-xs sm:text-sm font-bold text-devo-orange border-b-2 border-devo-orange transition-all flex items-center gap-1.5';
-    const inactiveClasses = 'px-3 py-1.5 text-xs sm:text-sm font-bold text-devo-muted hover:text-white border-b-2 border-transparent transition-all flex items-center gap-1.5';
+    const activeClasses = 'px-2 sm:px-3 py-1.5 rounded-md sm:rounded-none text-[11px] sm:text-sm font-bold bg-devo-orange text-white shadow-sm sm:bg-transparent sm:text-devo-orange sm:shadow-none sm:border-b-2 sm:border-devo-orange transition-all flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer';
+    const inactiveClasses = 'px-2 sm:px-3 py-1.5 rounded-md sm:rounded-none text-[11px] sm:text-sm font-bold text-devo-muted hover:text-white sm:border-b-2 sm:border-transparent transition-all flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer';
 
     if (activeTabEl) activeTabEl.className = tab === 'active' ? activeClasses : inactiveClasses;
-    if (waitingTabEl) waitingTabEl.className = tab === 'waiting' ? activeClasses : inactiveClasses;
+    if (waitingTabEl) {
+        waitingTabEl.className = tab === 'waiting' ? activeClasses : inactiveClasses;
+        const waitIcon = waitingTabEl.querySelector('i');
+        if (waitIcon) waitIcon.classList.toggle('text-amber-400', tab !== 'waiting');
+    }
     if (archivedTabEl) archivedTabEl.className = tab === 'archived' ? activeClasses : inactiveClasses;
 
     // تحديث خيارات فلتر الحالة

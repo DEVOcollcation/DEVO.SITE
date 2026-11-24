@@ -274,7 +274,7 @@ export async function cacheImageBlob(rawUrl, modelId = null) {
     if (isDriveUrl) {
         if ('caches' in window) {
             try {
-                const cache = await caches.open('devo-images-v2');
+                const cache = await caches.open('devo-images-v3');
                 const cachedMatch = await cache.match(resolvedUrl);
                 if (!cachedMatch) {
                     const response = await fetch(resolvedUrl, { mode: 'no-cors', cache: 'force-cache' });
@@ -327,7 +327,7 @@ export async function cacheImageBlob(rawUrl, modelId = null) {
         // Also put in Cache API
         if ('caches' in window) {
             try {
-                const cache = await caches.open('devo-images-v2');
+                const cache = await caches.open('devo-images-v3');
                 cache.put(resolvedUrl, new Response(blob));
             } catch (e) {}
         }

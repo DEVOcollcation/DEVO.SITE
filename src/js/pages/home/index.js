@@ -1,16 +1,16 @@
-import { initNavbar } from './navbar.js?v=9.4';
-import { initGallery } from './gallery.js?v=9.4';
+import { initNavbar } from './navbar.js?v=9.9';
+import { initGallery } from './gallery.js?v=18.1';
 import { initHomeContent } from './home_content.js?v=9.3';
-import { initCart } from './cart.js?v=9.8';
-import { initOrdersView } from './orders.js?v=9.5';
-import { initBarcode } from './barcode.js?v=9.5';
+import { initCart } from './cart.js?v=9.9';
+import { initOrdersView } from './orders.js?v=9.6';
+import { initBarcode } from './barcode.js?v=18.1';
 import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNetworkStatusMonitor } from '../../components/network_banner.js';
 import { validateAndSyncSession, setupUserRealtimeSync } from '../../services/auth.js';
-import { initVisitorCart, getVisitorCartQtyForColor } from './visitor_cart.js?v=11.0';
+import { initVisitorCart, getVisitorCartQtyForColor } from './visitor_cart.js?v=11.1';
 
-document.addEventListener('DOMContentLoaded', async () => {
+const bootHomePage = async () => {
     // مراقبة وإظهار بنر الاتصال بالإنترنت عند الانقطاع
     initNetworkStatusMonitor();
 
@@ -82,4 +82,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             initNavbar(); // تحديث الهيدر وشارة المستخدم والزر الإداري فورياً
         });
     }
-});
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootHomePage);
+} else {
+    bootHomePage();
+}

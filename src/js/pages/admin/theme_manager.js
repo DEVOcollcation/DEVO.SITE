@@ -2,6 +2,7 @@ import {
   loadAllThemes, 
   createNewTheme, 
   updateTheme, 
+  updateThemeSeasonal,
   activateTheme, 
   duplicateTheme, 
   deleteTheme,
@@ -9,6 +10,7 @@ import {
   applyTheme,
   resetSystemTheme
 } from '../../services/theme.js';
+import { isWinterEidTheme, normalizeSeasonalConfig } from '../../services/seasonal_config.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog, promptDialog } from '../../components/modal.js';
 
@@ -84,37 +86,51 @@ function renderThemesGrid() {
     const text = colors.page?.text || '#f5f5f5';
     const surface = colors.page?.bg_secondary || colors.page?.surface || '#171717';
 
+    const hasSeasonal = isWinterEidTheme(t);
+    const seasonalCfg = hasSeasonal ? normalizeSeasonalConfig(t) : null;
+
     // Buttons
     const activateBtn = isAct 
       ? `<button disabled class="flex-1 py-2 bg-devo-success/10 text-devo-success border border-devo-success/20 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-default"><i class="ph ph-check-circle"></i> المظهر النشط</button>`
       : `<button onclick="window.triggerActivateTheme('${t.id}')" class="flex-1 py-2 bg-devo-orange hover:bg-devo-orangeHover text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1"><i class="ph ph-lightning"></i> تفعيل المظهر</button>`;
 
     const deleteBtn = (isSys || isAct)
-      ? `<button disabled class="w-10 h-10 bg-devo-gray/10 text-devo-muted border border-devo-gray/20 rounded-lg flex items-center justify-center cursor-not-allowed" title="لا يمكن حذف المظهر النشط أو مظاهر النظام الافتراضية"><i class="ph ph-lock text-sm"></i></button>`
-      : `<button onclick="window.triggerDeleteTheme('${t.id}')" class="w-10 h-10 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded-lg flex items-center justify-center transition-colors" title="حذف المظهر"><i class="ph ph-trash text-sm"></i></button>`;
+      ? `<button disabled aria-label="لا يمكن حذف ${t.name}" class="w-10 h-10 bg-devo-gray/10 text-devo-muted border border-devo-gray/20 rounded-lg flex items-center justify-center cursor-not-allowed" title="لا يمكن حذف المظهر النشط أو مظاهر النظام الافتراضية"><i class="ph ph-lock text-sm"></i></button>`
+      : `<button onclick="window.triggerDeleteTheme('${t.id}')" aria-label="حذف المظهر ${t.name}" class="w-10 h-10 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded-lg flex items-center justify-center transition-colors" title="حذف المظهر"><i class="ph ph-trash text-sm"></i></button>`;
 
     const customizeBtn = isSys
-      ? `<button onclick="window.triggerResetSystemTheme('${t.id}', '${t.name}')" class="w-10 h-10 bg-devo-black hover:bg-yellow-500/10 text-yellow-500 border border-devo-gray hover:border-yellow-500/30 rounded-lg flex items-center justify-center transition-colors" title="استعادة الإعدادات الافتراضية للمظهر"><i class="ph ph-arrow-counter-clockwise text-sm"></i></button>`
-      : `<button onclick="window.triggerOpenCustomizer('${t.id}')" class="w-10 h-10 bg-devo-black hover:bg-devo-gray text-white border border-devo-gray rounded-lg flex items-center justify-center transition-colors" title="تخصيص وتعديل المتغيرات"><i class="ph ph-paint-brush-broad text-sm"></i></button>`;
+      ? `<button onclick="window.triggerResetSystemTheme('${t.id}', '${t.name}')" aria-label="استعادة الإعدادات الافتراضية لـ ${t.name}" class="w-10 h-10 bg-devo-black hover:bg-yellow-500/10 text-yellow-500 border border-devo-gray hover:border-yellow-500/30 rounded-lg flex items-center justify-center transition-colors" title="استعادة الإعدادات الافتراضية للمظهر"><i class="ph ph-arrow-counter-clockwise text-sm"></i></button>`
+      : `<button onclick="window.triggerOpenCustomizer('${t.id}')" aria-label="تخصيص المظهر ${t.name}" class="w-10 h-10 bg-devo-black hover:bg-devo-gray text-white border border-devo-gray rounded-lg flex items-center justify-center transition-colors" title="تخصيص وتعديل المتغيرات"><i class="ph ph-paint-brush-broad text-sm"></i></button>`;
+
+    const seasonalBtn = hasSeasonal
+      ? `<button onclick="window.triggerOpenSeasonalControls('${t.id}')" aria-label="إعدادات المؤثرات الموسمية لـ ${t.name}" class="w-10 h-10 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white border border-devo-orange/30 rounded-lg flex items-center justify-center transition-colors" title="إعدادات المؤثرات الموسمية (الثلج وزخارف العيد)"><i class="ph ph-snowflake text-base"></i></button>`
+      : '';
 
     const badgeClass = isSys 
       ? 'bg-devo-gray text-devo-muted border border-devo-gray/40' 
       : 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
     const badgeText = isSys ? 'نظام (System)' : 'مخصص (Custom)';
 
+    const seasonalSummaryHtml = seasonalCfg ? `
+        <div class="text-[11px] text-devo-muted flex items-center justify-between gap-2 px-1">
+          <span>مؤثرات المعرض: <strong class="text-devo-text">${seasonalCfg.enabled ? 'مفعّلة' : 'متوقفة'}</strong></span>
+          <span>${seasonalCfg.snow_enabled ? (seasonalCfg.snow_intensity === 'medium' ? 'ثلوج متوسطة' : 'ثلوج هادئة') : 'بدون ثلوج'} · ${seasonalCfg.eid_ornaments ? 'زخارف العيد' : 'بدون زخارف'}</span>
+        </div>
+    ` : '';
+
     return `
       <div class="bg-devo-dark border ${isAct ? 'border-devo-orange ring-1 ring-devo-orange' : 'border-devo-gray'} rounded-2xl p-5 flex flex-col gap-4 transition-all hover:border-devo-grayHover shadow-md relative group">
         
         <!-- Info -->
-        <div class="flex justify-between items-start">
-          <div class="space-y-1">
+        <div class="flex justify-between items-start gap-2">
+          <div class="space-y-1 min-w-0">
             <h4 class="text-white font-bold text-base flex items-center gap-2">
-              ${t.name}
-              ${isAct ? `<span class="w-2.5 h-2.5 rounded-full bg-devo-success shadow-[0_0_8px_rgba(16,185,129,0.6)]" title="نشط"></span>` : ''}
+              <span class="truncate">${t.name}</span>
+              ${isAct ? `<span class="w-2.5 h-2.5 shrink-0 rounded-full bg-devo-success shadow-[0_0_8px_rgba(16,185,129,0.6)]" title="نشط"></span>` : ''}
             </h4>
-            <p class="text-devo-muted text-xs leading-relaxed max-w-[200px] block truncate" title="${t.description || ''}">${t.description || 'لا يوجد وصف'}</p>
+            <p class="text-devo-muted text-xs leading-relaxed max-w-[220px] block truncate" title="${t.description || ''}">${t.description || 'لا يوجد وصف'}</p>
           </div>
-          <span class="text-[10px] font-bold px-2 py-1 rounded ${badgeClass}">
+          <span class="text-[10px] font-bold px-2 py-1 rounded shrink-0 ${badgeClass}">
             ${badgeText}
           </span>
         </div>
@@ -130,11 +146,14 @@ function renderThemesGrid() {
           </div>
         </div>
 
+        ${seasonalSummaryHtml}
+
         <!-- Actions -->
         <div class="flex items-center gap-2 border-t border-devo-gray pt-4 mt-auto">
           ${activateBtn}
+          ${seasonalBtn}
           ${customizeBtn}
-          <button onclick="window.triggerDuplicateTheme('${t.id}')" class="w-10 h-10 bg-devo-black hover:bg-devo-gray text-white border border-devo-gray rounded-lg flex items-center justify-center transition-colors" title="تكرار وعمل نسخة (Duplicate)"><i class="ph ph-copy text-sm"></i></button>
+          <button onclick="window.triggerDuplicateTheme('${t.id}')" aria-label="تكرار المظهر ${t.name}" class="w-10 h-10 bg-devo-black hover:bg-devo-gray text-white border border-devo-gray rounded-lg flex items-center justify-center transition-colors" title="تكرار وعمل نسخة (Duplicate)"><i class="ph ph-copy text-sm"></i></button>
           ${deleteBtn}
         </div>
 
@@ -326,7 +345,8 @@ window.triggerResetSystemTheme = async function(id, name) {
         colors: updated.variables.colors,
         fonts: updated.variables.fonts,
         animations: updated.variables.animations,
-        visuals: updated.variables.visuals
+        visuals: updated.variables.visuals,
+        seasonal: updated.variables.seasonal || null
       };
       applyTheme(themeObj);
     }
@@ -663,7 +683,8 @@ async function saveThemeCustomizations() {
       blur_intensity: cardStylePreset === 'glass' ? '12px' : '0px',
       show_hero_image: showHeroImg,
       hero_image_blend: heroImgBlend
-    }
+    },
+    ...(theme.variables?.seasonal ? { seasonal: theme.variables.seasonal } : {})
   };
 
   showToast('جاري حفظ التغييرات وتحديث المظهر...', 'info');
@@ -686,7 +707,8 @@ async function saveThemeCustomizations() {
           colors: updatedTheme.variables.colors,
           fonts: updatedTheme.variables.fonts,
           animations: updatedTheme.variables.animations,
-          visuals: updatedTheme.variables.visuals
+          visuals: updatedTheme.variables.visuals,
+          seasonal: updatedTheme.variables.seasonal || null
         };
         applyTheme(themeObj);
       }
@@ -698,6 +720,71 @@ async function saveThemeCustomizations() {
 }
 
 window.saveThemeCustomizations = saveThemeCustomizations;
+
+// --- Seasonal Effects Control Modal Logic ---
+window.triggerOpenSeasonalControls = function(id) {
+  const theme = allThemes.find(t => t.id === id);
+  if (!theme) return;
+
+  const cfg = normalizeSeasonalConfig(theme);
+  if (!cfg) return;
+
+  const modal = document.getElementById('theme-seasonal-modal');
+  if (!modal) return;
+
+  document.getElementById('seasonal-theme-id').value = id;
+  document.getElementById('seasonal-theme-name').textContent = theme.name;
+  document.getElementById('seasonal-enabled').checked = cfg.enabled;
+  document.getElementById('seasonal-snow-enabled').checked = cfg.snow_enabled;
+  document.getElementById('seasonal-snow-intensity').value = cfg.snow_intensity;
+  document.getElementById('seasonal-eid-ornaments').checked = cfg.eid_ornaments;
+  document.getElementById('seasonal-frost-glass').checked = cfg.frost_glass;
+  document.getElementById('seasonal-greeting-enabled').checked = cfg.greeting_bar_enabled;
+  document.getElementById('seasonal-greeting-text').value = cfg.greeting_text;
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  setTimeout(() => modal.classList.remove('opacity-0'), 10);
+  setTimeout(() => modal.querySelector(':scope > div').classList.remove('scale-95'), 10);
+};
+
+window.closeSeasonalControlsModal = function() {
+  const modal = document.getElementById('theme-seasonal-modal');
+  if (!modal) return;
+  modal.classList.add('opacity-0');
+  modal.querySelector(':scope > div').classList.add('scale-95');
+  setTimeout(() => {
+    modal.classList.remove('flex');
+    modal.classList.add('hidden');
+  }, 300);
+};
+
+window.saveSeasonalEffects = async function() {
+  const id = document.getElementById('seasonal-theme-id')?.value;
+  if (!id) return;
+
+  const patch = {
+    enabled: Boolean(document.getElementById('seasonal-enabled')?.checked),
+    preset: 'winter-eid',
+    snow_enabled: Boolean(document.getElementById('seasonal-snow-enabled')?.checked),
+    snow_intensity: document.getElementById('seasonal-snow-intensity')?.value || 'light',
+    eid_ornaments: Boolean(document.getElementById('seasonal-eid-ornaments')?.checked),
+    frost_glass: Boolean(document.getElementById('seasonal-frost-glass')?.checked),
+    greeting_bar_enabled: Boolean(document.getElementById('seasonal-greeting-enabled')?.checked),
+    greeting_text: (document.getElementById('seasonal-greeting-text')?.value || '').trim(),
+  };
+
+  showToast('جاري حفظ إعدادات المؤثرات الموسمية...', 'info');
+  try {
+    await updateThemeSeasonal(id, patch);
+    showToast('تم حفظ إعدادات المؤثرات الموسمية بنجاح ✓', 'success');
+    window.closeSeasonalControlsModal();
+    await loadThemes();
+  } catch (error) {
+    console.error('Save seasonal effects error:', error);
+    showToast('فشل حفظ المؤثرات الموسمية: ' + error.message, 'error');
+  }
+};
 
 // Setup dual bindings for color input pickers <-> text hex displays
 function setupColorBindings() {

@@ -44,11 +44,11 @@ app.use((req, res, next) => {
   if (p === '/sw.js') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     res.setHeader('Service-Worker-Allowed', '/');
-  } else if (p === '/' || p.endsWith('.html')) {
+  } else if (p === '/version.json' || p === '/' || p.endsWith('.html')) {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  } else if (/^\/manifest.*\.json$/.test(p)) {
+  } else if (/^\/manifest.*\.json$/.test(p) || p.startsWith('/src/assets/icons/')) {
     res.setHeader('Cache-Control', 'no-cache, must-revalidate, max-age=0');
-  } else if (p.startsWith('/src/js/')) {
+  } else if (p.startsWith('/src/js/') || p.startsWith('/src/css/')) {
     res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
   }
   next();

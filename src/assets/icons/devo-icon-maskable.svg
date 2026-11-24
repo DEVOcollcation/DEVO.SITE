@@ -1,0 +1,27 @@
+<svg viewBox="0 0 512 512" width="512" height="512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="devo-mask-bg" cx="50%" cy="35%" r="72%">
+      <stop offset="0%" stop-color="#222228"/>
+      <stop offset="60%" stop-color="#121216"/>
+      <stop offset="100%" stop-color="#08080A"/>
+    </radialGradient>
+    <linearGradient id="devo-mask-v" x1="265" y1="160" x2="395" y2="352" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="55%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed solid/gradient background for Android maskable & iOS touch icons (zero edge clipping) -->
+  <rect x="0" y="0" width="512" height="512" fill="url(#devo-mask-bg)"/>
+
+  <!-- Subtle radial glow behind monogram inside safe zone -->
+  <circle cx="256" cy="248" r="168" fill="#F97316" opacity="0.06"/>
+
+  <!-- Centered DV Monogram strictly inside the 80% safe zone (18% outer padding on all sides) -->
+  <g transform="translate(56, 56) scale(0.78125)">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M90 138H179C239 138 271 180 271 256C271 332 239 374 179 374H90V138ZM139 185V327H175C208 327 223 301 223 256C223 211 208 185 175 185H139Z" fill="#FFFFFF"/>
+    <path d="M271 138H320L348 284L376 138H425L370 374H325L271 138Z" fill="url(#devo-mask-v)"/>
+    <rect x="181" y="418" width="150" height="18" rx="9" fill="url(#devo-mask-v)" opacity="0.92"/>
+  </g>
+</svg>

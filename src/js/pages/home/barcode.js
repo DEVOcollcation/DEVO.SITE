@@ -1,9 +1,16 @@
-import { findModelByCode } from './gallery.js?v=9.3';
+import { findModelByCode, checkIsWorker } from './gallery.js?v=18.1';
+import { classifyBarcodeLookupResult } from '../../services/barcode_lookup_logic.js';
+import {
+    classifyCameraError,
+    getCameraStatusMessage,
+    shouldAutoStartCamera
+} from '../../services/barcode_camera_logic.js';
 import { showToast } from '../../components/toast.js';
 import { supabase } from '../../config/supabase.js';
 
 let html5QrCode = null;
 let isScannerRunning = false;
+let isStartingScanner = false;
 let isScannerLocked = false;
 let selectedCameraId = null;
 let scanMode = 'both';
@@ -84,6 +91,105 @@ function createScannerInstance() {
     return new window.Html5Qrcode("barcode-reader", configs);
 }
 
+function enableManualInputFromOverlay() {
+    const toggleManualInput = document.getElementById('toggle-manual-input');
+    const manualInput = document.getElementById('barcode-manual-input');
+    const btnSubmitManualCode = document.getElementById('btn-submit-manual-code');
+    if (toggleManualInput && !toggleManualInput.checked) {
+        toggleManualInput.checked = true;
+        toggleManualInput.dispatchEvent(new Event('change'));
+    } else if (manualInput) {
+        manualInput.disabled = false;
+        if (btnSubmitManualCode) btnSubmitManualCode.disabled = false;
+        updateManualInputPlaceholder();
+        manualInput.focus();
+    }
+    manualInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function hideCameraStatusOverlay() {
+    const overlay = document.getElementById('barcode-camera-status-overlay');
+    if (overlay) overlay.classList.add('hidden');
+}
+
+function showCameraStatusOverlay(kind) {
+    const cameraBox = document.getElementById('barcode-camera-box');
+    if (!cameraBox) return;
+
+    const info = getCameraStatusMessage(kind);
+    let overlay = document.getElementById('barcode-camera-status-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'barcode-camera-status-overlay';
+        cameraBox.appendChild(overlay);
+    }
+
+    const isWarning = kind === 'permission_denied' || kind === 'not_found' || kind === 'in_use' || kind === 'unsupported' || kind === 'unknown';
+    const iconClass = kind === 'standby' ? 'ph-camera' : 'ph-camera-slash';
+    const iconBgClass = isWarning
+        ? 'bg-devo-orange/15 border-devo-orange/40 text-devo-orange'
+        : 'bg-devo-info/15 border-devo-info/40 text-devo-info';
+
+    overlay.className = 'absolute inset-0 z-20 flex flex-col items-center justify-center p-4 text-center bg-devo-black/95 backdrop-blur-sm';
+    overlay.innerHTML = `
+        <div class="w-12 h-12 rounded-2xl border ${iconBgClass} flex items-center justify-center mb-2.5 shrink-0">
+            <i class="ph ${iconClass} text-2xl"></i>
+        </div>
+        <h4 class="text-white font-black text-sm leading-snug mb-1"></h4>
+        <p class="text-devo-muted text-xs leading-relaxed max-w-xs mb-3"></p>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+            ${info.suggestManual ? `<button type="button" data-action="enable-manual" class="px-3.5 py-2 rounded-xl bg-devo-info hover:bg-blue-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"><i class="ph ph-keyboard text-sm"></i><span>إدخال الكود يدوياً</span></button>` : ''}
+            ${info.allowRetry ? `<button type="button" data-action="retry-camera" class="px-3.5 py-2 rounded-xl bg-devo-dark border border-devo-gray hover:border-devo-orange text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"><i class="ph ph-arrows-clockwise text-sm"></i><span>${kind === 'standby' ? 'تشغيل الكاميرا' : 'إعادة المحاولة'}</span></button>` : ''}
+        </div>
+    `;
+    const titleEl = overlay.querySelector('h4');
+    const descEl = overlay.querySelector('p');
+    if (titleEl) titleEl.textContent = info.title;
+    if (descEl) descEl.textContent = info.subtitle;
+
+    overlay.querySelector('[data-action="enable-manual"]')?.addEventListener('click', enableManualInputFromOverlay);
+    overlay.querySelector('[data-action="retry-camera"]')?.addEventListener('click', () => startScanning({ isAutoStart: false }));
+}
+
+async function queryCameraPermissionState() {
+    try {
+        if (navigator?.permissions && typeof navigator.permissions.query === 'function') {
+            const status = await navigator.permissions.query({ name: 'camera' });
+            return status?.state || 'unknown';
+        }
+    } catch {
+        // Firefox / Safari may not support 'camera' in Permissions API
+    }
+    return 'unknown';
+}
+
+async function maybeAutoStartScanning() {
+    if (isScannerRunning || isStartingScanner) return;
+    const barcodeView = document.getElementById('view-barcode');
+    if (barcodeView && barcodeView.classList.contains('hidden')) return;
+
+    const hasMediaDevices = typeof navigator !== 'undefined' &&
+        Boolean(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
+    let isEmbedded = false;
+    try {
+        isEmbedded = typeof window !== 'undefined' && window.self !== window.top;
+    } catch {
+        isEmbedded = true;
+    }
+
+    const permissionState = hasMediaDevices ? await queryCameraPermissionState() : 'denied';
+    const decision = shouldAutoStartCamera({ permissionState, hasMediaDevices, isEmbedded });
+
+    if (!decision.shouldStart) {
+        if (decision.fallbackStatus) {
+            showCameraStatusOverlay(decision.fallbackStatus);
+        }
+        return;
+    }
+
+    await startScanning({ isAutoStart: true });
+}
+
 export function initBarcode() {
     const btnToggleScan = document.getElementById('btn-toggle-scan');
     const btnSubmitManualCode = document.getElementById('btn-submit-manual-code');
@@ -100,7 +206,7 @@ export function initBarcode() {
                 html5QrCode = createScannerInstance();
             }
         } catch (e) {
-            console.error("Failed to initialize Html5Qrcode:", e);
+            console.warn("Failed to initialize Html5Qrcode:", e);
         }
     });
 
@@ -127,7 +233,7 @@ export function initBarcode() {
         if (isScannerRunning) {
             stopScanning();
         } else {
-            startScanning();
+            startScanning({ isAutoStart: false });
         }
     });
 
@@ -136,7 +242,7 @@ export function initBarcode() {
         selectCamera.addEventListener('change', (e) => {
             selectedCameraId = e.target.value;
             if (isScannerRunning) {
-                stopScanning().then(() => startScanning());
+                stopScanning().then(() => startScanning({ isAutoStart: false }));
             }
         });
     }
@@ -157,11 +263,9 @@ export function initBarcode() {
         }
 
         if (targetId === 'view-barcode') {
-            // Automatically start scanning when switching to barcode tab
+            // Safely check permissions and start scanning when switching to barcode tab
             setTimeout(() => {
-                if (!isScannerRunning) {
-                    startScanning();
-                }
+                maybeAutoStartScanning();
             }, 200);
         } else {
             // Automatically stop scanning when leaving barcode tab
@@ -192,41 +296,46 @@ export function initBarcode() {
         }
     };
 
-    // إذا كانت الصفحة الحالية بالفعل هي الباركود عند التحميل أو عمل ريفريش، ابدأ المسح تلقائياً
+    // إذا كانت الصفحة الحالية بالفعل هي الباركود عند التحميل أو عمل ريفريش، ابدأ المسح تلقائياً بأمان
     const barcodeViewEl = document.getElementById('view-barcode');
     if (window.currentView === 'view-barcode' || (barcodeViewEl && !barcodeViewEl.classList.contains('hidden'))) {
         setTimeout(() => {
-            if (!isScannerRunning) {
-                startScanning();
-            }
+            maybeAutoStartScanning();
         }, 250);
     }
 }
 
-async function startScanning() {
+async function startScanning({ isAutoStart = false } = {}) {
+    if (isScannerRunning || isStartingScanner) return;
+
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        showCameraStatusOverlay('unsupported');
+        if (!isAutoStart) {
+            const msg = getCameraStatusMessage('unsupported');
+            showToast(msg.toastMessage, msg.toastType);
+        }
+        return;
+    }
+
     if (!window.Html5Qrcode) {
         showToast("مكتبة قارئ الباركود لم تكتمل في التحميل بعد. أعد المحاولة.", "warning");
         return;
     }
 
-    // Refresh settings before scanning to adapt to any recent admin changes
-    await fetchBarcodeSettings();
+    isStartingScanner = true;
 
-    // Recreate scanner with latest settings
-    try {
-        html5QrCode = createScannerInstance();
-    } catch (e) {
-        console.error("Failed to create Html5Qrcode instance:", e);
-        showToast("حدث خطأ أثناء تهيئة الكاميرا.", "error");
-        return;
-    }
-    
     const btnToggleScan = document.getElementById('btn-toggle-scan');
     const txtToggleScan = document.getElementById('txt-toggle-scan');
     const selectCamera = document.getElementById('select-camera');
     const laser = document.getElementById('barcode-scanner-laser');
 
     try {
+        // Refresh settings before scanning to adapt to any recent admin changes
+        await fetchBarcodeSettings();
+
+        // Recreate scanner with latest settings
+        html5QrCode = createScannerInstance();
+
         // Request cameras list
         const devices = await window.Html5Qrcode.getCameras();
         if (devices && devices.length > 0) {
@@ -267,10 +376,12 @@ async function startScanning() {
             selectedCameraId ? selectedCameraId : { facingMode: "environment" },
             config,
             onScanSuccess,
-            (errorMessage) => {
+            () => {
                 // Ignore scanning cycle failures/no code detected
             }
         );
+
+        hideCameraStatusOverlay();
 
         // ضبط عنصر الفيديو للتأكد من ملاءمته الدقيقة لشاشات كافة الموبايلات
         const videoEl = document.querySelector('#barcode-reader video');
@@ -300,8 +411,23 @@ async function startScanning() {
         if (laser) laser.classList.remove('hidden');
 
     } catch (err) {
-        console.error("Camera access failed", err);
-        showToast("لم نتمكن من تشغيل الكاميرا. تأكد من إعطاء الصلاحيات للمتصفح.", "error");
+        const errorKind = classifyCameraError(err);
+        const statusInfo = getCameraStatusMessage(errorKind);
+
+        if (selectCamera) selectCamera.classList.add('hidden');
+        if (laser) laser.classList.add('hidden');
+        isScannerRunning = false;
+        showCameraStatusOverlay(errorKind);
+
+        if (errorKind === 'unknown') {
+            console.warn("Camera unavailable:", err);
+        }
+
+        if (!isAutoStart && statusInfo.toastMessage) {
+            showToast(statusInfo.toastMessage, statusInfo.toastType);
+        }
+    } finally {
+        isStartingScanner = false;
     }
 }
 
@@ -328,6 +454,7 @@ async function stopScanning() {
             btnToggleScan.classList.replace('hover:bg-red-600', 'hover:bg-devo-orangeHover');
         }
         if (laser) laser.classList.add('hidden');
+        showCameraStatusOverlay('standby');
     }
 }
 
@@ -338,14 +465,22 @@ async function onScanSuccess(decodedText) {
     playBeepSound();
 
     const code = decodedText.trim();
+    const isStaff = checkIsWorker();
     const lookupFn = window.findModelByCode || findModelByCode;
-    const model = await lookupFn(code, matchType);
+    const rawModel = await lookupFn(code, matchType, { includeInactive: isStaff });
+    const result = classifyBarcodeLookupResult(rawModel, isStaff);
 
-    if (model) {
-        showToast(`تم مسح الباركود بنجاح. الموديل: ${model.name}`, 'success');
-        window.openModelViewer(model.id);
+    if (result.status === 'found_active') {
+        showToast(`تم مسح الباركود بنجاح. الموديل: ${result.model.name}`, 'success');
+        window.openModelViewer(result.model.id, false, result.model);
+    } else if (result.status === 'found_inactive') {
+        showToast(`تم العثور على الموديل (غير مفعل بالمعرض): ${result.model.name}`, 'warning');
+        window.openModelViewer(result.model.id, false, result.model);
     } else {
-        showToast(`الباركود (${code}) غير مطابق لأي موديل نشط بالمعرض`, 'error');
+        const notFoundMsg = isStaff
+            ? `الباركود (${code}) غير مسجل لأي موديل في النظام`
+            : `الباركود (${code}) غير مطابق لأي موديل نشط بالمعرض`;
+        showToast(notFoundMsg, 'error');
         // Resume scanning after a 2.5 seconds delay so toast is readable
         setTimeout(() => {
             isScannerLocked = false;
@@ -366,13 +501,22 @@ async function handleManualCodeSubmit() {
     if (btn) btn.disabled = true;
 
     try {
+        const isStaff = checkIsWorker();
         const lookupFn = window.findModelByCode || findModelByCode;
-        const model = await lookupFn(code, matchType);
-        if (model) {
-            showToast(`تم العثور على الموديل: ${model.name}`, 'success');
-            window.openModelViewer(model.id);
+        const rawModel = await lookupFn(code, matchType, { includeInactive: isStaff });
+        const result = classifyBarcodeLookupResult(rawModel, isStaff);
+
+        if (result.status === 'found_active') {
+            showToast(`تم العثور على الموديل: ${result.model.name}`, 'success');
+            window.openModelViewer(result.model.id, false, result.model);
+        } else if (result.status === 'found_inactive') {
+            showToast(`تم العثور على الموديل (غير مفعل بالمعرض): ${result.model.name}`, 'warning');
+            window.openModelViewer(result.model.id, false, result.model);
         } else {
-            showToast(`كود الموديل (${code}) غير موجود بالمعرض`, 'error');
+            const notFoundMsg = isStaff
+                ? `كود الموديل (${code}) غير موجود في النظام`
+                : `كود الموديل (${code}) غير موجود بالمعرض`;
+            showToast(notFoundMsg, 'error');
         }
     } finally {
         if (btn) btn.disabled = false;

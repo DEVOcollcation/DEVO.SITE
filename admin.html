@@ -4,63 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DEVO | لوحة تحكم الإدارة</title>
-    <link rel="icon" type="image/png" href="./src/assets/icons/dv.png">
-    <link rel="stylesheet" href="./src/css/tailwind.css">
+    <link rel="icon" type="image/svg+xml" href="./src/assets/icons/devo-icon.svg?v=18.0.0">
+    <link rel="icon" type="image/png" sizes="192x192" href="./src/assets/icons/pwa-192x192.png?v=18.0.0">
+    <link rel="stylesheet" href="./src/css/tailwind.css?v=18.0.1">
     <link rel="stylesheet" href="./src/vendor/phosphor/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="manifest" href="manifest-admin.json">
+    <link rel="manifest" href="manifest-admin.json?v=18.0.0">
+    <meta name="theme-color" content="#0a0a0a">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="ديفو أدمن">
-<link rel="apple-touch-icon" href="./src/assets/icons/dv.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./src/assets/icons/apple-touch-icon.png?v=18.0.0">
 
-<script>
-  // تسجيل وإدارة تحديثات الـ Service Worker التلقائية الفورية
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
-        .then(reg => {
-          console.log('DEVO PWA Ready!', reg);
-          
-          // فحص التحديثات فوراً عند الفتح
-          reg.update().catch(() => {});
-
-          // عند العثور على نسخة جديدة في الخلفية
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // إرسال أمر التفعيل الفوري للنسخة الجديدة
-                  newWorker.postMessage({ type: 'SKIP_WAITING' });
-                }
-              });
-            }
-          });
-        })
-        .catch(err => console.log('PWA Error:', err));
-
-      // إعادة تحميل الصفحة بسلاسة فور تولي النسخة الجديدة التحكم لتطبيق أحدث كود تلقائياً
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!refreshing) {
-          refreshing = true;
-          window.location.reload();
-        }
-      });
-
-      // فحص التحديثات عند العودة للتطبيق (Foreground / Visibility Change)
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          navigator.serviceWorker.getRegistration().then(reg => {
-            if (reg) reg.update().catch(() => {});
-          });
-        }
-      });
-    });
-  }
-</script>
+    <script type="module" src="./src/js/services/pwa_updater.js?v=18.0.0"></script>
 
     <script>
         // Prevent FOUC: load and apply theme variables from LocalStorage immediately
@@ -74,9 +31,12 @@
                         const styleEl = document.createElement('style');
                         styleEl.id = 'devo-theme-styles-early';
                         const bgHex = colors.page?.bg || '#0a0a0a';
-                        const isLight = bgHex !== '#0a0a0a' && bgHex !== '#171717' && bgHex !== '#121212';
-                        const defaultGray = isLight ? (colors.brand?.secondary || '#ebdcb9') : '#262626';
-                        const defaultGrayHover = isLight ? (colors.brand?.secondary_hover || '#c4b28d') : '#404040';
+                        const normHex = bgHex.length === 4 ? ('#' + bgHex[1] + bgHex[1] + bgHex[2] + bgHex[2] + bgHex[3] + bgHex[3]) : bgHex;
+                        const isLight = /^#[0-9a-f]{6}$/i.test(normHex)
+                            ? ((parseInt(normHex.slice(1, 3), 16) * 299 + parseInt(normHex.slice(3, 5), 16) * 587 + parseInt(normHex.slice(5, 7), 16) * 114) / 1000) > 128
+                            : false;
+                        const defaultGray = isLight ? (colors.brand?.secondary || '#d6e3f0') : '#262626';
+                        const defaultGrayHover = isLight ? (colors.brand?.secondary_hover || '#c3d6ea') : '#404040';
                         const devoGray = colors.borders?.color || defaultGray;
                         const devoGrayHover = colors.brand?.secondary_hover || defaultGrayHover;
 
@@ -335,6 +295,18 @@
                         <i class="ph ph-bell-simple-ringing text-base shrink-0"></i>
                         <span class="sidebar-label whitespace-nowrap">إعدادات الإشعارات والتليجرام</span>
                     </a>
+                    <a href="#" data-target="view-data-management" class="nav-link settings-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إدارة البيانات">
+                        <i class="ph ph-sliders-horizontal text-base shrink-0 text-devo-orange"></i>
+                        <span class="sidebar-label whitespace-nowrap">إدارة البيانات</span>
+                    </a>
+                    <a href="#" data-target="view-settings-lock" class="nav-link settings-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="قفل الإعدادات">
+                        <i class="ph ph-lock-key text-base shrink-0 text-devo-orange"></i>
+                        <span class="sidebar-label whitespace-nowrap">قفل الإعدادات</span>
+                    </a>
+                    <a href="#" data-target="view-app-updates" class="nav-link settings-sublink sidebar-item group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="تتبع التحديثات">
+                        <i class="ph ph-cloud-arrow-down text-base shrink-0 text-devo-orange"></i>
+                        <span class="sidebar-label whitespace-nowrap">تتبع التحديثات</span>
+                    </a>
                     <a href="#" data-target="view-system-reset" class="nav-link settings-sublink sidebar-item hidden group flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-devo-muted hover:bg-devo-gray hover:text-white transition-colors relative" title="إعادة تهيئة النظام">
                         <i class="ph ph-warning-octagon text-base shrink-0 text-devo-error"></i>
                         <span class="sidebar-label whitespace-nowrap">إعادة تهيئة النظام</span>
@@ -357,7 +329,7 @@
 
     <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
         
-        <header class="h-20 bg-devo-black/80 backdrop-blur-md border-b border-devo-gray flex items-center justify-between px-8 z-[80]">
+        <header class="h-20 shrink-0 bg-devo-black/80 backdrop-blur-md border-b border-devo-gray flex items-center justify-between px-8 z-[80]">
             <div class="flex items-center gap-4">
                 <h2 class="text-xl font-bold text-white" id="page-title">جاري التحميل...</h2>
 
@@ -397,6 +369,14 @@
                     <button onclick="openCreateThemeModal()" type="button" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-3.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shadow-sm text-xs cursor-pointer" title="إنشاء مظهر جديد">
                         <i class="ph ph-plus-circle text-base"></i>
                         <span class="hidden sm:inline">إنشاء مظهر جديد</span>
+                    </button>
+                </div>
+
+                <!-- زر قفل قسم الإعدادات السريع بالهيدر العلوي -->
+                <div id="settings-lock-header-actions" class="hidden items-center gap-2">
+                    <button onclick="lockSettingsNow()" type="button" class="bg-devo-dark hover:bg-devo-gray text-devo-text border border-devo-gray hover:border-devo-orange/50 px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 text-xs cursor-pointer whitespace-nowrap" title="قفل قسم الإعدادات فوراً">
+                        <i class="ph ph-lock-key text-base text-devo-orange"></i>
+                        <span class="hidden sm:inline">قفل الإعدادات</span>
                     </button>
                 </div>
             </div>
@@ -1724,7 +1704,7 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-bold text-devo-muted mb-1">اسم المستخدم (للدخول) <span class="text-devo-error">*</span></label>
-                            <input type="text" id="u-username" required autocomplete="off" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
+                            <input type="text" id="u-username" required autocomplete="username" class="w-full bg-devo-black border border-devo-gray rounded-lg px-3 py-2.5 text-white focus:border-devo-orange outline-none text-sm text-left" dir="ltr">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-devo-muted mb-1">الصلاحية <span class="text-devo-error">*</span></label>
@@ -3650,15 +3630,16 @@
 
         <!-- Body -->
         <div class="p-5 space-y-4 text-xs">
-            <div class="space-y-1.5">
+            <form onsubmit="return false;" class="space-y-1.5">
                 <label class="block font-bold text-white">مفتاح Google Drive API Key:</label>
                 <input type="password" 
                        id="gdrive-api-key-input" 
+                       autocomplete="off"
                        dir="ltr"
                        placeholder="AIzaSy..." 
                        class="w-full bg-devo-black border border-devo-gray rounded-xl px-4 py-3 text-white font-mono text-xs outline-none focus:border-devo-orange transition-all">
                 <p class="text-[11px] text-devo-muted">يتم تخزين المفتاح بأمان داخل جدول <code class="text-devo-orange">home_settings</code> في Supabase.</p>
-            </div>
+            </form>
 
             <!-- Steps Helper -->
             <div class="bg-devo-black/70 border border-devo-gray/70 rounded-xl p-3.5 space-y-2 text-devo-muted leading-relaxed">
@@ -4527,11 +4508,11 @@
                 </div>
 
                 <div class="space-y-3 text-xs">
-                    <div>
+                    <form onsubmit="return false;">
                         <label class="block font-bold text-devo-muted mb-1">توكن البوت (Bot Token)</label>
-                        <input type="password" id="telegram-bot-token" placeholder="أدخل Bot Token من @BotFather" 
+                        <input type="password" id="telegram-bot-token" autocomplete="off" placeholder="أدخل Bot Token من @BotFather" 
                             class="w-full bg-devo-black border border-devo-gray rounded-xl px-3.5 py-2.5 text-white placeholder-devo-muted/50 focus:border-devo-orange outline-none">
-                    </div>
+                    </form>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
@@ -4818,6 +4799,36 @@
     </div>
 </div>
 
+<!-- ===== VIEW: DATA MANAGEMENT (OWNER ONLY) ===== -->
+<div id="view-data-management" class="view-section hidden">
+    <div id="data-management-content">
+        <!-- يتم حقن المحتوى بواسطة data_management.js -->
+        <div class="flex items-center justify-center min-h-[400px]">
+            <div class="w-8 h-8 rounded-full border-2 border-devo-orange/30 border-t-devo-orange animate-spin"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== VIEW: SETTINGS LOCK (OWNER ONLY) ===== -->
+<div id="view-settings-lock" class="view-section hidden">
+    <div id="settings-lock-page-content">
+        <!-- يتم حقن المحتوى بواسطة settings_lock_page.js -->
+        <div class="flex items-center justify-center min-h-[400px]">
+            <div class="w-8 h-8 rounded-full border-2 border-devo-orange/30 border-t-devo-orange animate-spin"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== VIEW: APP UPDATES TRACKER (OWNER ONLY) ===== -->
+<div id="view-app-updates" class="view-section hidden">
+    <div id="app-updates-content">
+        <!-- يتم حقن المحتوى بواسطة app_updates.js -->
+        <div class="flex items-center justify-center min-h-[400px]">
+            <div class="w-8 h-8 rounded-full border-2 border-devo-orange/30 border-t-devo-orange animate-spin"></div>
+        </div>
+    </div>
+</div>
+
 <!-- ===== VIEW: SYSTEM RESET (OWNER ONLY) ===== -->
 <div id="view-system-reset" class="view-section hidden">
     <div id="reset-view-content">
@@ -5036,6 +5047,96 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: إعدادات المؤثرات الموسمية (شتاء العيد) -->
+<!-- ============================================================ -->
+<div id="theme-seasonal-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[260] hidden items-center justify-center p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="seasonal-modal-title">
+    <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-lg flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300 max-h-[90vh]">
+        <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50 rounded-t-2xl shrink-0">
+            <div class="flex items-center gap-2.5">
+                <i class="ph ph-snowflake text-2xl text-devo-orange"></i>
+                <div>
+                    <h3 id="seasonal-modal-title" class="text-white font-bold text-base">إعدادات المؤثرات الموسمية: <span id="seasonal-theme-name" class="text-devo-orange">—</span></h3>
+                    <p class="text-xs text-devo-muted mt-0.5">تظهر هذه المؤثرات في واجهة المعرض فقط بينما تبقى لوحة التحكم هادئة.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeSeasonalControlsModal()" aria-label="إغلاق نافذة المؤثرات الموسمية" class="text-devo-muted hover:text-white transition-colors p-1">
+                <i class="ph ph-x text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-6 overflow-y-auto space-y-5 flex-1 text-right" dir="rtl">
+            <input type="hidden" id="seasonal-theme-id">
+
+            <label class="flex items-center justify-between gap-4 p-3.5 rounded-xl bg-devo-black/40 border border-devo-gray cursor-pointer">
+                <div>
+                    <span class="block text-sm font-bold text-white">تفعيل الأجواء الموسمية في المعرض</span>
+                    <span class="block text-xs text-devo-muted mt-0.5">التحكم الرئيسي في طبقة الثلوج والزخارف وشريط التهنئة</span>
+                </div>
+                <input type="checkbox" id="seasonal-enabled" class="w-5 h-5 accent-devo-orange cursor-pointer">
+            </label>
+
+            <div class="space-y-3 border-t border-devo-gray pt-4">
+                <label class="flex items-center justify-between gap-4 cursor-pointer">
+                    <div>
+                        <span class="block text-sm font-bold text-white">تساقط الثلوج الناعم</span>
+                        <span class="block text-xs text-devo-muted">ندف ثلج خفيفة تتحرك بسلاسة وتُعطَّل تلقائياً عند تقليل الحركة</span>
+                    </div>
+                    <input type="checkbox" id="seasonal-snow-enabled" class="w-5 h-5 accent-devo-orange cursor-pointer">
+                </label>
+
+                <div>
+                    <label for="seasonal-snow-intensity" class="block text-xs font-bold text-devo-muted mb-1.5">كثافة تساقط الثلوج</label>
+                    <select id="seasonal-snow-intensity" class="w-full bg-devo-black border border-devo-gray rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-devo-orange outline-none">
+                        <option value="light">هادئ وخفيف (موصى به)</option>
+                        <option value="medium">متوسط وواضح</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="space-y-3 border-t border-devo-gray pt-4">
+                <label class="flex items-center justify-between gap-4 cursor-pointer">
+                    <div>
+                        <span class="block text-sm font-bold text-white">زخارف الهلال وفوانيس العيد</span>
+                        <span class="block text-xs text-devo-muted">زخارف متجهية ذهبية هادئة أعلى بانر الصفحة الرئيسية</span>
+                    </div>
+                    <input type="checkbox" id="seasonal-eid-ornaments" class="w-5 h-5 accent-devo-orange cursor-pointer">
+                </label>
+
+                <label class="flex items-center justify-between gap-4 cursor-pointer">
+                    <div>
+                        <span class="block text-sm font-bold text-white">تأثير الزجاج الصقيعي الشتوي</span>
+                        <span class="block text-xs text-devo-muted">إطار زجاجي ثلجي ناعم لبطاقة العنوان الرئيسية في المعرض</span>
+                    </div>
+                    <input type="checkbox" id="seasonal-frost-glass" class="w-5 h-5 accent-devo-orange cursor-pointer">
+                </label>
+            </div>
+
+            <div class="space-y-3 border-t border-devo-gray pt-4">
+                <label class="flex items-center justify-between gap-4 cursor-pointer">
+                    <div>
+                        <span class="block text-sm font-bold text-white">شريط تهنئة العيد أعلى المعرض</span>
+                        <span class="block text-xs text-devo-muted">شريط رفيع قابل للإغلاق من قِبل الزائر</span>
+                    </div>
+                    <input type="checkbox" id="seasonal-greeting-enabled" class="w-5 h-5 accent-devo-orange cursor-pointer">
+                </label>
+
+                <div>
+                    <label for="seasonal-greeting-text" class="block text-xs font-bold text-devo-muted mb-1.5">نص شريط التهنئة</label>
+                    <input type="text" id="seasonal-greeting-text" maxlength="120" placeholder="عيد سعيد — تشكيلة العيد الشتوية من ديفو" class="w-full bg-devo-black border border-devo-gray rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-devo-orange outline-none">
+                </div>
+            </div>
+        </div>
+
+        <div class="p-5 border-t border-devo-gray flex items-center justify-end gap-2 bg-devo-black/50 rounded-b-2xl shrink-0">
+            <button type="button" onclick="closeSeasonalControlsModal()" class="px-5 py-2.5 rounded-xl border border-devo-gray text-white text-sm font-bold hover:bg-devo-gray transition-colors">إلغاء</button>
+            <button type="button" onclick="saveSeasonalEffects()" class="px-6 py-2.5 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white text-sm font-bold transition-all shadow-md flex items-center gap-1.5">
+                <i class="ph ph-floppy-disk"></i> حفظ وتطبيق المؤثرات
+            </button>
+        </div>
     </div>
 </div>
 

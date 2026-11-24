@@ -1,3 +1,182 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    html, body, body * {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+
+    input,
+    textarea,
+    select,
+    [contenteditable="true"],
+    .select-text {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+    }
+
+    img {
+        -webkit-user-drag: none;
+    }
+
+    :root {
+        --devo-topbar-height: 0px;
+        --devo-header-height: 55px;
+    }
+
+    @media (min-width: 768px) {
+        :root {
+            --devo-header-height: 81px;
+        }
+    }
+
+    /* Use overflow-x: clip instead of hidden so position: sticky works reliably */
+    html,
+    body {
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: clip;
+    }
+}
+
+@layer components {
+    /* Guaranteed fixed topbar & main header stacking across all breakpoints */
+    #site-header-topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 100025;
+    }
+
+    #site-header-nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 100020;
+    }
+
+    #site-header-nav[data-layout="luxury"] {
+        top: var(--devo-topbar-height, 26px);
+    }
+
+    #site-header-nav[data-layout="minimal"] {
+        background-color: transparent !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Storefront main content clears the fixed top header without pushing admin pages down */
+    body > main#devo-main-content {
+        padding-top: var(--devo-header-height, 55px);
+    }
+
+    /* Sticky gallery search bar always docks cleanly below the fixed header */
+    #gallery-search-bar {
+        position: sticky;
+        top: var(--devo-header-height, 55px);
+        z-index: 900;
+    }
+
+    /* Mobile bottom nav & drawer strict responsive guards */
+    #mobile-bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 100015;
+    }
+
+    #mobile-menu-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 100008;
+    }
+
+    #mobile-menu {
+        position: fixed;
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 100012;
+    }
+
+    @media (min-width: 768px) {
+        #mobile-bottom-nav,
+        #mobile-menu,
+        #mobile-menu-backdrop {
+            display: none !important;
+        }
+    }
+
+    /* Never allow floating cart circles to overlap the mobile bottom nav */
+    @media (max-width: 767.98px) {
+        #floating-cart-btn,
+        #visitor-floating-cart-btn {
+            display: none !important;
+        }
+    }
+
+    /* Guaranteed top-level stacking & dimmed backdrop for Admin security/operation modals across all themes */
+    #settings-lock-overlay,
+    #dm-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 99950;
+        background-color: rgba(0, 0, 0, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    }
+
+    /* Distinctive Disabled / Inactive Model Card (Staff Barcode Inspection) across Dark & Light Themes */
+    #model-viewer-sheet[data-model-inactive="true"] {
+        border-color: rgba(239, 68, 68, 0.55) !important;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(239, 68, 68, 0.25) !important;
+    }
+
+    #model-viewer-sheet[data-model-inactive="true"]::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #dc2626 0%, #ef4444 50%, #dc2626 100%);
+        z-index: 30;
+        pointer-events: none;
+    }
+
+    #model-viewer-sheet[data-model-inactive="true"] .inactive-model-banner {
+        background-color: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.32);
+    }
+
+    #model-viewer-sheet[data-model-inactive="true"] .inactive-model-badge {
+        background-color: #dc2626 !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    #model-viewer-sheet[data-model-inactive="true"] .inactive-model-badge i,
+    #model-viewer-sheet[data-model-inactive="true"] .inactive-model-badge span {
+        color: #ffffff !important;
+    }
+
+    #model-viewer-sheet[data-model-inactive="true"] .inactive-model-photo {
+        filter: saturate(0.55) contrast(0.95);
+    }
+}
+
+

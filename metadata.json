@@ -1,0 +1,7 @@
+{
+  "name": "DEVO Collection",
+  "description": "نظام إدارة المبيعات والمخازن والمعرض الخاص بمصنع DEVO للملابس الجاهزة",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

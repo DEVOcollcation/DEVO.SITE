@@ -1,4 +1,12 @@
 import { supabase } from '../config/supabase.js';
+import {
+  WINTER_EID_THEME_NAME,
+  WINTER_EID_THEME_DEFINITION,
+  normalizeSeasonalConfig,
+} from './seasonal_config.js';
+import { applySeasonalEffects, teardownSeasonalEffects } from './seasonal_effects.js';
+
+export { teardownSeasonalEffects };
 
 export function isHexColorLight(hex) {
   if (!hex || hex[0] !== '#') return false;
@@ -625,7 +633,8 @@ export const DEFAULT_THEMES = {
       "show_hero_image": true,
       "hero_image_blend": "overlay"
     }
-  }
+  },
+  [WINTER_EID_THEME_NAME]: WINTER_EID_THEME_DEFINITION
 };
 
 /**
@@ -759,6 +768,39 @@ export function applyTheme(theme) {
     ${isLightPageBg ? `
       .bg-devo-gray, .bg-devo-gray\\/80, .bg-devo-gray\\/50 {
         color: var(--devo-text);
+      }
+      /* Preserve crisp white text & icons on solid primary & semantic buttons/badges under light themes */
+      .bg-devo-orange, .bg-devo-orange .text-white, .bg-devo-orange span:not(.bg-white):not(.text-devo-orange), .bg-devo-orange i,
+      .bg-devo-success, .bg-devo-success .text-white, .bg-devo-success span:not(.bg-white), .bg-devo-success i,
+      .bg-devo-error, .bg-devo-error .text-white, .bg-devo-error span:not(.bg-white), .bg-devo-error i,
+      .bg-devo-warning, .bg-devo-warning .text-white, .bg-devo-warning span:not(.bg-white), .bg-devo-warning i,
+      .bg-devo-info, .bg-devo-info .text-white, .bg-devo-info span:not(.bg-white), .bg-devo-info i,
+      header a.bg-devo-orange, header button.bg-devo-orange,
+      .top-navigation a.bg-devo-orange, .top-navigation button.bg-devo-orange {
+        color: #ffffff !important;
+      }
+      /* Keep white counter pills inside floating orange buttons crisp and readable */
+      #floating-cart-count, #visitor-floating-cart-count {
+        background-color: #ffffff !important;
+        color: var(--devo-orange) !important;
+      }
+      /* Keep tinted badge chips readable with their own accent color */
+      .bg-devo-orange\\/10, .bg-devo-orange\\/10 *, .bg-devo-orange\\/15, .bg-devo-orange\\/15 *,
+      .bg-devo-orange\\/20, .bg-devo-orange\\/20 * {
+        color: var(--devo-orange) !important;
+      }
+      .bg-devo-success\\/10, .bg-devo-success\\/10 *, .bg-devo-success\\/15, .bg-devo-success\\/15 * {
+        color: var(--devo-success) !important;
+      }
+      .bg-devo-error\\/10, .bg-devo-error\\/10 *, .bg-devo-error\\/15, .bg-devo-error\\/15 * {
+        color: var(--devo-error) !important;
+      }
+      .bg-devo-info\\/10, .bg-devo-info\\/10 *, .bg-devo-info\\/15, .bg-devo-info\\/15 * {
+        color: var(--devo-info) !important;
+      }
+      /* Modal backdrop headers & close buttons under light themes */
+      .bg-black\\/25, .bg-black\\/25 * {
+        color: #ffffff !important;
       }
     ` : ''}
 
@@ -1201,6 +1243,9 @@ export function applyTheme(theme) {
   }
 
   styleEl.innerHTML = cssText;
+
+  // 15. Seasonal Atmosphere Layer (Storefront only; tears down on Admin/Auth or non-seasonal themes)
+  applySeasonalEffects(theme);
 }
 
 /**
@@ -1226,7 +1271,12 @@ export async function syncActiveTheme() {
       if (cachedStr) {
         const cached = JSON.parse(cachedStr);
         // Only update cache and re-apply if it is a different theme or has been updated
-        if (cached.id !== theme.id || cached.updated_at !== theme.updated_at || JSON.stringify(cached.colors) !== JSON.stringify(theme.variables.colors)) {
+        if (
+          cached.id !== theme.id ||
+          cached.updated_at !== theme.updated_at ||
+          JSON.stringify(cached.colors) !== JSON.stringify(theme.variables.colors) ||
+          JSON.stringify(cached.seasonal || null) !== JSON.stringify(theme.variables.seasonal || null)
+        ) {
           updateCacheAndApply(theme);
         } else {
           // Re-apply cached details just to be safe
@@ -1255,7 +1305,8 @@ function updateCacheAndApply(dbTheme) {
     colors: dbTheme.variables.colors,
     fonts: dbTheme.variables.fonts,
     animations: dbTheme.variables.animations,
-    visuals: dbTheme.variables.visuals
+    visuals: dbTheme.variables.visuals,
+    seasonal: dbTheme.variables.seasonal || null
   };
   localStorage.setItem('devo_active_theme', JSON.stringify(themeObj));
   applyTheme(themeObj);
@@ -1290,7 +1341,8 @@ export async function loadAllThemes() {
     if (sessionStr && data) {
       try {
         const session = JSON.parse(sessionStr);
-        if (session && ['owner', 'admin'].includes(session.role)) {
+        const role = session?.role || session?.user?.role;
+        if (role && ['owner', 'admin'].includes(role)) {
           const dbSystemThemeNames = data.filter(t => t.is_system).map(t => t.name);
           const missingSystemThemes = Object.keys(DEFAULT_THEMES).filter(name => !dbSystemThemeNames.includes(name));
           
@@ -1440,9 +1492,40 @@ export async function deleteTheme(themeId) {
   return true;
 }
 
+export async function updateThemeSeasonal(themeId, seasonalPatch) {
+  const { data: existing, error: fetchError } = await supabase
+    .from('themes')
+    .select('*')
+    .eq('id', themeId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const currentVariables = existing.variables || {};
+  const normalized = normalizeSeasonalConfig({
+    name: existing.name,
+    seasonal: { ...(currentVariables.seasonal || {}), ...(seasonalPatch || {}) }
+  });
+
+  const nextVariables = {
+    ...currentVariables,
+    seasonal: normalized
+  };
+
+  const updated = await updateTheme(themeId, nextVariables, existing.description);
+  if (updated.is_active) {
+    updateCacheAndApply(updated);
+  }
+  return updated;
+}
+
 export async function resetSystemTheme(themeId, name) {
   const original = DEFAULT_THEMES[name];
   if (!original) throw new Error('مظهر النظام غير معرّف في الكود البرمجي الرئيسي.');
   
-  return await updateTheme(themeId, original, original.description);
+  const updated = await updateTheme(themeId, original, original.description);
+  if (updated.is_active) {
+    updateCacheAndApply(updated);
+  }
+  return updated;
 }

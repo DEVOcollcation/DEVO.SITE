@@ -14,17 +14,46 @@ import {
     preloadModelImages, 
     removeImagesForModel 
 } from '../../services/offline_store.js';
+import { buildModelColorOffsetMap } from '../../services/data_management_logic.js';
+import {
+    parseScannedBarcode,
+    isUuid,
+    buildSupabaseCodeFilter,
+    buildSupabaseFallbackCodeFilter,
+    canViewInactiveModel,
+    pickBestMatchedModel,
+    computeModelStockSummary
+} from '../../services/barcode_lookup_logic.js';
 
 let allModels = (typeof window !== 'undefined' && window.allGalleryModels) ? window.allGalleryModels : [];
+// Separate store for inactive models scanned by authenticated staff so they NEVER leak into the public gallery grid
+const inactiveScannedModels = new Map();
 let currentCategories = new Set();
 let currentUser = null;
 let isWorker = false;
 let localCart = []; 
 let currentPage = 1;
-const itemsPerPage = 25;
+
+function escapeViewerHtml(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+const itemsPerPage = 28;
 let currentFilteredModels = [];
 let currentClasses = new Set();
 let globalColorsMap = {};
+let gallerySearchMode = (() => {
+    try {
+        const saved = localStorage.getItem('devo_gallery_search_mode');
+        return saved === 'contains' ? 'contains' : 'exact';
+    } catch {
+        return 'exact';
+    }
+})();
 
 export function getResolvedColorName(inv, colorId = null) {
     const cId = String(colorId || inv?.color_id || '');
@@ -105,10 +134,18 @@ export async function initGallery() {
         }
     }
 
-    document.getElementById('gal-search')?.addEventListener('input', applyGalleryFilters);
-    document.getElementById('gal-category')?.addEventListener('change', applyGalleryFilters);
-    document.getElementById('gal-class')?.addEventListener('change', applyGalleryFilters);
-    document.getElementById('gal-sort')?.addEventListener('change', applyGalleryFilters);
+    const onUserFilterChange = () => {
+        currentPage = 1;
+        updateGallerySearchClearBtn();
+        applyGalleryFilters();
+    };
+    document.getElementById('gal-search')?.addEventListener('input', onUserFilterChange);
+    document.getElementById('gal-category')?.addEventListener('change', onUserFilterChange);
+    document.getElementById('gal-class')?.addEventListener('change', onUserFilterChange);
+    document.getElementById('gal-sort')?.addEventListener('change', onUserFilterChange);
+
+    syncGallerySearchModeUI();
+    updateGallerySearchClearBtn();
 
     await fetchGalleryModels();
     setupGalleryRealtime(); // 🌟 تفعيل الرادار اللحظي الشامل 🌟
@@ -120,7 +157,7 @@ export async function initGallery() {
         setTimeout(() => { window.openModelViewer(modelFromUrl, true); }, 500);
     }
 
-    // إغلاق نافذة التفاصيل عند الضغط خارجها (خلفية المودال)
+    // إغلاق نافذة التفاصيل عند الضغط خارجها (خلفية المودال) + تفعيل السحب لأسفل للإغلاق
     const modelViewerModal = document.getElementById('model-viewer-modal');
     if (modelViewerModal) {
         modelViewerModal.addEventListener('click', (e) => {
@@ -129,6 +166,144 @@ export async function initGallery() {
             }
         });
     }
+    initModelViewerDragToClose();
+}
+
+let modelViewerCloseTimer = null;
+
+function initModelViewerDragToClose() {
+    const modal = document.getElementById('model-viewer-modal');
+    const sheet = document.getElementById('model-viewer-sheet');
+    const header = document.getElementById('model-viewer-header');
+    const content = document.getElementById('model-viewer-content');
+    if (!modal || !sheet || !header || sheet.dataset.dragInit === 'true') return;
+    sheet.dataset.dragInit = 'true';
+
+    let startY = 0;
+    let startX = 0;
+    let startTime = 0;
+    let currentDeltaY = 0;
+    let isDragging = false;
+    let dragSource = null; // 'header' | 'content'
+    let decidedAxis = false;
+
+    const beginDrag = (clientX, clientY, source) => {
+        startX = clientX;
+        startY = clientY;
+        startTime = Date.now();
+        currentDeltaY = 0;
+        isDragging = source === 'header';
+        dragSource = source;
+        decidedAxis = source === 'header';
+        if (isDragging) {
+            sheet.style.transition = 'none';
+            modal.style.transition = 'none';
+        }
+    };
+
+    const moveDrag = (clientX, clientY, preventDefaultFn) => {
+        if (!dragSource) return;
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+
+        if (!decidedAxis) {
+            if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
+            if (dragSource === 'content') {
+                const atTop = !content || content.scrollTop <= 0;
+                if (atTop && dy > 0 && Math.abs(dy) > Math.abs(dx)) {
+                    isDragging = true;
+                    decidedAxis = true;
+                    startY = clientY;
+                    startTime = Date.now();
+                    sheet.style.transition = 'none';
+                    modal.style.transition = 'none';
+                } else {
+                    dragSource = null;
+                    isDragging = false;
+                    return;
+                }
+            }
+        }
+
+        if (!isDragging) return;
+        const effectiveDy = Math.max(0, clientY - startY);
+        currentDeltaY = effectiveDy;
+        if (effectiveDy > 0 && typeof preventDefaultFn === 'function') {
+            preventDefaultFn();
+        }
+
+        sheet.style.transform = `translateY(${effectiveDy}px)`;
+        const dismissRange = Math.max(sheet.offsetHeight * 0.65, 220);
+        const progress = Math.min(effectiveDy / dismissRange, 1);
+        modal.style.opacity = String(Math.max(0.15, 1 - progress * 0.85));
+    };
+
+    const endDrag = () => {
+        if (!dragSource) return;
+        const wasDragging = isDragging;
+        const deltaY = currentDeltaY;
+        const elapsed = Math.max(1, Date.now() - startTime);
+        const velocity = deltaY / elapsed;
+
+        dragSource = null;
+        isDragging = false;
+        decidedAxis = false;
+        currentDeltaY = 0;
+
+        if (!wasDragging) return;
+
+        const sheetHeight = sheet.offsetHeight || 500;
+        const shouldClose = deltaY > Math.min(130, sheetHeight * 0.25) || (deltaY > 45 && velocity > 0.45);
+
+        if (shouldClose) {
+            window.closeModelViewer();
+        } else {
+            sheet.style.transition = '';
+            modal.style.transition = '';
+            sheet.style.transform = '';
+            modal.style.opacity = '';
+        }
+    };
+
+    // Touch events (Mobile & Tablet)
+    header.addEventListener('touchstart', (e) => {
+        if (e.target.closest('button') || e.touches.length !== 1) return;
+        beginDrag(e.touches[0].clientX, e.touches[0].clientY, 'header');
+    }, { passive: true });
+
+    if (content) {
+        content.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            if (e.target.closest('input, select, textarea, button')) return;
+            if (content.scrollTop <= 0) {
+                beginDrag(e.touches[0].clientX, e.touches[0].clientY, 'content');
+            }
+        }, { passive: true });
+    }
+
+    sheet.addEventListener('touchmove', (e) => {
+        if (!dragSource || e.touches.length !== 1) return;
+        moveDrag(e.touches[0].clientX, e.touches[0].clientY, () => {
+            if (e.cancelable) e.preventDefault();
+        });
+    }, { passive: false });
+
+    sheet.addEventListener('touchend', endDrag, { passive: true });
+    sheet.addEventListener('touchcancel', endDrag, { passive: true });
+
+    // Mouse drag on header (Desktop)
+    header.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || e.target.closest('button')) return;
+        beginDrag(e.clientX, e.clientY, 'header');
+        const onMouseMove = (moveEvt) => moveDrag(moveEvt.clientX, moveEvt.clientY, () => moveEvt.preventDefault());
+        const onMouseUp = () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            endDrag();
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+    });
 }
 
 // ==========================================
@@ -561,9 +736,76 @@ window.toggleGalleryFilters = () => {
         advFilters.classList.add('hidden');
         advFilters.classList.remove('flex');
         if (btnIcon) {
-            btnIcon.className = 'ph ph-faders text-lg text-white';
+            btnIcon.className = 'ph ph-faders text-lg text-devo-muted';
         }
     }
+};
+
+function updateGallerySearchClearBtn() {
+    const searchEl = document.getElementById('gal-search');
+    const clearBtn = document.getElementById('gal-search-clear');
+    if (!clearBtn) return;
+    const hasValue = !!(searchEl && searchEl.value.trim().length > 0);
+    clearBtn.classList.toggle('hidden', !hasValue);
+}
+
+function syncGallerySearchModeUI() {
+    const exactBtn = document.getElementById('gal-mode-exact');
+    const containsBtn = document.getElementById('gal-mode-contains');
+    const searchEl = document.getElementById('gal-search');
+    const searchIcon = document.getElementById('gal-search-icon');
+
+    if (exactBtn && containsBtn) {
+        const isExact = gallerySearchMode === 'exact';
+        exactBtn.classList.toggle('bg-devo-orange', isExact);
+        exactBtn.classList.toggle('text-white', isExact);
+        exactBtn.classList.toggle('shadow-sm', isExact);
+        exactBtn.classList.toggle('text-devo-muted', !isExact);
+        exactBtn.classList.toggle('hover:text-devo-text', !isExact);
+        exactBtn.setAttribute('aria-pressed', String(isExact));
+
+        containsBtn.classList.toggle('bg-devo-orange', !isExact);
+        containsBtn.classList.toggle('text-white', !isExact);
+        containsBtn.classList.toggle('shadow-sm', !isExact);
+        containsBtn.classList.toggle('text-devo-muted', isExact);
+        containsBtn.classList.toggle('hover:text-devo-text', isExact);
+        containsBtn.setAttribute('aria-pressed', String(!isExact));
+    }
+
+    if (searchEl) {
+        searchEl.placeholder = gallerySearchMode === 'exact'
+            ? 'اكتب الكود المطابق (مثال: 64)...'
+            : 'بحث شامل بأي جزء من الكود أو الاسم...';
+    }
+
+    if (searchIcon) {
+        searchIcon.className = gallerySearchMode === 'exact'
+            ? 'ph ph-hash absolute right-3 top-1/2 -translate-y-1/2 text-devo-orange text-base md:text-lg pointer-events-none transition-colors'
+            : 'ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-base md:text-lg pointer-events-none transition-colors';
+    }
+}
+
+window.setGallerySearchMode = (mode) => {
+    const normalizedMode = mode === 'contains' ? 'contains' : 'exact';
+    if (gallerySearchMode === normalizedMode) return;
+    gallerySearchMode = normalizedMode;
+    try {
+        localStorage.setItem('devo_gallery_search_mode', gallerySearchMode);
+    } catch {}
+    syncGallerySearchModeUI();
+    currentPage = 1;
+    applyGalleryFilters();
+};
+
+window.clearGallerySearchInput = () => {
+    const searchEl = document.getElementById('gal-search');
+    if (searchEl) {
+        searchEl.value = '';
+        searchEl.focus();
+    }
+    updateGallerySearchClearBtn();
+    currentPage = 1;
+    applyGalleryFilters();
 };
 
 window.clearGalleryFilters = () => {
@@ -575,19 +817,31 @@ window.clearGalleryFilters = () => {
     if (catEl) catEl.value = '';
     if (classEl) classEl.value = '';
     if (sortEl) sortEl.value = 'newest';
+    updateGallerySearchClearBtn();
+    currentPage = 1;
     applyGalleryFilters();
 };
 
-function applyGalleryFilters() {
-    const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
+function getFilteredGalleryModels(modelsList) {
+    const rawTerm = document.getElementById('gal-search')?.value || '';
+    const term = normalizeCodeString(rawTerm).toLowerCase().trim();
     const cat = document.getElementById('gal-category')?.value || '';
     const cls = document.getElementById('gal-class')?.value || '';
     const sort = document.getElementById('gal-sort')?.value || 'newest';
 
-    let filtered = allModels.filter(m => {
+    let filtered = modelsList.filter(m => {
         let isMatch = true;
-        const searchStr = `${m.factory_code || ''} ${m.system_code || ''} ${m.name || ''}`.toLowerCase();
-        if (term && !searchStr.includes(term)) isMatch = false;
+        if (term) {
+            const factoryCode = normalizeCodeString(m.factory_code || '').toLowerCase().trim();
+            const systemCode = normalizeCodeString(m.system_code || '').toLowerCase().trim();
+            if (gallerySearchMode === 'exact') {
+                if (factoryCode !== term && systemCode !== term) isMatch = false;
+            } else {
+                const modelName = normalizeCodeString(m.name || '').toLowerCase();
+                const searchStr = `${factoryCode} ${systemCode} ${modelName}`;
+                if (!searchStr.includes(term)) isMatch = false;
+            }
+        }
         if (cat && m.categories?.name !== cat) isMatch = false;
         const modelClassName = Array.isArray(m.classes) ? m.classes[0]?.name : m.classes?.name;
         if (cls && modelClassName !== cls) isMatch = false;
@@ -596,9 +850,22 @@ function applyGalleryFilters() {
 
     if (sort === 'price_asc') filtered.sort((a, b) => a.price - b.price);
     else if (sort === 'price_desc') filtered.sort((a, b) => b.price - a.price);
-    else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    else if (term && gallerySearchMode === 'contains') {
+        filtered.sort((a, b) => {
+            const aExact = normalizeCodeString(a.factory_code || '').toLowerCase().trim() === term || normalizeCodeString(a.system_code || '').toLowerCase().trim() === term ? 1 : 0;
+            const bExact = normalizeCodeString(b.factory_code || '').toLowerCase().trim() === term || normalizeCodeString(b.system_code || '').toLowerCase().trim() === term ? 1 : 0;
+            if (aExact !== bExact) return bExact - aExact;
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
+    } else {
+        filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
 
-    currentFilteredModels = filtered;
+    return filtered;
+}
+
+function applyGalleryFilters() {
+    currentFilteredModels = getFilteredGalleryModels(allModels);
     renderGalleryPage();
 }
 
@@ -611,26 +878,7 @@ function patchOrRenderGallery(prevModels, nextModels) {
         return;
     }
 
-    const term = document.getElementById('gal-search')?.value.toLowerCase().trim() || '';
-    const cat = document.getElementById('gal-category')?.value || '';
-    const cls = document.getElementById('gal-class')?.value || '';
-    const sort = document.getElementById('gal-sort')?.value || 'newest';
-
-    let filtered = nextModels.filter(m => {
-        let isMatch = true;
-        const searchStr = `${m.factory_code || ''} ${m.system_code || ''} ${m.name || ''}`.toLowerCase();
-        if (term && !searchStr.includes(term)) isMatch = false;
-        if (cat && m.categories?.name !== cat) isMatch = false;
-        const modelClassName = Array.isArray(m.classes) ? m.classes[0]?.name : m.classes?.name;
-        if (cls && modelClassName !== cls) isMatch = false;
-        return isMatch;
-    });
-
-    if (sort === 'price_asc') filtered.sort((a, b) => a.price - b.price);
-    else if (sort === 'price_desc') filtered.sort((a, b) => b.price - a.price);
-    else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-    currentFilteredModels = filtered;
+    currentFilteredModels = getFilteredGalleryModels(nextModels);
 
     // Check if the current page cards can be patched in-place
     const totalItems = currentFilteredModels.length;
@@ -898,63 +1146,67 @@ function renderGalleryPaginationControls(totalPages) {
 }
 
 window.changeGalleryPage = (newPage) => {
-    currentPage = newPage;
+    if (currentFilteredModels.length === 0 && allModels.length === 0 && Array.isArray(window.allGalleryModels) && window.allGalleryModels.length > 0) {
+        allModels = window.allGalleryModels;
+        applyGalleryFilters();
+    }
+    const totalPages = Math.ceil(currentFilteredModels.length / itemsPerPage) || 1;
+    const targetPage = Math.max(1, Math.min(Number(newPage) || 1, totalPages));
+    currentPage = targetPage;
     renderGalleryPage();
     document.getElementById('gal-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
-// 🌟 جلب مبيعات الموديل من فواتير المبيعات لحساب الأساسي بدقة (الأساسي = المتبقي + المباع) 🌟
+// 🌟 جلب مبيعات الموديل + تسويات المخزون لحساب الأساسي بدقة (الأساسي = المتبقي + المباع + التسويات) 🌟
 async function fetchModelSalesMap(modelId) {
-    const salesMap = {};
-    if (!modelId) return salesMap;
+    if (!modelId) return {};
 
-    // 1. فحص عناصر فواتير المبيعات الفعلية (order_items)
-    try {
-        const { data: orderItems } = await supabase
+    let orderItems = [];
+    let outMovements = [];
+
+    const [ordersRes, movsRes] = await Promise.allSettled([
+        supabase
             .from('order_items')
             .select('color_id, quantity')
-            .eq('model_id', modelId);
-
-        if (orderItems && orderItems.length > 0) {
-            orderItems.forEach(item => {
-                const cid = String(item.color_id);
-                salesMap[cid] = (salesMap[cid] || 0) + (Number(item.quantity) || 0);
-            });
-            return salesMap;
-        }
-    } catch (e) {
-        console.warn('[Gallery] order_items fetch error:', e);
-    }
-
-    // 2. فحص حركات خروج المبيعات (stock_movements) كاحتياط مؤكد الصلاحية لجميع الموظفين
-    try {
-        const { data: outMovs } = await supabase
+            .eq('model_id', modelId),
+        supabase
             .from('stock_movements')
-            .select('color_id, quantity')
+            .select('color_id, quantity, movement_type, reference, order_id')
             .eq('model_id', modelId)
-            .eq('movement_type', 'out');
+            .eq('movement_type', 'out')
+    ]);
 
-        if (outMovs && outMovs.length > 0) {
-            outMovs.forEach(m => {
-                const cid = String(m.color_id);
-                salesMap[cid] = (salesMap[cid] || 0) + (Number(m.quantity) || 0);
-            });
-            return salesMap;
-        }
-    } catch (e) {
-        console.warn('[Gallery] stock_movements fetch error:', e);
+    if (ordersRes.status === 'fulfilled' && !ordersRes.value.error && Array.isArray(ordersRes.value.data)) {
+        orderItems = ordersRes.value.data;
+    } else if (ordersRes.status === 'rejected') {
+        console.warn('[Gallery] order_items fetch error:', ordersRes.reason);
     }
 
-    return salesMap;
+    if (movsRes.status === 'fulfilled' && !movsRes.value.error && Array.isArray(movsRes.value.data)) {
+        outMovements = movsRes.value.data;
+    } else if (movsRes.status === 'rejected') {
+        console.warn('[Gallery] stock_movements fetch error:', movsRes.reason);
+    }
+
+    const { combined } = buildModelColorOffsetMap({ orderItems, outMovements });
+    return combined;
 }
 
 // ==========================================
 // 🌟 4. تفاصيل الموديل والروابط العميقة 🌟
 // ==========================================
-window.openModelViewer = async (id, skipHistory = false) => {
+window.openModelViewer = async (id, skipHistory = false, modelOverride = null) => {
     if (id === undefined || id === null || id === '') return;
 
-    let model = allModels.find(m => String(m.id) === String(id));
+    const isWorkerActive = checkIsWorker();
+    let model = (modelOverride && String(modelOverride.id) === String(id)) ? modelOverride : null;
+
+    if (!model) {
+        model = allModels.find(m => String(m.id) === String(id));
+    }
+    if (!model && isWorkerActive) {
+        model = inactiveScannedModels.get(String(id)) || null;
+    }
     if (!model) {
         // محاولة سريعة لجلب الموديلات من الكاش المحلي إن لم تكن مصفوفة الذاكرة جاهزة
         try {
@@ -972,158 +1224,302 @@ window.openModelViewer = async (id, skipHistory = false) => {
         return;
     }
 
-    if (!skipHistory) {
+    const isInactiveModel = model.is_active === false;
+    // Security guard: visitors must never view disabled/inactive models
+    if (isInactiveModel && !isWorkerActive) {
+        console.warn(`[Gallery] Blocked visitor access to inactive model ${id}.`);
+        return;
+    }
+
+    // Keep scanned inactive models cached separately for fast re-open without polluting allModels
+    if (isInactiveModel && isWorkerActive) {
+        inactiveScannedModels.set(String(model.id), model);
+    }
+
+    if (!skipHistory && !isInactiveModel) {
         history.pushState({ modelId: id }, '', `?model=${id}`);
     }
 
-    const classSizes = model.classes?.class_sizes || [];
+    const classObj = Array.isArray(model.classes) ? model.classes[0] : model.classes;
+    const categoryObj = Array.isArray(model.categories) ? model.categories[0] : model.categories;
+    const className = classObj?.name || '';
+    const categoryName = categoryObj?.name || '';
+    const classSizes = classObj?.class_sizes || [];
     const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
 
     const modal = document.getElementById('model-viewer-modal');
+    const sheet = document.getElementById('model-viewer-sheet');
+    const headerTitle = document.querySelector('#model-viewer-header h3');
     if (modal) modal.setAttribute('data-current-model-id', String(id));
+    if (sheet) sheet.setAttribute('data-model-inactive', isInactiveModel ? 'true' : 'false');
+
+    if (headerTitle) {
+        if (isInactiveModel) {
+            headerTitle.innerHTML = `
+                <i class="ph ph-prohibit text-devo-error text-lg md:text-xl shrink-0"></i>
+                <span class="truncate">تفاصيل الموديل</span>
+                <span class="inactive-model-badge text-[11px] font-black px-2 py-0.5 rounded-md whitespace-nowrap shrink-0">غير مفعل</span>
+            `;
+        } else {
+            headerTitle.innerHTML = `<i class="ph ph-t-shirt text-devo-orange text-lg md:text-xl"></i> تفاصيل الموديل`;
+        }
+    }
 
     const content = document.getElementById('model-viewer-content');
     const imgs = model.model_images?.length > 0 ? model.model_images : [{ image_url: null }];
     const mainImg = resolveImageUrl(imgs[0].image_url);
-    
+
+    const inactiveImgTag = isInactiveModel
+        ? `<div class="inactive-model-badge absolute top-3 right-3 z-20 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black shadow-md pointer-events-none">
+                <i class="ph ph-eye-slash text-sm"></i>
+                <span>موديل غير مفعل</span>
+           </div>`
+        : '';
+
     let imagesGalleryHtml = `
-        <div class="bg-devo-black rounded-xl overflow-hidden border border-devo-gray h-56 sm:h-72 md:h-[380px] mb-2 sm:mb-3 flex items-center justify-center p-4 relative">
+        <div class="bg-devo-black rounded-xl overflow-hidden border ${isInactiveModel ? 'border-devo-error/40' : 'border-devo-gray'} h-56 sm:h-72 md:h-[380px] mb-2 sm:mb-3 flex items-center justify-center p-4 relative">
             <img src="${mainImg}" id="viewer-blur-bg" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
             <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-xl border border-devo-gray/50 shadow-lg" onerror="this.src='./src/assets/icons/devo.png'" decoding="async">
+            ${inactiveImgTag}
+            <img src="${mainImg}" id="viewer-main-img" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-xl border border-devo-gray/50 shadow-lg ${isInactiveModel ? 'inactive-model-photo' : ''}" onerror="this.src='./src/assets/icons/devo.png'" decoding="async">
         </div>
-        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="viewer-thumb-img w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}</div>` : ''}
+        ${imgs.length > 1 ? `<div class="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">${imgs.map(img => `<img src="${resolveImageUrl(img.image_url)}" onclick="document.getElementById('viewer-main-img').src=this.src; if(document.getElementById('viewer-blur-bg')) document.getElementById('viewer-blur-bg').src=this.src" class="viewer-thumb-img w-14 h-14 sm:w-20 sm:h-20 rounded-lg object-cover cursor-pointer border border-devo-gray hover:border-devo-orange transition-colors shrink-0 ${isInactiveModel ? 'inactive-model-photo' : ''}" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}</div>` : ''}
     `;
 
     const renderSizesTags = classSizes.length > 0 
-        ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[11px] sm:text-xs px-2.5 py-1 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
-        : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[11px] sm:text-xs px-2.5 py-1 rounded font-medium">${s.sizes?.name}</span>`).join('');
+        ? classSizes.map(cs => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[11px] sm:text-xs px-2.5 py-1 rounded font-medium"><i class="ph ph-link text-devo-muted"></i> ${escapeViewerHtml(cs.sizes?.name)}</span>`).join('')
+        : model.model_sizes?.map(s => `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[11px] sm:text-xs px-2.5 py-1 rounded font-medium">${escapeViewerHtml(s.sizes?.name)}</span>`).join('');
     
     const sizesHtml = renderSizesTags || '<span class="text-devo-muted text-xs">غير محدد</span>';
 
-    const isWorkerActive = checkIsWorker();
     if (isWorkerActive) {
         loadLocalCart();
         document.getElementById('floating-cart-btn')?.classList.remove('hidden');
         model.colorSalesMap = await fetchModelSalesMap(model.id);
     }
 
-    // قسم إضافة طقم (للموظفين/الآدمن)
-    let setHtml = '';
-    if (isWorkerActive) {
-        setHtml = `
-        <div class="bg-gradient-to-r from-devo-orange/15 via-devo-dark to-devo-black border border-devo-orange/40 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
-            <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-lg bg-devo-orange/20 border border-devo-orange/50 flex items-center justify-center text-devo-orange shrink-0">
-                    <i class="ph ph-package text-lg font-bold"></i>
-                </div>
-                <div>
-                    <h5 class="text-white text-xs sm:text-sm font-black flex items-center gap-1">
-                        إضافة طقم كامل
-                        <span class="text-[10px] text-devo-orange bg-devo-orange/20 px-1.5 py-0.5 rounded font-bold border border-devo-orange/30">(سيرية من كل لون)</span>
-                    </h5>
-                </div>
-            </div>
+    const taxonomyMetaParts = [];
+    if (categoryName) taxonomyMetaParts.push(`التصنيف: ${escapeViewerHtml(categoryName)}`);
+    if (className) taxonomyMetaParts.push(`الفئة: ${escapeViewerHtml(className)}`);
+    const taxonomyMetaHtml = taxonomyMetaParts.length > 0
+        ? `<p class="text-devo-muted text-xs mt-1 font-medium">${taxonomyMetaParts.join(' <span aria-hidden="true" class="mx-1 opacity-60">·</span> ')}</p>`
+        : '';
 
-            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <div class="flex items-center bg-devo-dark border border-devo-orange/50 rounded-lg overflow-hidden h-8 sm:h-9">
-                    <button onclick="decrementQty('set-qty-${model.id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
-                    <input type="number" id="set-qty-${model.id}" value="1" min="1" max="99" readonly class="w-8 bg-transparent text-center text-devo-orange text-xs sm:text-sm font-black outline-none border-x border-devo-gray">
-                    <button onclick="incrementQty('set-qty-${model.id}', 99)" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
-                </div>
-                
-                <button id="add-set-btn-${model.id}" onclick="addSetToCart(event, '${model.id}')" class="flex-1 sm:flex-none px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-lg text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-1.5 active:scale-95">
-                    <i class="ph ph-plus-circle text-base sm:text-lg"></i>
-                    <span>إضافة طقم</span>
-                </button>
-            </div>
-        </div>`;
-    }
+    const codeParts = [];
+    if (model.factory_code) codeParts.push(`كود المصنع: ${escapeViewerHtml(model.factory_code)}`);
+    if (model.system_code) codeParts.push(`كود السيستم: ${escapeViewerHtml(model.system_code)}`);
+    const fullCodesLine = codeParts.length > 0
+        ? codeParts.join(' <span aria-hidden="true" class="mx-1 opacity-60">·</span> ')
+        : '';
 
-    // قسم إضافة طقم للزائر
-    let visitorSetHtml = '';
-    if (!isWorkerActive) {
-        // حساب المتاح الفعلي لكل الألوان
-        const anyAvailable = model.model_inventory?.some(inv => (inv.available_series || 0) > 0);
-        if (anyAvailable) {
-            visitorSetHtml = `
-            <div class="bg-gradient-to-r from-devo-orange/10 via-devo-dark to-devo-black border border-devo-orange/30 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
+    if (isInactiveModel) {
+        // ===== واجهة الموديل المعطل / غير المفعل (خاصة بالموظفين المسجلين) =====
+        const stockSummary = computeModelStockSummary(model, model.colorSalesMap || {}, getResolvedColorName);
+        const inactiveColorsHtml = stockSummary.colors.length === 0
+            ? `<div class="text-center p-3 text-devo-error bg-devo-error/10 rounded-xl text-xs sm:text-sm border border-devo-error/20">لا توجد ألوان مسجلة لهذا الموديل.</div>`
+            : stockSummary.colors.map(c => `
+                <div class="flex items-center justify-between gap-3 p-2.5 sm:p-3 bg-devo-black border ${c.isOut ? 'border-devo-error/30 opacity-80' : 'border-devo-gray'} rounded-xl">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-white font-bold text-xs sm:text-sm truncate">${escapeViewerHtml(c.colorName)}</span>
+                            <span class="text-[11px] font-bold ${c.isOut ? 'text-devo-error' : 'text-devo-success'}">
+                                ${c.isOut ? 'نفذت الكمية' : 'متوفر بالمخزن'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0 text-xs font-mono tabular-nums">
+                        <span class="font-black ${c.isOut ? 'text-devo-error' : 'text-white'}">المتبقي: ${c.remaining}</span>
+                        ${c.baseStock > 0 ? `<span class="text-devo-muted">من أصل ${c.baseStock}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+        if (content) {
+            content.innerHTML = `
+                <div class="inactive-model-banner mb-4 rounded-xl px-3.5 py-3 flex items-start gap-3" role="status">
+                    <div class="w-9 h-9 rounded-lg bg-devo-error/15 border border-devo-error/30 flex items-center justify-center text-devo-error shrink-0 mt-0.5">
+                        <i class="ph ph-prohibit text-xl"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-devo-error font-black text-xs sm:text-sm leading-snug">هذا الموديل غير مفعل حالياً (معطل بالمعرض)</p>
+                        <p class="text-devo-muted text-[11px] sm:text-xs mt-0.5 leading-relaxed">الموديل مسجل في النظام ولكنه مخفي عن العملاء — يتم عرض كافة بياناته وتصنيفاته وأرصدة المخزن المتاحة للاستعلام فقط.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                    <div>${imagesGalleryHtml}</div>
+                    <div class="flex flex-col">
+                        <div class="mb-3 pb-3 border-b border-devo-error/25">
+                            <p class="text-devo-muted text-[11px] sm:text-xs font-mono tabular-nums mb-1">${fullCodesLine}</p>
+                            <h2 id="viewer-name" class="text-lg sm:text-2xl font-black text-white leading-tight">${escapeViewerHtml(model.name)}</h2>
+                            ${taxonomyMetaHtml}
+                            <p class="text-xl sm:text-3xl text-devo-orange font-black mt-2 tabular-nums"><span id="viewer-price">${escapeViewerHtml(model.price)}</span> <span class="text-xs sm:text-base font-normal">ج.م</span></p>
+                        </div>
+
+                        <div class="inactive-stock-summary grid grid-cols-3 divide-x divide-x-reverse divide-devo-gray/60 bg-devo-black border border-devo-gray rounded-xl py-2.5 px-2 mb-3 text-center">
+                            <div class="px-1">
+                                <span class="block text-[10px] sm:text-[11px] text-devo-muted font-medium">إجمالي المتبقي</span>
+                                <span class="block text-sm sm:text-lg font-black font-mono tabular-nums ${stockSummary.totalRemaining > 0 ? 'text-devo-success' : 'text-devo-error'} mt-0.5">${stockSummary.totalRemaining}</span>
+                            </div>
+                            <div class="px-1">
+                                <span class="block text-[10px] sm:text-[11px] text-devo-muted font-medium">إجمالي الأصل</span>
+                                <span class="block text-sm sm:text-lg font-black font-mono tabular-nums text-white mt-0.5">${stockSummary.totalBase}</span>
+                            </div>
+                            <div class="px-1">
+                                <span class="block text-[10px] sm:text-[11px] text-devo-muted font-medium">الألوان المسجلة</span>
+                                <span class="block text-sm sm:text-lg font-black font-mono tabular-nums text-white mt-0.5">${stockSummary.totalColors}</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <h4 id="viewer-sizes-title" class="text-xs sm:text-sm font-bold text-white mb-1.5 flex items-center gap-1.5"><i class="ph ph-ruler text-devo-orange"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
+                            <div id="viewer-sizes-container" class="flex flex-wrap gap-1.5">${sizesHtml}</div>
+                        </div>
+
+                        <div class="flex-1 pb-2">
+                            <div class="flex items-center justify-between mb-2">
+                                <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5"><i class="ph ph-palette text-devo-orange"></i> الألوان وأرصدة المخزن (${stockSummary.availableColorsCount} متاح من ${stockSummary.totalColors})</h4>
+                            </div>
+                            <div id="viewer-colors-container" class="space-y-1.5">
+                                ${inactiveColorsHtml}
+                            </div>
+                        </div>
+
+                        <div class="mt-3 pt-3 border-t border-devo-error/25 sticky -bottom-3 md:-bottom-6 -mx-3 md:mx-0 px-3 md:px-0 pb-3.5 md:pb-2 bg-devo-dark z-20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <p class="text-[11px] sm:text-xs font-bold text-devo-error flex items-center gap-1.5">
+                                <i class="ph ph-info text-base shrink-0"></i>
+                                <span>للاستعلام فقط — لا يمكن طلبه أثناء التعطيل</span>
+                            </p>
+                            <button type="button" onclick="closeModelViewer()" class="w-full sm:w-auto py-2.5 px-4 sm:px-5 bg-devo-error hover:bg-red-600 text-white rounded-xl text-xs sm:text-sm font-black shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 shrink-0 whitespace-nowrap">
+                                <i class="ph ph-barcode text-base sm:text-lg"></i>
+                                <span>إغلاق ومسح باركود آخر</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } else {
+        // ===== واجهة الموديل النشط الطبيعية =====
+        // قسم إضافة طقم (للموظفين/الآدمن)
+        let setHtml = '';
+        if (isWorkerActive) {
+            setHtml = `
+            <div class="bg-gradient-to-r from-devo-orange/15 via-devo-dark to-devo-black border border-devo-orange/40 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
                 <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-lg bg-devo-orange/15 border border-devo-orange/40 flex items-center justify-center text-devo-orange shrink-0">
-                        <i class="ph ph-package text-lg"></i>
+                    <div class="w-8 h-8 rounded-lg bg-devo-orange/20 border border-devo-orange/50 flex items-center justify-center text-devo-orange shrink-0">
+                        <i class="ph ph-package text-lg font-bold"></i>
                     </div>
                     <div>
                         <h5 class="text-white text-xs sm:text-sm font-black flex items-center gap-1">
-                            إضافة طقم كامل للسلة
-                            <span class="text-[10px] text-devo-orange bg-devo-orange/20 px-1.5 py-0.5 rounded font-bold border border-devo-orange/30">(سيريه من كل لون)</span>
+                            إضافة طقم كامل
+                            <span class="text-[10px] text-devo-orange bg-devo-orange/20 px-1.5 py-0.5 rounded font-bold border border-devo-orange/30">(سيرية من كل لون)</span>
                         </h5>
                     </div>
                 </div>
+
                 <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
                     <div class="flex items-center bg-devo-dark border border-devo-orange/50 rounded-lg overflow-hidden h-8 sm:h-9">
-                        <button onclick="decrementQty('vset-qty-${model.id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
-                        <input type="number" id="vset-qty-${model.id}" value="1" min="1" max="99" readonly class="w-8 bg-transparent text-center text-devo-orange text-xs sm:text-sm font-black outline-none border-x border-devo-gray">
-                        <button onclick="incrementQty('vset-qty-${model.id}', 99)" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
+                        <button onclick="decrementQty('set-qty-${model.id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
+                        <input type="number" id="set-qty-${model.id}" value="1" min="1" max="99" readonly class="w-8 bg-transparent text-center text-devo-orange text-xs sm:text-sm font-black outline-none border-x border-devo-gray">
+                        <button onclick="incrementQty('set-qty-${model.id}', 99)" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
                     </div>
-                    <button id="visitor-add-set-btn-${model.id}" onclick="visitorAddSetToCart(event, '${model.id}')" class="flex-1 sm:flex-none px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-lg text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-1.5 active:scale-95">
-                        <i class="ph ph-shopping-cart-simple text-base sm:text-lg"></i>
+                    
+                    <button id="add-set-btn-${model.id}" onclick="addSetToCart(event, '${model.id}')" class="flex-1 sm:flex-none px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-lg text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-1.5 active:scale-95">
+                        <i class="ph ph-plus-circle text-base sm:text-lg"></i>
                         <span>إضافة طقم</span>
                     </button>
                 </div>
             </div>`;
         }
+
+        // قسم إضافة طقم للزائر
+        let visitorSetHtml = '';
+        if (!isWorkerActive) {
+            const anyAvailable = model.model_inventory?.some(inv => (inv.available_series || 0) > 0);
+            if (anyAvailable) {
+                visitorSetHtml = `
+                <div class="bg-gradient-to-r from-devo-orange/10 via-devo-dark to-devo-black border border-devo-orange/30 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-md">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-devo-orange/15 border border-devo-orange/40 flex items-center justify-center text-devo-orange shrink-0">
+                            <i class="ph ph-package text-lg"></i>
+                        </div>
+                        <div>
+                            <h5 class="text-white text-xs sm:text-sm font-black flex items-center gap-1">
+                                إضافة طقم كامل للسلة
+                                <span class="text-[10px] text-devo-orange bg-devo-orange/20 px-1.5 py-0.5 rounded font-bold border border-devo-orange/30">(سيريه من كل لون)</span>
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <div class="flex items-center bg-devo-dark border border-devo-orange/50 rounded-lg overflow-hidden h-8 sm:h-9">
+                            <button onclick="decrementQty('vset-qty-${model.id}')" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-minus text-xs"></i></button>
+                            <input type="number" id="vset-qty-${model.id}" value="1" min="1" max="99" readonly class="w-8 bg-transparent text-center text-devo-orange text-xs sm:text-sm font-black outline-none border-x border-devo-gray">
+                            <button onclick="incrementQty('vset-qty-${model.id}', 99)" class="px-2 text-white hover:text-devo-orange transition-colors"><i class="ph ph-plus text-xs"></i></button>
+                        </div>
+                        <button id="visitor-add-set-btn-${model.id}" onclick="visitorAddSetToCart(event, '${model.id}')" class="flex-1 sm:flex-none px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-lg text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-1.5 active:scale-95">
+                            <i class="ph ph-shopping-cart-simple text-base sm:text-lg"></i>
+                            <span>إضافة طقم</span>
+                        </button>
+                    </div>
+                </div>`;
+            }
+        }
+
+        if (content) {
+            content.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-1 sm:p-2 md:p-0">
+                    <div>${imagesGalleryHtml}</div>
+                    <div class="flex flex-col">
+                        <div class="mb-3 pb-3 border-b border-devo-gray flex justify-between items-center gap-2">
+                            <div>
+                                <p class="text-devo-muted text-[10px] sm:text-xs font-mono mb-0.5">كود: ${escapeViewerHtml(model.factory_code || model.system_code || '')}</p>
+                                <h2 id="viewer-name" class="text-lg sm:text-2xl font-black text-white leading-tight">${escapeViewerHtml(model.name)}</h2>
+                                ${taxonomyMetaHtml}
+                                <p class="text-xl sm:text-3xl text-devo-orange font-black mt-1"><span id="viewer-price">${escapeViewerHtml(model.price)}</span> <span class="text-xs sm:text-base font-normal">ج.م</span></p>
+                            </div>
+                            <button onclick="shareModel('${model.id}')" class="flex items-center justify-center gap-1.5 bg-devo-dark border border-devo-gray hover:border-devo-info hover:text-devo-info text-white px-3 py-1.5 rounded-lg transition-colors text-xs sm:text-sm font-bold shrink-0 shadow-sm">
+                                <i class="ph ph-share-network text-base"></i> مشاركة
+                            </button>
+                        </div>
+
+                        <div class="mb-3">
+                            <h4 id="viewer-sizes-title" class="text-xs sm:text-sm font-bold text-white mb-1.5 flex items-center gap-1.5"><i class="ph ph-ruler text-devo-orange"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
+                            <div id="viewer-sizes-container" class="flex flex-wrap gap-1.5">${sizesHtml}</div>
+                        </div>
+
+                        ${setHtml}${visitorSetHtml}
+
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-2">
+                                <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5"><i class="ph ph-palette text-devo-orange"></i> الألوان المتاحة للطلب</h4>
+                                <span id="model-selected-total-badge" class="text-[10px] sm:text-[11px] font-bold text-devo-orange bg-devo-orange/15 px-2 py-0.5 rounded-md border border-devo-orange/30 hidden">0 سيريه محددة</span>
+                            </div>
+                            <div id="viewer-colors-container" class="space-y-1.5">
+                                ${generateColorsHTML(model, sizesCount)}
+                            </div>
+                        </div>
+
+                        <div class="mt-4 pt-3 border-t border-devo-gray/50 sticky bottom-0 bg-devo-dark/95 backdrop-blur-md pb-1 z-10 flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <div id="model-cart-auto-status" class="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-devo-success bg-devo-success/10 border border-devo-success/30 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all">
+                                    <i class="ph ph-check-circle text-sm sm:text-base font-bold"></i>
+                                    <span id="model-cart-auto-status-text">الحفظ فوري بالسلة ✓</span>
+                                </div>
+                                <span id="model-selected-total-footer-badge" class="hidden text-[11px] sm:text-xs font-bold text-devo-orange bg-devo-orange/15 border border-devo-orange/30 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl whitespace-nowrap">0 سيريه</span>
+                            </div>
+                            <button id="save-model-cart-btn" onclick="goToCartFromViewer()" class="py-2 sm:py-2.5 px-3.5 sm:px-5 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-xl text-xs sm:text-sm font-black shadow-lg shadow-devo-orange/20 transition-all flex items-center justify-center gap-1.5 active:scale-95 group shrink-0">
+                                <i class="ph ph-shopping-cart text-base sm:text-lg group-hover:scale-110 transition-transform"></i>
+                                <span id="save-model-cart-btn-text">معاينة السلة</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
     }
 
     if (content) {
-        content.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-1 sm:p-2 md:p-0">
-                <div>${imagesGalleryHtml}</div>
-                <div class="flex flex-col">
-                    <div class="mb-3 pb-3 border-b border-devo-gray flex justify-between items-center gap-2">
-                        <div>
-                            <p class="text-devo-muted text-[10px] sm:text-xs font-mono mb-0.5">كود: ${model.factory_code || model.system_code || ''}</p>
-                            <h2 id="viewer-name" class="text-lg sm:text-2xl font-black text-white leading-tight">${model.name}</h2>
-                            <p class="text-xl sm:text-3xl text-devo-orange font-black mt-1"><span id="viewer-price">${model.price}</span> <span class="text-xs sm:text-base font-normal">ج.م</span></p>
-                        </div>
-                        <button onclick="shareModel('${model.id}')" class="flex items-center justify-center gap-1.5 bg-devo-dark border border-devo-gray hover:border-devo-info hover:text-devo-info text-white px-3 py-1.5 rounded-lg transition-colors text-xs sm:text-sm font-bold shrink-0 shadow-sm">
-                            <i class="ph ph-share-network text-base"></i> مشاركة
-                        </button>
-                    </div>
-
-                    <div class="mb-3">
-                        <h4 id="viewer-sizes-title" class="text-xs sm:text-sm font-bold text-white mb-1.5 flex items-center gap-1.5"><i class="ph ph-ruler text-devo-orange"></i> المقاسات داخل السيريه (${sizesCount} قطع)</h4>
-                        <div id="viewer-sizes-container" class="flex flex-wrap gap-1.5">${sizesHtml}</div>
-                    </div>
-
-                    ${setHtml}${visitorSetHtml}
-
-                    <div class="flex-1">
-                        <div class="flex items-center justify-between mb-2">
-                            <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5"><i class="ph ph-palette text-devo-orange"></i> الألوان المتاحة للطلب</h4>
-                            <span id="model-selected-total-badge" class="text-[10px] sm:text-[11px] font-bold text-devo-orange bg-devo-orange/15 px-2 py-0.5 rounded-md border border-devo-orange/30 hidden">0 سيريه محددة</span>
-                        </div>
-                        <div id="viewer-colors-container" class="space-y-1.5">
-                            ${generateColorsHTML(model, sizesCount)}
-                        </div>
-                    </div>
-
-                    <div class="mt-4 pt-3 border-t border-devo-gray/50 sticky bottom-0 bg-devo-dark/95 backdrop-blur-md pb-1 z-10 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <div id="model-cart-auto-status" class="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-devo-success bg-devo-success/10 border border-devo-success/30 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all">
-                                <i class="ph ph-check-circle text-sm sm:text-base font-bold"></i>
-                                <span id="model-cart-auto-status-text">الحفظ فوري بالسلة ✓</span>
-                            </div>
-                            <span id="model-selected-total-footer-badge" class="hidden text-[11px] sm:text-xs font-bold text-devo-orange bg-devo-orange/15 border border-devo-orange/30 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl whitespace-nowrap">0 سيريه</span>
-                        </div>
-                        <button id="save-model-cart-btn" onclick="goToCartFromViewer()" class="py-2 sm:py-2.5 px-3.5 sm:px-5 bg-gradient-to-r from-devo-orange to-orange-600 hover:from-devo-orangeHover hover:to-orange-700 text-white rounded-xl text-xs sm:text-sm font-black shadow-lg shadow-devo-orange/20 transition-all flex items-center justify-center gap-1.5 active:scale-95 group shrink-0">
-                            <i class="ph ph-shopping-cart text-base sm:text-lg group-hover:scale-110 transition-transform"></i>
-                            <span id="save-model-cart-btn-text">معاينة السلة</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-
         // Bind main & thumbnail images in viewer to cache
         if (imgs[0]?.image_url) {
             bindImageToCache(document.getElementById('viewer-main-img'), imgs[0].image_url, model.id);
@@ -1135,12 +1531,38 @@ window.openModelViewer = async (id, skipHistory = false) => {
             }
         });
 
-        if (typeof updateModelSaveButtonSummary === 'function') {
+        if (!isInactiveModel && typeof updateModelSaveButtonSummary === 'function') {
             updateModelSaveButtonSummary(model.id);
         }
     }
 
-    if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.remove('opacity-0'), 10); }
+    if (modal) {
+        if (modelViewerCloseTimer) {
+            clearTimeout(modelViewerCloseTimer);
+            modelViewerCloseTimer = null;
+        }
+        if (content) content.scrollTop = 0;
+
+        modal.style.transition = '';
+        modal.style.opacity = '';
+        if (sheet) {
+            sheet.style.transition = 'none';
+            sheet.style.transform = '';
+            sheet.classList.add('translate-y-full');
+        }
+        modal.classList.add('opacity-0');
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+        if (sheet) {
+            void sheet.offsetHeight;
+            sheet.style.transition = '';
+        }
+        requestAnimationFrame(() => {
+            modal.classList.remove('opacity-0');
+            if (sheet) sheet.classList.remove('translate-y-full');
+        });
+    }
 };
 
 function getOwnedQtyForColor(modelId, colorId) {
@@ -1328,8 +1750,17 @@ function generateColorsHTML(model, sizesCount) {
 
 window.closeModelViewer = (skipHistory = false) => {
     const modal = document.getElementById('model-viewer-modal');
+    const sheet = document.getElementById('model-viewer-sheet');
     if (!modal || modal.classList.contains('hidden') || modal.classList.contains('opacity-0')) return;
 
+    if (sheet) {
+        sheet.style.transition = '';
+        void sheet.offsetHeight;
+        sheet.style.transform = '';
+        sheet.classList.add('translate-y-full');
+    }
+    modal.style.transition = '';
+    modal.style.opacity = '';
     modal.classList.add('opacity-0');
 
     if (!skipHistory) {
@@ -1340,9 +1771,13 @@ window.closeModelViewer = (skipHistory = false) => {
         }
     }
 
-    setTimeout(() => {
+    if (modelViewerCloseTimer) clearTimeout(modelViewerCloseTimer);
+    modelViewerCloseTimer = setTimeout(() => {
         modal.classList.add('hidden');
         modal.removeAttribute('data-current-model-id');
+        if (sheet) sheet.setAttribute('data-model-inactive', 'false');
+        document.body.style.overflow = '';
+        modelViewerCloseTimer = null;
         if (typeof window.onModelViewerClosed === 'function') {
             window.onModelViewerClosed();
         }
@@ -2026,57 +2461,21 @@ function searchInModelsList(models, cleanCode, explicitType, matchType) {
     });
 }
 
-export async function findModelByCode(code, matchType = 'both') {
+export async function findModelByCode(code, matchType = 'both', options = {}) {
     if (!code) return null;
-    let rawStr = normalizeCodeString(code);
-    let cleanCode = rawStr.toLowerCase();
-    let explicitType = null; // 'system' | 'factory' | null
+    const { cleanCode, explicitType } = parseScannedBarcode(code);
+    if (!cleanCode) return null;
 
-    // 1. Support URL query parameter parsing if scanner reads a direct link (e.g. ?system=1024 or ?factory=XYZ or ?code=SYS-101)
-    if (cleanCode.includes('?') || cleanCode.includes('=')) {
-        try {
-            const urlObj = new URL(cleanCode.startsWith('http') ? cleanCode : `http://dummy.com/${cleanCode.startsWith('?') ? '' : '?'}${cleanCode}`);
-            if (urlObj.searchParams.has('system')) {
-                explicitType = 'system';
-                cleanCode = urlObj.searchParams.get('system').toLowerCase();
-            } else if (urlObj.searchParams.has('factory')) {
-                explicitType = 'factory';
-                cleanCode = urlObj.searchParams.get('factory').toLowerCase();
-            } else if (urlObj.searchParams.has('code')) {
-                cleanCode = urlObj.searchParams.get('code').toLowerCase();
-            } else if (urlObj.searchParams.has('model') || urlObj.searchParams.has('id')) {
-                cleanCode = (urlObj.searchParams.get('model') || urlObj.searchParams.get('id')).toLowerCase();
-            }
-        } catch(e) {}
-    }
+    const includeInactive = typeof options?.includeInactive === 'boolean'
+        ? (options.includeInactive && checkIsWorker())
+        : canViewInactiveModel(checkIsWorker());
 
-    cleanCode = cleanCode.replace(/^["']|["']$/g, '').trim();
-
-    // 2. التحقق من السابقة الصريحة للكود (F للمصنع و S للسيستم)
-    if (!explicitType) {
-        if (/^(sys-|system-|s-)/i.test(cleanCode)) {
-            explicitType = 'system';
-            cleanCode = cleanCode.replace(/^(sys-|system-|s-)/i, '');
-        } else if (/^(fac-|factory-|f-)/i.test(cleanCode)) {
-            explicitType = 'factory';
-            cleanCode = cleanCode.replace(/^(fac-|factory-|f-)/i, '');
-        } else if (/^s[0-9a-z_]+/i.test(cleanCode)) {
-            explicitType = 'system';
-            cleanCode = cleanCode.substring(1);
-        } else if (/^f[0-9a-z_]+/i.test(cleanCode)) {
-            explicitType = 'factory';
-            cleanCode = cleanCode.substring(1);
-        }
-    }
-
-    cleanCode = normalizeCodeString(cleanCode).toLowerCase();
-
-    // 3. البحث في مصفوفة الموديلات في الذاكرة
+    // 1. البحث في مصفوفة الموديلات النشطة بالذاكرة (الأسرع)
     let models = (allModels && allModels.length > 0) ? allModels : (typeof window !== 'undefined' ? window.allGalleryModels : null);
     let match = searchInModelsList(models, cleanCode, explicitType, matchType);
     if (match) return match;
 
-    // 4. إذا لم يتم العثور عليه، فحص كاش IndexedDB
+    // 2. إذا لم يتم العثور عليه، فحص كاش IndexedDB للموديلات النشطة
     try {
         const cached = await getAllCachedModels();
         if (cached && cached.length > 0) {
@@ -2087,61 +2486,72 @@ export async function findModelByCode(code, matchType = 'both') {
         }
     } catch(e) {}
 
-    // 5. استعلام فوري من Supabase مباشرة في حال عدم وجود الموديل محلياً
-    try {
-        let query = supabase.from('models').select(`
-            *,
-            categories(name),
-            classes(name, class_sizes(sizes(name))),
-            model_sizes(sizes(name)),
-            model_inventory(*, colors(name)),
-            model_images(image_url)
-        `).eq('is_active', true);
+    // 3. استعلام فوري من Supabase مباشرة (مع السماح بجلب الموديلات المعطلة للموظفين المسجلين فقط)
+    const selectClause = `
+        *,
+        categories(name),
+        classes(name, class_sizes(sizes(name))),
+        model_sizes(sizes(name)),
+        model_inventory(*, colors(name)),
+        model_images(image_url)
+    `;
 
-        if (explicitType === 'system') {
-            query = query.or(`system_code.eq.${cleanCode},id.eq.${cleanCode}`);
-        } else if (explicitType === 'factory') {
-            query = query.eq('factory_code', cleanCode);
-        } else if (matchType === 'factory') {
-            query = query.eq('factory_code', cleanCode);
-        } else if (matchType === 'system') {
-            query = query.or(`system_code.eq.${cleanCode},id.eq.${cleanCode}`);
-        } else {
-            query = query.or(`factory_code.eq.${cleanCode},system_code.eq.${cleanCode},id.eq.${cleanCode}`);
-        }
-
-        const { data: dbModels } = await query;
-        if (dbModels && dbModels.length > 0) {
-            const found = dbModels[0];
-            if (!allModels.find(m => m.id === found.id)) {
-                allModels.unshift(found);
-                if (typeof window !== 'undefined') window.allGalleryModels = allModels;
-            }
+    const cacheAndReturn = (dbModels) => {
+        const found = pickBestMatchedModel(dbModels);
+        if (!found) return null;
+        if (found.is_active === false) {
+            if (!includeInactive) return null;
+            inactiveScannedModels.set(String(found.id), found);
             return found;
+        }
+        if (!allModels.find(m => String(m.id) === String(found.id))) {
+            allModels.unshift(found);
+            if (typeof window !== 'undefined') window.allGalleryModels = allModels;
+        }
+        return found;
+    };
+
+    try {
+        const primaryFilter = buildSupabaseCodeFilter(cleanCode, explicitType, matchType);
+        if (primaryFilter) {
+            let query = supabase.from('models').select(selectClause);
+            if (!includeInactive) {
+                query = query.eq('is_active', true);
+            }
+            query = query.or(primaryFilter);
+
+            const { data: dbModels, error } = await query;
+            if (!error && dbModels && dbModels.length > 0) {
+                const found = cacheAndReturn(dbModels);
+                if (found) return found;
+            }
         }
 
         // احتياط إضافي: إذا لم يتم العثور عليه وكان نوع المطابقة محدد بمصنع أو سيستم، جرب البحث في كل الأكواد
         if (matchType !== 'both' && !explicitType) {
-            const { data: fallbackModels } = await supabase.from('models').select(`
-                *,
-                categories(name),
-                classes(name, class_sizes(sizes(name))),
-                model_sizes(sizes(name)),
-                model_inventory(*, colors(name)),
-                model_images(image_url)
-            `).eq('is_active', true).or(`factory_code.eq.${cleanCode},system_code.eq.${cleanCode},id.eq.${cleanCode}`);
-
-            if (fallbackModels && fallbackModels.length > 0) {
-                const found = fallbackModels[0];
-                if (!allModels.find(m => m.id === found.id)) {
-                    allModels.unshift(found);
-                    if (typeof window !== 'undefined') window.allGalleryModels = allModels;
+            const fallbackFilter = buildSupabaseFallbackCodeFilter(cleanCode);
+            if (fallbackFilter) {
+                let fallbackQuery = supabase.from('models').select(selectClause);
+                if (!includeInactive) {
+                    fallbackQuery = fallbackQuery.eq('is_active', true);
                 }
-                return found;
+                fallbackQuery = fallbackQuery.or(fallbackFilter);
+
+                const { data: fallbackModels, error: fbErr } = await fallbackQuery;
+                if (!fbErr && fallbackModels && fallbackModels.length > 0) {
+                    const found = cacheAndReturn(fallbackModels);
+                    if (found) return found;
+                }
             }
         }
     } catch(e) {
         console.warn('[Barcode] Direct Supabase model query error:', e);
+    }
+
+    // 4. كاحتياط نهائي للعمل بدون إنترنت: فحص الموديلات المعطلة التي سبق مسحها خلال الجلسة للموظف
+    if (includeInactive && inactiveScannedModels.size > 0) {
+        const cachedInactive = searchInModelsList(Array.from(inactiveScannedModels.values()), cleanCode, explicitType, matchType);
+        if (cachedInactive) return cachedInactive;
     }
 
     return null;

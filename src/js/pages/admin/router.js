@@ -6,6 +6,12 @@ import { initUsersView } from './users.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNotifications } from '../../services/notifications.js';
 import { initNetworkStatusMonitor } from '../../components/network_banner.js';
+import {
+    SETTINGS_VIEW_IDS,
+    isSettingsUnlocked,
+    ensureSettingsUnlocked,
+    updateSettingsLockHeaderButton
+} from '../../services/settings_lock.js';
 
 // --- Security Check (Protect the Admin Route) ---
 let currentUserContext = null;
@@ -16,6 +22,9 @@ const OWNER_ONLY_VIEWS = [
     'view-theme-manager',
     'view-backup-restore',
     'view-notification-settings',
+    'view-data-management',
+    'view-settings-lock',
+    'view-app-updates',
     'view-system-reset'
 ];
 
@@ -137,6 +146,25 @@ function switchView(targetId, titleElement = null, subTabParam = null, skipHisto
         return;
     }
 
+    // 🔒 حارس قفل قسم الإعدادات بالكامل (PIN / نمط الـ 9 نقاط) 🔒
+    if (SETTINGS_VIEW_IDS.includes(targetId) && !isSettingsUnlocked()) {
+        const hasAnyVisibleView = Array.from(views).some(v => !v.classList.contains('hidden'));
+        if (!hasAnyVisibleView) {
+            const dashLink = document.querySelector('[data-target="view-dashboard"]');
+            switchView('view-dashboard', dashLink, null, true);
+        }
+        ensureSettingsUnlocked(
+            () => switchView(targetId, titleElement, subTabParam, skipHistory),
+            () => {
+                if (!window.currentAdminView || SETTINGS_VIEW_IDS.includes(window.currentAdminView)) {
+                    const dashLink = document.querySelector('[data-target="view-dashboard"]');
+                    switchView('view-dashboard', dashLink, null, true);
+                }
+            }
+        );
+        return;
+    }
+
     window.currentAdminView = targetId;
     window.currentAdminSubTab = subTabParam;
 
@@ -194,7 +222,7 @@ function switchView(targetId, titleElement = null, subTabParam = null, skipHisto
     }
 
     // 2.2 التعامل مع القائمة الجانبية للإعدادات (تمدد أو طي تلقائي عند الخروج)
-    const settingsViews = ['view-home-settings', 'view-theme-manager', 'view-backup-restore', 'view-notification-settings', 'view-system-reset'];
+    const settingsViews = SETTINGS_VIEW_IDS;
     const settingsSubmenu = document.getElementById('sidebar-settings-submenu');
     const settingsChevron = document.getElementById('settings-chevron');
     const settingsToggle = document.getElementById('sidebar-settings-toggle');
@@ -278,6 +306,9 @@ function switchView(targetId, titleElement = null, subTabParam = null, skipHisto
         }
     }
 
+    // 4.4 إظهار زر قفل قسم الإعدادات في الهيدر العلوي عند فتح أي تبويب إعدادات
+    updateSettingsLockHeaderButton();
+
     // 5. Initialize View Logic (Lazy Loading)
     const targetSubTab = subTabParam || titleElement?.getAttribute('data-report-tab') || null;
     loadViewLogic(targetId, targetSubTab);
@@ -325,6 +356,13 @@ async function loadViewLogic(targetId, subTab = null) {
     }
 
     if (targetId === 'view-system-reset' && currentUserContext?.role !== 'owner') {
+        showToast('⛔ هذه الصفحة مخصصة لمالك النظام فقط', 'error');
+        const defaultLink = document.querySelector('[data-target="view-dashboard"]');
+        if (defaultLink) switchView('view-dashboard', defaultLink);
+        return;
+    }
+
+    if ((targetId === 'view-data-management' || targetId === 'view-settings-lock' || targetId === 'view-app-updates') && currentUserContext?.role !== 'owner') {
         showToast('⛔ هذه الصفحة مخصصة لمالك النظام فقط', 'error');
         const defaultLink = document.querySelector('[data-target="view-dashboard"]');
         if (defaultLink) switchView('view-dashboard', defaultLink);
@@ -419,6 +457,18 @@ async function loadViewLogic(targetId, subTab = null) {
             const { initNotificationSettingsView } = await import('./notification_settings.js');
             await initNotificationSettingsView();
             break;
+        case 'view-data-management':
+            const { initDataManagementView } = await import('./data_management.js');
+            await initDataManagementView();
+            break;
+        case 'view-settings-lock':
+            const { initSettingsLockView } = await import('./settings_lock_page.js');
+            await initSettingsLockView();
+            break;
+        case 'view-app-updates':
+            const { initAppUpdatesView } = await import('./app_updates.js');
+            await initAppUpdatesView();
+            break;
         case 'view-system-reset':
             const { initSystemResetView } = await import('./system_reset.js');
             initSystemResetView();
@@ -472,7 +522,7 @@ async function initRouter() {
         });
     }
 
-    // معالجة زر فتح وإغلاق قائمة الإعدادات الجانبية
+    // معالجة زر فتح وإغلاق قائمة الإعدادات الجانبية (محمية بقفل الأمان)
     const settingsToggle = document.getElementById('sidebar-settings-toggle');
     if (settingsToggle) {
         settingsToggle.addEventListener('click', (e) => {
@@ -482,12 +532,19 @@ async function initRouter() {
             const isHidden = settingsSubmenu?.classList.contains('hidden');
 
             if (isHidden) {
-                settingsSubmenu.classList.remove('hidden');
-                settingsChevron?.classList.add('rotate-180');
-                const firstVisibleSublink = settingsSubmenu.querySelector('.nav-link:not(.hidden)');
-                if (firstVisibleSublink) {
-                    const target = firstVisibleSublink.getAttribute('data-target');
-                    switchView(target, firstVisibleSublink);
+                const openSettingsMenu = () => {
+                    settingsSubmenu.classList.remove('hidden');
+                    settingsChevron?.classList.add('rotate-180');
+                    const firstVisibleSublink = settingsSubmenu.querySelector('.nav-link:not(.hidden)');
+                    if (firstVisibleSublink) {
+                        const target = firstVisibleSublink.getAttribute('data-target');
+                        switchView(target, firstVisibleSublink);
+                    }
+                };
+                if (isSettingsUnlocked()) {
+                    openSettingsMenu();
+                } else {
+                    ensureSettingsUnlocked(openSettingsMenu);
                 }
             } else {
                 settingsSubmenu.classList.add('hidden');
@@ -669,6 +726,27 @@ export async function refreshAllSystemData(options = {}) {
                     const usersMod = await import('./users.js').catch(() => null);
                     if (usersMod && typeof usersMod.loadUsers === 'function') {
                         await usersMod.loadUsers();
+                    }
+                    break;
+                }
+                case 'view-data-management': {
+                    const dmMod = await import('./data_management.js').catch(() => null);
+                    if (dmMod && typeof dmMod.refreshDataManagementData === 'function') {
+                        await dmMod.refreshDataManagementData();
+                    }
+                    break;
+                }
+                case 'view-settings-lock': {
+                    const slMod = await import('./settings_lock_page.js').catch(() => null);
+                    if (slMod && typeof slMod.refreshSettingsLockPageUI === 'function') {
+                        await slMod.refreshSettingsLockPageUI();
+                    }
+                    break;
+                }
+                case 'view-app-updates': {
+                    const auMod = await import('./app_updates.js').catch(() => null);
+                    if (auMod && typeof auMod.refreshAppUpdatesView === 'function') {
+                        await auMod.refreshAppUpdatesView();
                     }
                     break;
                 }
