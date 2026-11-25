@@ -3,7 +3,7 @@
  * No DOM or browser globals required here so unit tests run directly in Node.
  */
 
-export const APP_FALLBACK_VERSION = '18.1.0';
+export const APP_FALLBACK_VERSION = '18.2.0';
 
 /**
  * Parses a version string like "v18.0.0" or "18.2" into [major, minor, patch].

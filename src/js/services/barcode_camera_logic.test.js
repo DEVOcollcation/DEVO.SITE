@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {
     classifyCameraError,
     getCameraStatusMessage,
-    shouldAutoStartCamera
+    shouldAutoStartCamera,
+    getScannerFormatsToSupport,
+    computeScannerQrBox,
+    shouldSkipDuplicateScan
 } from './barcode_camera_logic.js';
 
 test('classifyCameraError detects permission denials from DOMException names or plain strings', () => {
@@ -48,4 +51,28 @@ test('getCameraStatusMessage returns Arabic UI guidance and manual input fallbac
     assert.ok(denied.title.includes('صلاحية'));
     assert.equal(denied.suggestManual, true);
     assert.equal(denied.allowRetry, true);
+});
+
+test('getScannerFormatsToSupport keeps only essential decoders per scan mode for fast frame decoding', () => {
+    const F = { QR_CODE: 0, CODE_128: 5, CODE_39: 3, EAN_13: 9, CODABAR: 2, ITF: 12 };
+    assert.deepEqual(getScannerFormatsToSupport('qr', F), [0]);
+    assert.deepEqual(getScannerFormatsToSupport('barcode', F), [5, 3, 9]);
+    assert.deepEqual(getScannerFormatsToSupport('both', F), [0, 5, 9, 3]);
+    assert.equal(getScannerFormatsToSupport('both', null), undefined);
+});
+
+test('computeScannerQrBox fits inside container bounds while giving wide 1D barcode clearance', () => {
+    const desktop = computeScannerQrBox(440, 330);
+    assert.ok(desktop.width <= 380 && desktop.width >= 300);
+    assert.ok(desktop.height <= 240 && desktop.height >= 180);
+
+    const smallMobile = computeScannerQrBox(260, 195);
+    assert.ok(smallMobile.width <= 244);
+    assert.ok(smallMobile.height <= 179);
+});
+
+test('shouldSkipDuplicateScan debounces identical rapid scans while permitting new codes immediately', () => {
+    assert.equal(shouldSkipDuplicateScan({ lastCode: '505', lastTime: 1000, currentCode: '505', now: 1600, cooldownMs: 1500 }), true);
+    assert.equal(shouldSkipDuplicateScan({ lastCode: '505', lastTime: 1000, currentCode: '505', now: 2600, cooldownMs: 1500 }), false);
+    assert.equal(shouldSkipDuplicateScan({ lastCode: '505', lastTime: 1000, currentCode: '404', now: 1100, cooldownMs: 1500 }), false);
 });

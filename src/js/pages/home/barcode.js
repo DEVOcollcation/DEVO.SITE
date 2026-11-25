@@ -1,38 +1,120 @@
-import { findModelByCode, checkIsWorker } from './gallery.js?v=18.1';
+import { findModelByCode, checkIsWorker } from './gallery.js?v=18.2';
 import { classifyBarcodeLookupResult } from '../../services/barcode_lookup_logic.js';
 import {
     classifyCameraError,
     getCameraStatusMessage,
-    shouldAutoStartCamera
+    shouldAutoStartCamera,
+    getScannerFormatsToSupport,
+    computeScannerQrBox,
+    shouldSkipDuplicateScan
 } from '../../services/barcode_camera_logic.js';
 import { showToast } from '../../components/toast.js';
 import { supabase } from '../../config/supabase.js';
+
+const BARCODE_SETTINGS_CACHE_KEY = 'devo_barcode_settings_cache';
+const PREFERRED_CAMERA_STORAGE_KEY = 'devo_preferred_camera_id';
+const SCAN_STATE = {
+    NOT_STARTED: 1,
+    SCANNING: 2,
+    PAUSED: 3
+};
 
 let html5QrCode = null;
 let isScannerRunning = false;
 let isStartingScanner = false;
 let isScannerLocked = false;
+let isBarcodeViewInitialized = false;
 let selectedCameraId = null;
 let scanMode = 'both';
 let matchType = 'both';
+let scannerOpChain = Promise.resolve();
+let unlockSafetyTimer = null;
+let sharedAudioCtx = null;
+let lastScannedCode = '';
+let lastScannedAt = 0;
+
+function readCachedBarcodeSettings() {
+    try {
+        const raw = localStorage.getItem(BARCODE_SETTINGS_CACHE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.scanMode) scanMode = parsed.scanMode;
+            if (parsed?.matchType) matchType = parsed.matchType;
+        }
+    } catch {}
+    try {
+        const savedCam = localStorage.getItem(PREFERRED_CAMERA_STORAGE_KEY);
+        if (savedCam) selectedCameraId = savedCam;
+    } catch {}
+}
+
+function writeCachedBarcodeSettings() {
+    try {
+        localStorage.setItem(BARCODE_SETTINGS_CACHE_KEY, JSON.stringify({ scanMode, matchType }));
+    } catch {}
+}
+
+function withTimeout(promise, ms, label = 'operation') {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
+function enqueueScannerOp(task) {
+    const next = scannerOpChain.then(() => task(), () => task());
+    scannerOpChain = next.catch(() => {});
+    return next;
+}
+
+function getSafeScannerState() {
+    try {
+        if (html5QrCode && typeof html5QrCode.getState === 'function') {
+            return html5QrCode.getState();
+        }
+    } catch {}
+    return SCAN_STATE.NOT_STARTED;
+}
+
+async function destroyScannerInstance() {
+    if (!html5QrCode) return;
+    try {
+        const state = getSafeScannerState();
+        if (state === SCAN_STATE.SCANNING || state === SCAN_STATE.PAUSED || html5QrCode.isScanning) {
+            await html5QrCode.stop().catch(() => {});
+        }
+    } catch {}
+    try {
+        if (typeof html5QrCode.clear === 'function') {
+            html5QrCode.clear();
+        }
+    } catch {}
+    html5QrCode = null;
+}
 
 async function fetchBarcodeSettings() {
     try {
-        const { data, error } = await supabase
-            .from('home_settings')
-            .select('*')
-            .in('setting_key', ['barcode_scan_mode', 'barcode_match_type']);
+        const { data, error } = await withTimeout(
+            supabase
+                .from('home_settings')
+                .select('*')
+                .in('setting_key', ['barcode_scan_mode', 'barcode_match_type']),
+            3000,
+            'fetchBarcodeSettings'
+        );
         if (!error && data) {
             data.forEach(item => {
-                if (item.setting_key === 'barcode_scan_mode') scanMode = item.setting_value;
-                if (item.setting_key === 'barcode_match_type') matchType = item.setting_value;
+                if (item.setting_key === 'barcode_scan_mode' && item.setting_value) scanMode = item.setting_value;
+                if (item.setting_key === 'barcode_match_type' && item.setting_value) matchType = item.setting_value;
             });
+            writeCachedBarcodeSettings();
         }
-        
-        // Dynamically update placeholder
         updateManualInputPlaceholder();
-    } catch (e) {
-        console.error("Failed to fetch barcode settings:", e);
+    } catch {
+        // Non-fatal: cached or default settings remain active immediately
     }
 }
 
@@ -60,33 +142,9 @@ function createScannerInstance() {
             useBarCodeDetectorIfSupported: true
         }
     };
-    if (window.Html5QrcodeSupportedFormats) {
-        if (scanMode === 'qr') {
-            configs.formatsToSupport = [window.Html5QrcodeSupportedFormats.QR_CODE];
-        } else if (scanMode === 'barcode') {
-            configs.formatsToSupport = [
-                window.Html5QrcodeSupportedFormats.EAN_13,
-                window.Html5QrcodeSupportedFormats.EAN_8,
-                window.Html5QrcodeSupportedFormats.CODE_39,
-                window.Html5QrcodeSupportedFormats.CODE_128,
-                window.Html5QrcodeSupportedFormats.CODE_93,
-                window.Html5QrcodeSupportedFormats.CODABAR,
-                window.Html5QrcodeSupportedFormats.UPC_A,
-                window.Html5QrcodeSupportedFormats.UPC_E,
-                window.Html5QrcodeSupportedFormats.ITF
-            ];
-        } else {
-            // BOTH: explicitly support all common 1D and 2D formats
-            configs.formatsToSupport = [
-                window.Html5QrcodeSupportedFormats.QR_CODE,
-                window.Html5QrcodeSupportedFormats.CODE_128,
-                window.Html5QrcodeSupportedFormats.CODE_39,
-                window.Html5QrcodeSupportedFormats.EAN_13,
-                window.Html5QrcodeSupportedFormats.EAN_8,
-                window.Html5QrcodeSupportedFormats.UPC_A,
-                window.Html5QrcodeSupportedFormats.UPC_E
-            ];
-        }
+    const formats = getScannerFormatsToSupport(scanMode, window.Html5QrcodeSupportedFormats);
+    if (formats && formats.length > 0) {
+        configs.formatsToSupport = formats;
     }
     return new window.Html5Qrcode("barcode-reader", configs);
 }
@@ -163,6 +221,77 @@ async function queryCameraPermissionState() {
     return 'unknown';
 }
 
+async function populateCameraListFromActiveSession() {
+    const selectCamera = document.getElementById('select-camera');
+    if (!selectCamera || !navigator?.mediaDevices?.enumerateDevices) return;
+
+    try {
+        const allDevices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = allDevices.filter((d) => d.kind === 'videoinput' && d.deviceId);
+        if (videoDevices.length === 0) return;
+
+        // Detect which camera track is currently running so dropdown matches reality
+        let activeDeviceId = selectedCameraId;
+        try {
+            const activeTrackSettings = html5QrCode?.getRunningTrackSettings?.();
+            if (activeTrackSettings?.deviceId) {
+                activeDeviceId = activeTrackSettings.deviceId;
+                selectedCameraId = activeDeviceId;
+            }
+        } catch {}
+
+        selectCamera.innerHTML = videoDevices.map((device, idx) =>
+            `<option value="${device.id}" ${device.id === activeDeviceId ? 'selected' : ''}>${device.label || `كاميرا ${idx + 1}`}</option>`
+        ).join('');
+
+        if (videoDevices.length > 1) {
+            selectCamera.classList.remove('hidden');
+        } else {
+            selectCamera.classList.add('hidden');
+        }
+    } catch {}
+}
+
+function pauseScannerSafely() {
+    try {
+        if (!html5QrCode || !isScannerRunning) return;
+        const state = getSafeScannerState();
+        if (state === SCAN_STATE.SCANNING && typeof html5QrCode.pause === 'function') {
+            html5QrCode.pause(true);
+            const laser = document.getElementById('barcode-scanner-laser');
+            if (laser) laser.classList.add('hidden');
+        }
+    } catch {}
+}
+
+function resumeScannerSafely() {
+    if (unlockSafetyTimer) {
+        clearTimeout(unlockSafetyTimer);
+        unlockSafetyTimer = null;
+    }
+    isScannerLocked = false;
+    try {
+        if (!html5QrCode || !isScannerRunning) return;
+        const state = getSafeScannerState();
+        if (state === SCAN_STATE.PAUSED && typeof html5QrCode.resume === 'function') {
+            html5QrCode.resume();
+            const laser = document.getElementById('barcode-scanner-laser');
+            if (laser) laser.classList.remove('hidden');
+        }
+    } catch {
+        // Fallback: if video stream died while paused in background, restart cleanly
+        stopScanning({ keepOverlayHidden: true }).then(() => maybeAutoStartScanning());
+    }
+}
+
+function scheduleShortScanUnlock(delayMs = 900) {
+    if (unlockSafetyTimer) clearTimeout(unlockSafetyTimer);
+    unlockSafetyTimer = setTimeout(() => {
+        unlockSafetyTimer = null;
+        resumeScannerSafely();
+    }, delayMs);
+}
+
 async function maybeAutoStartScanning() {
     if (isScannerRunning || isStartingScanner) return;
     const barcodeView = document.getElementById('view-barcode');
@@ -191,6 +320,11 @@ async function maybeAutoStartScanning() {
 }
 
 export function initBarcode() {
+    if (isBarcodeViewInitialized) return;
+    isBarcodeViewInitialized = true;
+
+    readCachedBarcodeSettings();
+
     const btnToggleScan = document.getElementById('btn-toggle-scan');
     const btnSubmitManualCode = document.getElementById('btn-submit-manual-code');
     const manualInput = document.getElementById('barcode-manual-input');
@@ -199,16 +333,8 @@ export function initBarcode() {
 
     if (!btnToggleScan || !btnSubmitManualCode || !manualInput) return;
 
-    // Fetch barcode settings and initialize scanner
-    fetchBarcodeSettings().then(() => {
-        try {
-            if (window.Html5Qrcode && !html5QrCode) {
-                html5QrCode = createScannerInstance();
-            }
-        } catch (e) {
-            console.warn("Failed to initialize Html5Qrcode:", e);
-        }
-    });
+    // Fetch latest barcode settings in the background without blocking UI startup
+    fetchBarcodeSettings();
 
     // Toggle manual input state change
     if (toggleManualInput) {
@@ -240,9 +366,16 @@ export function initBarcode() {
     // Camera selection change
     if (selectCamera) {
         selectCamera.addEventListener('change', (e) => {
-            selectedCameraId = e.target.value;
+            selectedCameraId = e.target.value || null;
+            try {
+                if (selectedCameraId) {
+                    localStorage.setItem(PREFERRED_CAMERA_STORAGE_KEY, selectedCameraId);
+                } else {
+                    localStorage.removeItem(PREFERRED_CAMERA_STORAGE_KEY);
+                }
+            } catch {}
             if (isScannerRunning) {
-                stopScanning().then(() => startScanning({ isAutoStart: false }));
+                stopScanning({ keepOverlayHidden: true }).then(() => startScanning({ isAutoStart: false }));
             }
         });
     }
@@ -263,13 +396,11 @@ export function initBarcode() {
         }
 
         if (targetId === 'view-barcode') {
-            // Safely check permissions and start scanning when switching to barcode tab
             setTimeout(() => {
                 maybeAutoStartScanning();
-            }, 200);
+            }, 120);
         } else {
-            // Automatically stop scanning when leaving barcode tab
-            if (isScannerRunning) {
+            if (isScannerRunning || isStartingScanner) {
                 stopScanning();
             }
         }
@@ -282,11 +413,9 @@ export function initBarcode() {
             existingOnModelViewerClosed();
         }
 
-        // If current active view is barcode, resume scanning
         const barcodeView = document.getElementById('view-barcode');
         if (window.currentView === 'view-barcode' || (barcodeView && !barcodeView.classList.contains('hidden'))) {
-            isScannerLocked = false;
-            // Clear manual input for next scan
+            resumeScannerSafely();
             if (manualInput) {
                 manualInput.value = '';
                 if (!manualInput.disabled) {
@@ -296,195 +425,247 @@ export function initBarcode() {
         }
     };
 
+    // Pause/resume cleanly when app goes to background on mobile PWA
+    document.addEventListener('visibilitychange', () => {
+        const barcodeView = document.getElementById('view-barcode');
+        const onBarcodeTab = window.currentView === 'view-barcode' || (barcodeView && !barcodeView.classList.contains('hidden'));
+        if (!onBarcodeTab) return;
+
+        if (document.hidden) {
+            if (isScannerRunning) {
+                stopScanning({ keepOverlayHidden: true });
+            }
+        } else {
+            const modal = document.getElementById('model-viewer-modal');
+            const modalClosed = !modal || modal.classList.contains('hidden');
+            if (modalClosed && !isScannerRunning) {
+                setTimeout(() => maybeAutoStartScanning(), 180);
+            }
+        }
+    });
+
     // إذا كانت الصفحة الحالية بالفعل هي الباركود عند التحميل أو عمل ريفريش، ابدأ المسح تلقائياً بأمان
     const barcodeViewEl = document.getElementById('view-barcode');
     if (window.currentView === 'view-barcode' || (barcodeViewEl && !barcodeViewEl.classList.contains('hidden'))) {
         setTimeout(() => {
             maybeAutoStartScanning();
-        }, 250);
+        }, 180);
     }
 }
 
 async function startScanning({ isAutoStart = false } = {}) {
-    if (isScannerRunning || isStartingScanner) return;
+    return enqueueScannerOp(async () => {
+        if (isScannerRunning || isStartingScanner) return;
 
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-        showCameraStatusOverlay('unsupported');
-        if (!isAutoStart) {
-            const msg = getCameraStatusMessage('unsupported');
-            showToast(msg.toastMessage, msg.toastType);
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+            showCameraStatusOverlay('unsupported');
+            if (!isAutoStart) {
+                const msg = getCameraStatusMessage('unsupported');
+                showToast(msg.toastMessage, msg.toastType);
+            }
+            return;
         }
-        return;
-    }
 
-    if (!window.Html5Qrcode) {
-        showToast("مكتبة قارئ الباركود لم تكتمل في التحميل بعد. أعد المحاولة.", "warning");
-        return;
-    }
+        if (!window.Html5Qrcode) {
+            showToast("مكتبة قارئ الباركود لم تكتمل في التحميل بعد. أعد المحاولة.", "warning");
+            return;
+        }
 
-    isStartingScanner = true;
+        isStartingScanner = true;
 
-    const btnToggleScan = document.getElementById('btn-toggle-scan');
-    const txtToggleScan = document.getElementById('txt-toggle-scan');
-    const selectCamera = document.getElementById('select-camera');
-    const laser = document.getElementById('barcode-scanner-laser');
+        const btnToggleScan = document.getElementById('btn-toggle-scan');
+        const txtToggleScan = document.getElementById('txt-toggle-scan');
+        const selectCamera = document.getElementById('select-camera');
+        const laser = document.getElementById('barcode-scanner-laser');
 
-    try {
-        // Refresh settings before scanning to adapt to any recent admin changes
-        await fetchBarcodeSettings();
+        // Refresh settings non-blockingly in background so camera opens with zero network delay
+        fetchBarcodeSettings();
 
-        // Recreate scanner with latest settings
-        html5QrCode = createScannerInstance();
+        try {
+            // Ensure previous scanner instance & streams/canvases are completely cleaned up
+            await destroyScannerInstance();
+            html5QrCode = createScannerInstance();
 
-        // Request cameras list
-        const devices = await window.Html5Qrcode.getCameras();
-        if (devices && devices.length > 0) {
-            // Populate select box if multiple cameras
-            if (selectCamera) {
-                selectCamera.innerHTML = devices.map(device => 
-                    `<option value="${device.id}" ${device.id === selectedCameraId ? 'selected' : ''}>${device.label || `كاميرا ${devices.indexOf(device) + 1}`}</option>`
-                ).join('');
-                selectCamera.classList.remove('hidden');
+            const config = {
+                fps: 20,
+                qrbox: (width, height) => computeScannerQrBox(width, height),
+                aspectRatio: 1.333333
+            };
+
+            const cameraTarget = selectedCameraId ? selectedCameraId : { facingMode: "environment" };
+
+            try {
+                await html5QrCode.start(
+                    cameraTarget,
+                    config,
+                    onScanSuccess,
+                    () => {}
+                );
+            } catch (primaryErr) {
+                // If saved cameraId no longer exists or failed, automatically fall back once to environment camera
+                if (selectedCameraId) {
+                    selectedCameraId = null;
+                    try { localStorage.removeItem(PREFERRED_CAMERA_STORAGE_KEY); } catch {}
+                    await destroyScannerInstance();
+                    html5QrCode = createScannerInstance();
+                    await html5QrCode.start(
+                        { facingMode: "environment" },
+                        config,
+                        onScanSuccess,
+                        () => {}
+                    );
+                } else {
+                    throw primaryErr;
+                }
             }
 
-            // Default to first camera if none selected, or back camera if available
-            if (!selectedCameraId) {
-                const backCamera = devices.find(d => {
-                    const label = (d.label || '').toLowerCase();
-                    return label.includes('back') || label.includes('environment') || label.includes('rear') || label.includes('out');
-                });
-                selectedCameraId = backCamera ? backCamera.id : devices[0].id;
-                if (selectCamera) selectCamera.value = selectedCameraId;
+            // Improve close-up barcode crispness & continuous autofocus asynchronously (non-blocking)
+            if (typeof html5QrCode.applyVideoConstraints === 'function') {
+                html5QrCode.applyVideoConstraints({
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    advanced: [{ focusMode: 'continuous' }]
+                }).catch(() => {});
             }
-        }
 
-        const config = {
-            fps: 15,
-            qrbox: function(width, height) {
-                // Focus area optimized for both 1D barcodes and 2D QR codes (min 100x80)
-                const safeW = Math.max(100, Math.min((width || 280) * 0.85, 320));
-                const safeH = Math.max(80, Math.min((height || 220) * 0.65, 240));
-                return {
-                    width: Math.floor(safeW),
-                    height: Math.floor(safeH)
-                };
-            },
-            aspectRatio: 1.333333
-        };
+            hideCameraStatusOverlay();
 
-        await html5QrCode.start(
-            selectedCameraId ? selectedCameraId : { facingMode: "environment" },
-            config,
-            onScanSuccess,
-            () => {
-                // Ignore scanning cycle failures/no code detected
+            // Populate camera selector from active stream without opening a second temporary stream
+            populateCameraListFromActiveSession();
+
+            // ضبط عنصر الفيديو للتأكد من ملاءمته الدقيقة لشاشات كافة الموبايلات
+            const videoEl = document.querySelector('#barcode-reader video');
+            if (videoEl) {
+                videoEl.style.width = '100%';
+                videoEl.style.height = '100%';
+                videoEl.style.maxWidth = '100%';
+                videoEl.style.maxHeight = '100%';
+                videoEl.style.objectFit = 'cover';
             }
-        );
 
-        hideCameraStatusOverlay();
+            isScannerRunning = true;
+            isScannerLocked = false;
+            lastScannedCode = '';
+            lastScannedAt = 0;
 
-        // ضبط عنصر الفيديو للتأكد من ملاءمته الدقيقة لشاشات كافة الموبايلات
-        const videoEl = document.querySelector('#barcode-reader video');
-        if (videoEl) {
-            videoEl.style.width = '100%';
-            videoEl.style.height = '100%';
-            videoEl.style.maxWidth = '100%';
-            videoEl.style.maxHeight = '100%';
-            videoEl.style.objectFit = 'cover';
+            if (txtToggleScan) txtToggleScan.textContent = "إيقاف الكاميرا";
+            if (btnToggleScan) {
+                btnToggleScan.classList.replace('bg-devo-orange', 'bg-devo-error');
+                btnToggleScan.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-red-600');
+            }
+            if (laser) laser.classList.remove('hidden');
+
+        } catch (err) {
+            const errorKind = classifyCameraError(err);
+            const statusInfo = getCameraStatusMessage(errorKind);
+
+            await destroyScannerInstance();
+
+            if (selectCamera) selectCamera.classList.add('hidden');
+            if (laser) laser.classList.add('hidden');
+            isScannerRunning = false;
+            showCameraStatusOverlay(errorKind);
+
+            if (errorKind === 'unknown') {
+                console.warn("Camera unavailable:", err);
+            }
+
+            if (!isAutoStart && statusInfo.toastMessage) {
+                showToast(statusInfo.toastMessage, statusInfo.toastType);
+            }
+        } finally {
+            isStartingScanner = false;
         }
-
-        // تصفير أي إزاحة أفقية قد تنشأ على أجهزة شاومي أو غيرها
-        if (typeof window !== 'undefined') {
-            window.scrollTo(0, 0);
-            if (document.documentElement) document.documentElement.scrollLeft = 0;
-            if (document.body) document.body.scrollLeft = 0;
-        }
-
-        isScannerRunning = true;
-        isScannerLocked = false;
-
-        if (txtToggleScan) txtToggleScan.textContent = "إيقاف الكاميرا";
-        if (btnToggleScan) {
-            btnToggleScan.classList.replace('bg-devo-orange', 'bg-devo-error');
-            btnToggleScan.classList.replace('hover:bg-devo-orangeHover', 'hover:bg-red-600');
-        }
-        if (laser) laser.classList.remove('hidden');
-
-    } catch (err) {
-        const errorKind = classifyCameraError(err);
-        const statusInfo = getCameraStatusMessage(errorKind);
-
-        if (selectCamera) selectCamera.classList.add('hidden');
-        if (laser) laser.classList.add('hidden');
-        isScannerRunning = false;
-        showCameraStatusOverlay(errorKind);
-
-        if (errorKind === 'unknown') {
-            console.warn("Camera unavailable:", err);
-        }
-
-        if (!isAutoStart && statusInfo.toastMessage) {
-            showToast(statusInfo.toastMessage, statusInfo.toastType);
-        }
-    } finally {
-        isStartingScanner = false;
-    }
+    });
 }
 
-async function stopScanning() {
-    if (!html5QrCode || !isScannerRunning) return;
-
-    const btnToggleScan = document.getElementById('btn-toggle-scan');
-    const txtToggleScan = document.getElementById('txt-toggle-scan');
-    const laser = document.getElementById('barcode-scanner-laser');
-
-    try {
-        if (html5QrCode.isScanning) {
-            await html5QrCode.stop().catch(() => {});
+async function stopScanning({ keepOverlayHidden = false } = {}) {
+    return enqueueScannerOp(async () => {
+        if (unlockSafetyTimer) {
+            clearTimeout(unlockSafetyTimer);
+            unlockSafetyTimer = null;
         }
-    } catch (err) {
-        console.warn("Failed to stop Html5Qrcode:", err);
-    } finally {
-        isScannerRunning = false;
-        isScannerLocked = false;
 
-        if (txtToggleScan) txtToggleScan.textContent = "تشغيل الكاميرا";
-        if (btnToggleScan) {
-            btnToggleScan.classList.replace('bg-devo-error', 'bg-devo-orange');
-            btnToggleScan.classList.replace('hover:bg-red-600', 'hover:bg-devo-orangeHover');
+        const btnToggleScan = document.getElementById('btn-toggle-scan');
+        const txtToggleScan = document.getElementById('txt-toggle-scan');
+        const laser = document.getElementById('barcode-scanner-laser');
+
+        try {
+            await destroyScannerInstance();
+        } catch (err) {
+            console.warn("Failed to stop Html5Qrcode:", err);
+        } finally {
+            isScannerRunning = false;
+            isStartingScanner = false;
+            isScannerLocked = false;
+
+            if (txtToggleScan) txtToggleScan.textContent = "تشغيل الكاميرا";
+            if (btnToggleScan) {
+                btnToggleScan.classList.replace('bg-devo-error', 'bg-devo-orange');
+                btnToggleScan.classList.replace('hover:bg-red-600', 'hover:bg-devo-orangeHover');
+            }
+            if (laser) laser.classList.add('hidden');
+            if (!keepOverlayHidden) {
+                showCameraStatusOverlay('standby');
+            }
         }
-        if (laser) laser.classList.add('hidden');
-        showCameraStatusOverlay('standby');
-    }
+    });
 }
 
 async function onScanSuccess(decodedText) {
-    if (isScannerLocked) return;
-    isScannerLocked = true;
+    const code = String(decodedText || '').trim();
+    const now = Date.now();
+    if (
+        isScannerLocked ||
+        shouldSkipDuplicateScan({ lastCode: lastScannedCode, lastTime: lastScannedAt, currentCode: code, now, cooldownMs: 1200 })
+    ) {
+        return;
+    }
 
+    isScannerLocked = true;
+    lastScannedCode = code;
+    lastScannedAt = now;
+
+    // Pause video decoding immediately so UI thread isn't competing with 20fps scanning
+    pauseScannerSafely();
     playBeepSound();
 
-    const code = decodedText.trim();
-    const isStaff = checkIsWorker();
-    const lookupFn = window.findModelByCode || findModelByCode;
-    const rawModel = await lookupFn(code, matchType, { includeInactive: isStaff });
-    const result = classifyBarcodeLookupResult(rawModel, isStaff);
+    try {
+        const isStaff = checkIsWorker();
+        const lookupFn = window.findModelByCode || findModelByCode;
+        const rawModel = await withTimeout(
+            lookupFn(code, matchType, { includeInactive: isStaff }),
+            6000,
+            'barcodeLookup'
+        );
+        const result = classifyBarcodeLookupResult(rawModel, isStaff);
 
-    if (result.status === 'found_active') {
-        showToast(`تم مسح الباركود بنجاح. الموديل: ${result.model.name}`, 'success');
-        window.openModelViewer(result.model.id, false, result.model);
-    } else if (result.status === 'found_inactive') {
-        showToast(`تم العثور على الموديل (غير مفعل بالمعرض): ${result.model.name}`, 'warning');
-        window.openModelViewer(result.model.id, false, result.model);
-    } else {
-        const notFoundMsg = isStaff
-            ? `الباركود (${code}) غير مسجل لأي موديل في النظام`
-            : `الباركود (${code}) غير مطابق لأي موديل نشط بالمعرض`;
-        showToast(notFoundMsg, 'error');
-        // Resume scanning after a 2.5 seconds delay so toast is readable
-        setTimeout(() => {
-            isScannerLocked = false;
-        }, 2500);
+        if (result.status === 'found_active') {
+            showToast(`تم مسح الباركود بنجاح. الموديل: ${result.model.name}`, 'success');
+            await window.openModelViewer(result.model.id, false, result.model);
+            // Failsafe: if modal didn't open for any reason, unlock and resume
+            const modal = document.getElementById('model-viewer-modal');
+            if (!modal || modal.classList.contains('hidden')) {
+                resumeScannerSafely();
+            }
+        } else if (result.status === 'found_inactive') {
+            showToast(`تم العثور على الموديل (غير مفعل بالمعرض): ${result.model.name}`, 'warning');
+            await window.openModelViewer(result.model.id, false, result.model);
+            const modal = document.getElementById('model-viewer-modal');
+            if (!modal || modal.classList.contains('hidden')) {
+                resumeScannerSafely();
+            }
+        } else {
+            const notFoundMsg = isStaff
+                ? `الباركود (${code}) غير مسجل لأي موديل في النظام`
+                : `الباركود (${code}) غير مطابق لأي موديل نشط بالمعرض`;
+            showToast(notFoundMsg, 'error');
+            scheduleShortScanUnlock(900);
+        }
+    } catch (err) {
+        console.warn('[Barcode] Lookup error or timeout:', err);
+        showToast('تعذر إتمام البحث عن الباركود حالياً. حاول مسحه مجدداً.', 'warning');
+        scheduleShortScanUnlock(900);
     }
 }
 
@@ -503,21 +684,28 @@ async function handleManualCodeSubmit() {
     try {
         const isStaff = checkIsWorker();
         const lookupFn = window.findModelByCode || findModelByCode;
-        const rawModel = await lookupFn(code, matchType, { includeInactive: isStaff });
+        const rawModel = await withTimeout(
+            lookupFn(code, matchType, { includeInactive: isStaff }),
+            6000,
+            'manualBarcodeLookup'
+        );
         const result = classifyBarcodeLookupResult(rawModel, isStaff);
 
         if (result.status === 'found_active') {
             showToast(`تم العثور على الموديل: ${result.model.name}`, 'success');
-            window.openModelViewer(result.model.id, false, result.model);
+            await window.openModelViewer(result.model.id, false, result.model);
         } else if (result.status === 'found_inactive') {
             showToast(`تم العثور على الموديل (غير مفعل بالمعرض): ${result.model.name}`, 'warning');
-            window.openModelViewer(result.model.id, false, result.model);
+            await window.openModelViewer(result.model.id, false, result.model);
         } else {
             const notFoundMsg = isStaff
                 ? `كود الموديل (${code}) غير موجود في النظام`
                 : `كود الموديل (${code}) غير موجود بالمعرض`;
             showToast(notFoundMsg, 'error');
         }
+    } catch (err) {
+        console.warn('[Barcode] Manual lookup error or timeout:', err);
+        showToast('حدث بطء في الشبكة أثناء البحث عن الكود. أعد المحاولة.', 'warning');
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -525,22 +713,32 @@ async function handleManualCodeSubmit() {
 
 function playBeepSound() {
     try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+
+        if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+            sharedAudioCtx = new AudioCtx();
+        }
+        if (sharedAudioCtx.state === 'suspended') {
+            sharedAudioCtx.resume().catch(() => {});
+        }
+
+        const now = sharedAudioCtx.currentTime;
+        const oscillator = sharedAudioCtx.createOscillator();
+        const gainNode = sharedAudioCtx.createGain();
 
         oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(sharedAudioCtx.destination);
 
         oscillator.type = "sine";
-        oscillator.frequency.value = 1100; // Sharp beep sound
-        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.04);
-        gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.12);
+        oscillator.frequency.value = 1100;
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.2, now + 0.03);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.11);
 
-        oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.12);
-    } catch (e) {
-        console.warn("AudioContext beep failed", e);
+        oscillator.start(now);
+        oscillator.stop(now + 0.12);
+    } catch {
+        // Non-fatal if AudioContext is blocked
     }
 }

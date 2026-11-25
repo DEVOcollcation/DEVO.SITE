@@ -1,5 +1,6 @@
 /**
- * Pure camera permission & error classification helpers for the barcode scanner.
+ * Pure camera permission, error classification, and scanner tuning helpers
+ * for the DEVO barcode & QR scanner.
  */
 
 export function classifyCameraError(err) {
@@ -125,4 +126,59 @@ export function shouldAutoStartCamera({ permissionState = 'unknown', hasMediaDev
         return { shouldStart: false, fallbackStatus: 'standby' };
     }
     return { shouldStart: true, fallbackStatus: null };
+}
+
+/**
+ * Selects only the formats needed per scan mode so ZXing fallback decoding
+ * doesn't waste main-thread CPU trying 7–9 unused 1D/2D symbologies per frame.
+ */
+export function getScannerFormatsToSupport(scanMode, supportedFormats) {
+    if (!supportedFormats) return undefined;
+    const f = supportedFormats;
+    const mode = String(scanMode || 'both').toLowerCase();
+
+    if (mode === 'qr') {
+        return f.QR_CODE !== undefined ? [f.QR_CODE] : undefined;
+    }
+
+    if (mode === 'barcode') {
+        const list = [f.CODE_128, f.CODE_39, f.EAN_13].filter((v) => v !== undefined);
+        return list.length > 0 ? list : undefined;
+    }
+
+    // Default 'both': DEVO prints CODE128 & QR_CODE, plus EAN_13 / CODE_39 for retail tags
+    const bothList = [f.QR_CODE, f.CODE_128, f.EAN_13, f.CODE_39].filter((v) => v !== undefined);
+    return bothList.length > 0 ? bothList : undefined;
+}
+
+/**
+ * Computes an ergonomic scan box wide enough for 1D CODE128 barcodes (including quiet zone)
+ * while staying safely inside narrow mobile viewports.
+ */
+export function computeScannerQrBox(width, height) {
+    const viewW = Math.max(160, Number(width) || 320);
+    const viewH = Math.max(120, Number(height) || 240);
+
+    const maxAllowedW = Math.max(120, viewW - 16);
+    const maxAllowedH = Math.max(96, viewH - 16);
+
+    const targetW = Math.min(Math.floor(viewW * 0.88), 380, maxAllowedW);
+    const targetH = Math.min(Math.floor(viewH * 0.68), 240, maxAllowedH);
+
+    return {
+        width: Math.max(120, targetW),
+        height: Math.max(96, targetH)
+    };
+}
+
+/**
+ * Prevents duplicate rapid triggers for the exact same decoded value within cooldownMs,
+ * while immediately allowing different barcodes.
+ */
+export function shouldSkipDuplicateScan({ lastCode = '', lastTime = 0, currentCode = '', now = Date.now(), cooldownMs = 1500 } = {}) {
+    const cleanPrev = String(lastCode || '').trim();
+    const cleanCurr = String(currentCode || '').trim();
+    if (!cleanCurr) return true;
+    if (!cleanPrev || cleanPrev !== cleanCurr) return false;
+    return (Number(now) - Number(lastTime || 0)) < cooldownMs;
 }

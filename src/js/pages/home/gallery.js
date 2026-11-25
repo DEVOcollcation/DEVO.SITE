@@ -1295,7 +1295,6 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
     if (isWorkerActive) {
         loadLocalCart();
         document.getElementById('floating-cart-btn')?.classList.remove('hidden');
-        model.colorSalesMap = await fetchModelSalesMap(model.id);
     }
 
     const taxonomyMetaParts = [];
@@ -1312,12 +1311,10 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
         ? codeParts.join(' <span aria-hidden="true" class="mx-1 opacity-60">·</span> ')
         : '';
 
-    if (isInactiveModel) {
-        // ===== واجهة الموديل المعطل / غير المفعل (خاصة بالموظفين المسجلين) =====
-        const stockSummary = computeModelStockSummary(model, model.colorSalesMap || {}, getResolvedColorName);
-        const inactiveColorsHtml = stockSummary.colors.length === 0
+    const renderInactiveColorsMarkup = (summary) => (
+        summary.colors.length === 0
             ? `<div class="text-center p-3 text-devo-error bg-devo-error/10 rounded-xl text-xs sm:text-sm border border-devo-error/20">لا توجد ألوان مسجلة لهذا الموديل.</div>`
-            : stockSummary.colors.map(c => `
+            : summary.colors.map(c => `
                 <div class="flex items-center justify-between gap-3 p-2.5 sm:p-3 bg-devo-black border ${c.isOut ? 'border-devo-error/30 opacity-80' : 'border-devo-gray'} rounded-xl">
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 flex-wrap">
@@ -1332,7 +1329,13 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
                         ${c.baseStock > 0 ? `<span class="text-devo-muted">من أصل ${c.baseStock}</span>` : ''}
                     </div>
                 </div>
-            `).join('');
+            `).join('')
+    );
+
+    if (isInactiveModel) {
+        // ===== واجهة الموديل المعطل / غير المفعل (خاصة بالموظفين المسجلين) =====
+        const stockSummary = computeModelStockSummary(model, model.colorSalesMap || {}, getResolvedColorName);
+        const inactiveColorsHtml = renderInactiveColorsMarkup(stockSummary);
 
         if (content) {
             content.innerHTML = `
@@ -1363,7 +1366,7 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
                             </div>
                             <div class="px-1">
                                 <span class="block text-[10px] sm:text-[11px] text-devo-muted font-medium">إجمالي الأصل</span>
-                                <span class="block text-sm sm:text-lg font-black font-mono tabular-nums text-white mt-0.5">${stockSummary.totalBase}</span>
+                                <span id="viewer-inactive-total-base" class="block text-sm sm:text-lg font-black font-mono tabular-nums text-white mt-0.5">${stockSummary.totalBase}</span>
                             </div>
                             <div class="px-1">
                                 <span class="block text-[10px] sm:text-[11px] text-devo-muted font-medium">الألوان المسجلة</span>
@@ -1563,6 +1566,32 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
             if (sheet) sheet.classList.remove('translate-y-full');
         });
     }
+
+    // جلب خريطة المبيعات والتسويات في الخلفية بدون تأخير فتح الكارت للمستخدم
+    if (isWorkerActive) {
+        Promise.race([
+            fetchModelSalesMap(model.id),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('salesMap timeout')), 4500))
+        ]).then((salesMap) => {
+            model.colorSalesMap = salesMap || {};
+            const currentModal = document.getElementById('model-viewer-modal');
+            if (!currentModal || currentModal.classList.contains('hidden')) return;
+            if (String(currentModal.getAttribute('data-current-model-id')) !== String(model.id)) return;
+
+            const colorsContainer = document.getElementById('viewer-colors-container');
+            if (isInactiveModel) {
+                const updatedSummary = computeModelStockSummary(model, model.colorSalesMap, getResolvedColorName);
+                const totalBaseEl = document.getElementById('viewer-inactive-total-base');
+                if (totalBaseEl) totalBaseEl.textContent = String(updatedSummary.totalBase);
+                if (colorsContainer) colorsContainer.innerHTML = renderInactiveColorsMarkup(updatedSummary);
+            } else if (colorsContainer) {
+                colorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
+                if (typeof updateModelSaveButtonSummary === 'function') {
+                    updateModelSaveButtonSummary(model.id);
+                }
+            }
+        }).catch(() => {});
+    }
 };
 
 function getOwnedQtyForColor(modelId, colorId) {
@@ -1751,7 +1780,7 @@ function generateColorsHTML(model, sizesCount) {
 window.closeModelViewer = (skipHistory = false) => {
     const modal = document.getElementById('model-viewer-modal');
     const sheet = document.getElementById('model-viewer-sheet');
-    if (!modal || modal.classList.contains('hidden') || modal.classList.contains('opacity-0')) return;
+    if (!modal || modal.classList.contains('hidden') || modelViewerCloseTimer) return;
 
     if (sheet) {
         sheet.style.transition = '';
@@ -2475,16 +2504,24 @@ export async function findModelByCode(code, matchType = 'both', options = {}) {
     let match = searchInModelsList(models, cleanCode, explicitType, matchType);
     if (match) return match;
 
-    // 2. إذا لم يتم العثور عليه، فحص كاش IndexedDB للموديلات النشطة
-    try {
-        const cached = await getAllCachedModels();
-        if (cached && cached.length > 0) {
-            allModels = cached;
-            if (typeof window !== 'undefined') window.allGalleryModels = cached;
-            match = searchInModelsList(cached, cleanCode, explicitType, matchType);
-            if (match) return match;
-        }
-    } catch(e) {}
+    // 1b. فحص الموديلات المعطلة الممسوحة مسبقاً بهذه الجلسة للموظفين
+    if (includeInactive && inactiveScannedModels.size > 0) {
+        const cachedInactive = searchInModelsList(Array.from(inactiveScannedModels.values()), cleanCode, explicitType, matchType);
+        if (cachedInactive) return cachedInactive;
+    }
+
+    // 2. إذا لم تكن الذاكرة محملة بعد، فحص كاش IndexedDB للموديلات النشطة فقط (بدون إعادة قراءة المئات في كل مسح)
+    if (!models || models.length === 0) {
+        try {
+            const cached = await getAllCachedModels();
+            if (cached && cached.length > 0) {
+                allModels = cached;
+                if (typeof window !== 'undefined') window.allGalleryModels = cached;
+                match = searchInModelsList(cached, cleanCode, explicitType, matchType);
+                if (match) return match;
+            }
+        } catch(e) {}
+    }
 
     // 3. استعلام فوري من Supabase مباشرة (مع السماح بجلب الموديلات المعطلة للموظفين المسجلين فقط)
     const selectClause = `
