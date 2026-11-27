@@ -1,6 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
+import { printModelsDirect } from '../../services/barcode_direct_printer.js';
 
 let isInitialized = false;
 let allModels = [];
@@ -557,11 +558,16 @@ function generateModelCardHTML(m) {
                     المتاح: ${totalSeries} سيريه <span class="font-normal text-devo-muted">(${totalPieces} قطعة)</span>
                 </span>
             </div>
-            <div class="grid grid-cols-4 gap-1.5 pt-2">
-                <button onclick="viewDetails('${m.id}')" class="py-1.5 bg-devo-black hover:bg-devo-gray text-white rounded text-xs transition-colors flex items-center justify-center gap-1" title="التفاصيل"><i class="ph ph-eye"></i> <span>عرض</span></button>
-                <button onclick="openModelModal('${m.id}')" class="py-1.5 bg-devo-info/10 hover:bg-devo-info text-devo-info hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1" title="تعديل الموديل"><i class="ph ph-pencil"></i> <span>تعديل</span></button>
-                <button onclick="openStandaloneBarcodeForModel('${m.id}')" class="py-1.5 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white rounded text-xs transition-colors font-bold flex items-center justify-center gap-1" title="إنشاء وتصدير QR/باركود للموديل"><i class="ph ph-qr-code"></i> <span>QR</span></button>
-                <button onclick="handleDeleteModel('${m.id}')" class="py-1.5 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1" title="حذف الموديل"><i class="ph ph-trash"></i> <span>حذف</span></button>
+            <div class="space-y-1.5 pt-2">
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button onclick="viewDetails('${m.id}')" class="py-1.5 bg-devo-black hover:bg-devo-gray text-white rounded text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer" title="التفاصيل"><i class="ph ph-eye"></i> <span>عرض</span></button>
+                    <button onclick="openModelModal('${m.id}')" class="py-1.5 bg-devo-info/10 hover:bg-devo-info text-devo-info hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer" title="تعديل الموديل"><i class="ph ph-pencil"></i> <span>تعديل</span></button>
+                    <button onclick="handleDeleteModel('${m.id}')" class="py-1.5 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer" title="حذف الموديل"><i class="ph ph-trash"></i> <span>حذف</span></button>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button onclick="printModelBarcodeDirect('${m.id}')" class="py-1.5 bg-devo-orange hover:bg-devo-orangeHover text-white rounded text-xs transition-colors font-bold flex items-center justify-center gap-1 cursor-pointer" title="طباعة الباركود مباشرة بالقالب المعتمد"><i class="ph ph-printer"></i> <span>طباعة باركود</span></button>
+                    <button onclick="openStandaloneBarcodeForModel('${m.id}')" class="py-1.5 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white rounded text-xs transition-colors font-bold flex items-center justify-center gap-1 cursor-pointer" title="إنشاء وتصدير QR/باركود للموديل"><i class="ph ph-qr-code"></i> <span>تصميم QR</span></button>
+                </div>
             </div>
         </div>
     </div>`;
@@ -602,6 +608,28 @@ window.refreshModelsData = async () => {
         if (icon) icon.classList.remove('animate-spin');
         showToast('تم تحديث البيانات', 'success');
     }
+};
+
+window.printModelBarcodeDirect = async (id) => {
+    if (!id) return;
+    const model = allModels.find(m => m.id === id);
+    if (!model) {
+        await printModelsDirect([id]);
+        return;
+    }
+
+    const sizesMap = {};
+    (defCache.szs || []).forEach(s => { sizesMap[s.id] = s.name; });
+    const colorsMap = {};
+    (defCache.clrs || []).forEach(c => { colorsMap[c.id] = c.name; });
+
+    await printModelsDirect([model], { sizesMap, colorsMap });
+};
+
+window.openStandaloneBarcodeForModel = async (modelId) => {
+    if (!modelId) return;
+    const { openStandaloneBarcodeForModel } = await import('./print_barcodes.js');
+    await openStandaloneBarcodeForModel(modelId);
 };
 
 
@@ -686,11 +714,16 @@ window.viewDetails = async (id) => {
         : model.model_sizes?.map(s => `<span class="bg-devo-black border border-devo-gray px-3 py-1 rounded text-white text-xs shadow-sm">${s.sizes?.name}</span>`).join('');
 
     content.innerHTML = `
-        <div class="flex justify-between items-start mb-6">
+        <div class="flex flex-wrap justify-between items-start gap-3 mb-6">
             <div class="max-w-[70%]">${imagesHtml}</div>
-            <button onclick="shareAdminModel('${model.id}')" class="bg-devo-dark hover:bg-devo-gray border border-devo-gray text-white px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
-                <i class="ph ph-share-network text-base"></i> نسخ رابط الموديل
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" onclick="printModelBarcodeDirect('${model.id}')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer">
+                    <i class="ph ph-printer text-base"></i> طباعة الباركود مباشرة
+                </button>
+                <button onclick="shareAdminModel('${model.id}')" class="bg-devo-dark hover:bg-devo-gray border border-devo-gray text-white px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer">
+                    <i class="ph ph-share-network text-base"></i> نسخ رابط الموديل
+                </button>
+            </div>
         </div>
 
         <div class="bg-devo-black/30 rounded-xl border border-devo-gray overflow-hidden mb-6">

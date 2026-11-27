@@ -29,6 +29,7 @@ let onLockStateChangeCallbacks = new Set();
 
 export const SETTINGS_VIEW_IDS = [
     'view-home-settings',
+    'view-barcode-template-settings',
     'view-theme-manager',
     'view-backup-restore',
     'view-notification-settings',

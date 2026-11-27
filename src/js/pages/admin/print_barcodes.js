@@ -1,5 +1,9 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
+import { getCurrentSession } from '../../services/auth.js';
+import { formatActiveTemplateSummary, normalizeBarcodeTemplate } from '../../services/barcode_template_logic.js';
+import { loadBarcodeTemplatesConfig, getCachedBarcodeTemplateState } from '../../services/barcode_templates_store.js';
+import { printModelsDirect } from '../../services/barcode_direct_printer.js';
 
 let isBarcodeInitialized = false;
 let barcodeAllModels = []; 
@@ -173,7 +177,36 @@ window.customSortHandlers['barcode-table'] = (colIndex, direction) => {
     }
 };
 
+function syncBarcodeActiveTemplateBanner(state = null) {
+    const resolved = state || getCachedBarcodeTemplateState();
+    const badgeEl = document.getElementById('barcode-active-template-badge');
+    if (badgeEl && resolved?.activeConfig) {
+        const presetName = resolved.activeTemplateId && resolved.activeTemplateId !== '__custom__'
+            ? resolved.templates?.[resolved.activeTemplateId]?.name
+            : 'إعداد مخصص';
+        badgeEl.textContent = `القالب النشط للطباعة: ${formatActiveTemplateSummary(resolved.activeConfig, presetName)}`;
+    }
+    const settingsBtn = document.getElementById('btn-barcode-template-settings-shortcut');
+    if (settingsBtn) {
+        const { profile } = getCurrentSession();
+        if (profile?.role === 'owner') {
+            settingsBtn.classList.remove('hidden');
+        } else {
+            settingsBtn.classList.add('hidden');
+        }
+    }
+}
+
 export async function initPrintBarcodesView() {
+    if (!isBarcodeInitialized) {
+        window.addEventListener('devo:barcode-template-changed', (e) => {
+            syncBarcodeActiveTemplateBanner(e.detail);
+        });
+    }
+
+    const templateState = await loadBarcodeTemplatesConfig().catch(() => getCachedBarcodeTemplateState());
+    syncBarcodeActiveTemplateBanner(templateState);
+
     if (isBarcodeInitialized) return;
     
     await fetchBarcodeFilterOptions();
@@ -334,7 +367,7 @@ export async function fetchBarcodeFilterOptions() {
 
 export async function fetchBarcodeModels() {
     const tbody = document.getElementById('barcode-table-body');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري تحميل كل الموديلات...</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i> جاري تحميل كل الموديلات...</td></tr>`;
 
     let allFetchedData = [];
     let from = 0;
@@ -557,7 +590,7 @@ function renderBarcodePage() {
 
     if (filteredBarcodeModels.length === 0) {
         if(masterCb) { masterCb.checked = false; masterCb.disabled = true; }
-        if(tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-10 text-center text-devo-muted">لا توجد نتائج مطابقة للبحث</td></tr>`;
+        if(tbody) tbody.innerHTML = `<tr><td colspan="8" class="p-10 text-center text-devo-muted">لا توجد نتائج مطابقة للبحث</td></tr>`;
         if (paginationContainer) paginationContainer.innerHTML = '';
         return;
     }
@@ -601,6 +634,12 @@ function renderBarcodePage() {
                 </td>
                 <td class="p-3 text-center">
                     ${m.is_active ? `<span class="bg-devo-success/10 border border-devo-success/20 text-devo-success text-[10px] font-bold px-2 py-1 rounded">نشط</span>` : `<span class="bg-devo-gray/30 border border-devo-gray text-white text-[10px] font-bold px-2 py-1 rounded">معطل</span>`}
+                </td>
+                <td class="p-3 text-center">
+                    <button type="button" onclick="printSingleBarcodeRowDirect('${m.id}')" class="px-2.5 py-1.5 rounded-lg bg-devo-orange/15 hover:bg-devo-orange text-devo-orange hover:text-white text-xs font-bold transition-colors inline-flex items-center gap-1 whitespace-nowrap cursor-pointer" title="طباعة مباشرة باستخدام القالب النشط">
+                        <i class="ph ph-printer text-sm"></i>
+                        <span>طباعة</span>
+                    </button>
                 </td>
             </tr>
         `}).join('');
@@ -979,383 +1018,70 @@ window.closeBulkBarcodeModal = () => {
     }, 300);
 };
 
-window.generateAndPrintBulkBarcodes = () => {
-    if (selectedBarcodeModelIds.size === 0) return showToast('الرجاء تحديد موديل واحد على الأقل أولاً', 'warning');
-
-    const codeType = document.getElementById('bulk-barcode-type').value;
-    const valueSource = document.getElementById('bulk-barcode-value-source').value;
-    
-    const paperW = parseFloat(document.getElementById('bulk-barcode-paper-w').value) || 4;
-    const paperH = parseFloat(document.getElementById('bulk-barcode-paper-h').value) || 5;
-    
-    const fontName = parseInt(document.getElementById('bulk-barcode-font-size-name')?.value, 10) || 11;
-    const fontCode = parseInt(document.getElementById('bulk-barcode-font-size-code')?.value, 10) || 10;
-    const fontDetails = parseInt(document.getElementById('bulk-barcode-font-size-details')?.value, 10) || 9;
-    const fontPrice = parseInt(document.getElementById('bulk-barcode-font-size-price')?.value, 10) || 12;
-    
-    const isCodeBold = document.getElementById('bulk-barcode-code-bold')?.checked ?? true;
-    const isColorInline = document.getElementById('bulk-barcode-color-inline')?.checked ?? true;
-
-    const showName = document.getElementById('bulk-barcode-show-name').checked;
-    const showCode = document.getElementById('bulk-barcode-show-code').checked;
-    const showSizes = document.getElementById('bulk-barcode-show-sizes').checked;
-    const showPrice = document.getElementById('bulk-barcode-show-price').checked;
-    const showColors = document.getElementById('bulk-barcode-show-colors').checked;
-    const skipZeroStock = document.getElementById('bulk-barcode-skip-zero-stock-colors').checked;
-
-    const qtyMode = document.getElementById('bulk-barcode-qty-mode').value;
-    const fixedQty = parseInt(document.getElementById('bulk-barcode-fixed-qty').value, 10) || 1;
-    const colorDist = document.getElementById('bulk-barcode-color-dist').value;
-
-    const printSortOrder = document.getElementById('bulk-barcode-sort-order')?.value || 'table';
-
-    // Get selected models data preserving the exact current table order
-    let selectedModels = filteredBarcodeModels.filter(m => selectedBarcodeModelIds.has(m.id));
-    
-    // Include any selected models that might have been filtered out of filteredBarcodeModels
+function getSelectedBarcodeModelsInOrder() {
+    const selectedModels = filteredBarcodeModels.filter(m => selectedBarcodeModelIds.has(m.id));
     const includedSet = new Set(selectedModels.map(m => m.id));
     barcodeAllModels.forEach(m => {
         if (selectedBarcodeModelIds.has(m.id) && !includedSet.has(m.id)) {
             selectedModels.push(m);
         }
     });
+    return selectedModels;
+}
 
-    // Apply print sort order if specified (or keep table order if 'table')
-    if (printSortOrder && printSortOrder !== 'table') {
-        sortModelsList(selectedModels, printSortOrder);
+window.printSelectedBarcodesDirect = async () => {
+    if (selectedBarcodeModelIds.size === 0) {
+        return showToast('الرجاء تحديد موديل واحد على الأقل أولاً', 'warning');
     }
+    const selectedModels = getSelectedBarcodeModelsInOrder();
+    if (selectedModels.length === 0) {
+        return showToast('الموديلات المحددة غير متوفرة', 'error');
+    }
+    await printModelsDirect(selectedModels, { sizesMap, colorsMap });
+};
 
+window.printSingleBarcodeRowDirect = async (modelId) => {
+    const model = barcodeAllModels.find(m => m.id === modelId);
+    if (!model) {
+        return showToast('تعذر العثور على بيانات الموديل', 'error');
+    }
+    await printModelsDirect([model], { sizesMap, colorsMap });
+};
+
+window.generateAndPrintBulkBarcodes = async () => {
+    if (selectedBarcodeModelIds.size === 0) return showToast('الرجاء تحديد موديل واحد على الأقل أولاً', 'warning');
+
+    const selectedModels = getSelectedBarcodeModelsInOrder();
     if (selectedModels.length === 0) return showToast('الموديلات المحددة غير متوفرة', 'error');
 
-    showToast('جاري تحضير الباركود للطباعة...', 'info');
-
-    // Generate label items based on copies count and color choices
-    const labelsToPrint = [];
-    selectedModels.forEach(m => {
-        const hasInventoryEntries = m.model_inventory && m.model_inventory.length > 0;
-        
-        let colorsList = [];
-        if (hasInventoryEntries) {
-            let inventoryItems = m.model_inventory;
-            if (skipZeroStock) {
-                inventoryItems = inventoryItems.filter(inv => (inv.available_series || 0) > 0);
-            }
-            const modelColors = inventoryItems.map(inv => {
-                return (inv.colors && inv.colors.name) || colorsMap[inv.color_id] || '';
-            }).filter(Boolean);
-            colorsList = [...new Set(modelColors)];
-            
-            // If all colors of the model are out of stock and we are skipping out-of-stock, skip this model completely
-            if (colorsList.length === 0 && skipZeroStock) {
-                return;
-            }
-        }
-        
-        const hasColors = colorsList.length > 0;
-        if (colorsList.length === 0) {
-            colorsList = [''];
-        }
-
-        let formattedCodeVal = '';
-        if (valueSource === 'system') {
-            const raw = (m.system_code || m.factory_code || m.id || '101').toString().trim().replace(/^(SYS-|S)/i, '');
-            formattedCodeVal = `S${raw}`;
-        } else if (valueSource === 'factory') {
-            const raw = (m.factory_code || m.system_code || m.id || '101').toString().trim().replace(/^(FAC-|F)/i, '');
-            formattedCodeVal = `F${raw}`;
-        } else if (valueSource === 'url') {
-            if (m.system_code) {
-                const clean = m.system_code.toString().trim().replace(/^(SYS-|S)/i, '');
-                formattedCodeVal = `${window.location.origin}/?system=${encodeURIComponent(clean)}`;
-            } else if (m.factory_code) {
-                const clean = m.factory_code.toString().trim().replace(/^(FAC-|F)/i, '');
-                formattedCodeVal = `${window.location.origin}/?factory=${encodeURIComponent(clean)}`;
-            } else {
-                formattedCodeVal = `${window.location.origin}/?code=${encodeURIComponent(m.id)}`;
-            }
-        } else {
-            formattedCodeVal = (m.system_code || m.factory_code || m.id || '101').toString();
-        }
-
-        const baseLabel = {
-            name: m.name,
-            factory_code: m.factory_code,
-            system_code: m.system_code,
-            display_code: formattedCodeVal,
-            price: m.price,
-            sizesStr: getModelSizesString(m),
-            value: formattedCodeVal
-        };
-
-        if (qtyMode === 'fixed') {
-            // تكرار بعدد نسخ ثابت لكل موديل (وليس بعدد ألوان الموديل)
-            const copiesCount = Math.max(1, fixedQty);
-            const isSingle = (colorsList.length === 1 && colorsList[0] !== '');
-            const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
-            for (let i = 0; i < copiesCount; i++) {
-                labelsToPrint.push({
-                    ...baseLabel,
-                    colorStr: allColorsJoined,
-                    isSingleColor: isSingle
-                });
-            }
-        } else {
-            // تكرار تلقائي حسب ألوان الموديل
-            const copiesPerColor = Math.max(1, fixedQty);
-            if (colorDist === 'separate') {
-                colorsList.forEach(color => {
-                    for (let i = 0; i < copiesPerColor; i++) {
-                        labelsToPrint.push({
-                            ...baseLabel,
-                            colorStr: showColors ? color : '',
-                            isSingleColor: Boolean(color)
-                        });
-                    }
-                });
-            } else {
-                const isSingle = (colorsList.length === 1 && colorsList[0] !== '');
-                const allColorsJoined = showColors && hasColors ? colorsList.join('، ') : '';
-                const totalCopies = colorsList.length * copiesPerColor;
-                for (let i = 0; i < totalCopies; i++) {
-                    labelsToPrint.push({
-                        ...baseLabel,
-                        colorStr: allColorsJoined,
-                        isSingleColor: isSingle
-                    });
-                }
-            }
-        }
+    const modalConfig = normalizeBarcodeTemplate({
+        codeType: document.getElementById('bulk-barcode-type')?.value,
+        valueSource: document.getElementById('bulk-barcode-value-source')?.value,
+        paperW: document.getElementById('bulk-barcode-paper-w')?.value,
+        paperH: document.getElementById('bulk-barcode-paper-h')?.value,
+        fontName: document.getElementById('bulk-barcode-font-size-name')?.value,
+        fontCode: document.getElementById('bulk-barcode-font-size-code')?.value,
+        fontDetails: document.getElementById('bulk-barcode-font-size-details')?.value,
+        fontPrice: document.getElementById('bulk-barcode-font-size-price')?.value,
+        codeBold: document.getElementById('bulk-barcode-code-bold')?.checked,
+        colorInline: document.getElementById('bulk-barcode-color-inline')?.checked,
+        showName: document.getElementById('bulk-barcode-show-name')?.checked,
+        showCode: document.getElementById('bulk-barcode-show-code')?.checked,
+        showSizes: document.getElementById('bulk-barcode-show-sizes')?.checked,
+        showPrice: document.getElementById('bulk-barcode-show-price')?.checked,
+        showColors: document.getElementById('bulk-barcode-show-colors')?.checked,
+        skipZeroStockColors: document.getElementById('bulk-barcode-skip-zero-stock-colors')?.checked,
+        qtyMode: document.getElementById('bulk-barcode-qty-mode')?.value,
+        fixedQty: document.getElementById('bulk-barcode-fixed-qty')?.value,
+        colorDist: document.getElementById('bulk-barcode-color-dist')?.value,
+        printSortOrder: document.getElementById('bulk-barcode-sort-order')?.value || 'table'
     });
 
-    const labelsDataJson = JSON.stringify(labelsToPrint);
-
-    const printHtml = `
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <title>طباعة الباركود</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700;800&display=swap');
-        @page {
-            size: ${paperW}cm ${paperH}cm;
-            margin: 0;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            background: white;
-            color: black;
-            font-family: 'Tajawal', sans-serif;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-        .barcode-label {
-            width: ${paperW}cm;
-            height: ${paperH}cm;
-            page-break-after: always;
-            box-sizing: border-box;
-            padding: ${Math.min(paperW, paperH) * 0.08}cm;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            align-items: center;
-            text-align: center;
-            overflow: hidden;
-        }
-        .model-name {
-            font-size: ${fontName}px;
-            font-weight: 700;
-            width: 100%;
-            display: ${showName ? '-webkit-box' : 'none'};
-            -webkit-line-clamp: 2;
-            line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            line-height: 1.2;
-            text-align: center;
-            word-break: break-word;
-        }
-        .model-code {
-            font-size: ${fontCode}px;
-            font-weight: ${isCodeBold ? '700' : '400'};
-            color: #000;
-            margin-top: 1px;
-            font-family: monospace, sans-serif;
-            display: ${showCode ? 'block' : 'none'};
-            text-align: center;
-            line-height: 1.2;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 100%;
-        }
-        .model-inline-color {
-            font-family: 'Tajawal', sans-serif;
-            font-size: 0.9em;
-            font-weight: ${isCodeBold ? '700' : '500'};
-            margin-right: 4px;
-        }
-        .model-sizes {
-            font-size: ${fontDetails}px;
-            font-weight: 700;
-            color: #000;
-            margin-top: 1px;
-            display: ${showSizes ? 'block' : 'none'};
-            width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .model-colors {
-            font-size: ${fontDetails}px;
-            font-weight: 700;
-            color: #000;
-            margin-top: 1px;
-            display: ${showColors ? 'block' : 'none'};
-            width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .code-container {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: ${paperH * 0.45}cm;
-            margin: 2px 0;
-        }
-        .code-container svg, .code-container img {
-            max-width: 100%;
-            max-height: 100%;
-            display: block;
-        }
-        .model-price {
-            font-size: ${fontPrice}px;
-            font-weight: 700;
-            margin-top: 1px;
-            border-top: 1px dashed #000;
-            width: 100%;
-            padding-top: ${fontPrice * 0.2}px;
-            display: ${showPrice ? 'block' : 'none'};
-        }
-    </style>
-    <script src="./src/vendor/barcode/JsBarcode.all.min.js"></script>
-    <script src="./src/vendor/barcode/qrcode.min.js"></script>
-</head>
-<body>
-    <div id="labels-container"></div>
-
-    <script>
-        const labels = ${labelsDataJson};
-        const codeType = "${codeType}";
-        const isColorInline = ${isColorInline};
-        const showColors = ${showColors};
-
-        const container = document.getElementById('labels-container');
-        const qrPromises = [];
-        
-        labels.forEach((lbl, idx) => {
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'barcode-label';
-            
-            const showInlineColor = isColorInline && showColors && lbl.isSingleColor && lbl.colorStr;
-            const codeText = (lbl.display_code || lbl.factory_code || lbl.system_code || '');
-            
-            let codeHtml = '';
-            if (codeText) {
-                if (showInlineColor) {
-                    codeHtml = '<div class="model-code"><span>' + codeText + '</span><span class="model-inline-color">- ' + lbl.colorStr + '</span></div>';
-                } else {
-                    codeHtml = '<div class="model-code"><span>' + codeText + '</span></div>';
-                }
-            }
-
-            const colorsHtml = (!showInlineColor && lbl.colorStr && showColors) ? '<div class="model-colors">' + lbl.colorStr + '</div>' : '';
-
-            labelDiv.innerHTML = '<div style="width: 100%;">' +
-                '<div class="model-name">' + lbl.name + '</div>' +
-                codeHtml +
-                (lbl.sizesStr ? '<div class="model-sizes">' + lbl.sizesStr + '</div>' : '') +
-                colorsHtml +
-            '</div>' +
-            '<div class="code-container">' +
-                (codeType === 'barcode' 
-                    ? '<svg id="barcode-' + idx + '"></svg>' 
-                    : '<img id="qrcode-' + idx + '" src="">'
-                ) +
-            '</div>' +
-            '<div class="model-price">' + lbl.price + ' ج.م</div>';
-            
-            container.appendChild(labelDiv);
-
-            if (codeType === 'barcode') {
-                try {
-                    JsBarcode("#barcode-" + idx, lbl.value, {
-                        format: "CODE128",
-                        width: 2.0,
-                        height: 65,
-                        displayValue: false,
-                        margin: 0
-                    });
-                } catch(e) {
-                    console.error("JsBarcode failed for", lbl.value, e);
-                }
-            } else if (codeType === 'qrcode') {
-                if (typeof QRCode !== 'undefined') {
-                    const promise = QRCode.toDataURL(lbl.value, { width: 250, margin: 1 })
-                        .then(url => {
-                            const img = document.getElementById('qrcode-' + idx);
-                            if (img) img.src = url;
-                        })
-                        .catch(err => {
-                            console.error("Local QRCode generate failed, falling back:", err);
-                            const img = document.getElementById('qrcode-' + idx);
-                            if (img) img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(lbl.value);
-                        });
-                    qrPromises.push(promise);
-                } else {
-                    const img = document.getElementById('qrcode-' + idx);
-                    if (img) img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(lbl.value);
-                }
-            }
-        });
-
-        window.onload = function() {
-            Promise.all(qrPromises).then(() => {
-                setTimeout(() => {
-                    window.focus();
-                    window.print();
-                }, 800);
-            });
-        };
-    </script>
-</body>
-</html>
-    `;
-
-    // Print inside an iframe
-    let iframe = document.getElementById('print-barcode-iframe');
-    if (iframe) {
-        iframe.remove();
-    }
-    iframe = document.createElement('iframe');
-    iframe.id = 'print-barcode-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '-9999px';
-    iframe.style.bottom = '-9999px';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(printHtml);
-    doc.close();
+    await printModelsDirect(selectedModels, {
+        sizesMap,
+        colorsMap,
+        templateConfigOverride: modalConfig
+    });
 
     closeBulkBarcodeModal();
 };
@@ -2164,26 +1890,29 @@ window.downloadSingleBarcodeImage = (format) => {
 };
 
 // Action: Open Standalone Barcode Generator for a specific Model (from Models List)
-window.openStandaloneBarcodeForModel = async (modelId) => {
-    // 1. If not initialized, fetch models first
-    if (!isBarcodeInitialized) {
-        await fetchBarcodeModels();
-    }
-
+export async function openStandaloneBarcodeForModel(modelId) {
     // Switch view to print-barcodes section if available
-    const navLink = document.querySelector('a[data-target="view-print-barcodes"]');
+    const navLink = document.querySelector('[data-target="view-print-barcodes"]');
     if (navLink) {
         navLink.click();
     }
 
+    // Ensure full view initialization (filters, models, templates, standalone listeners) completes
+    await initPrintBarcodesView();
+
     // Switch to standalone tab
-    window.switchBarcodeSubTab('standalone');
+    if (typeof window.switchBarcodeSubTab === 'function') {
+        window.switchBarcodeSubTab('standalone');
+    }
 
     // Select the model
-    window.selectStandaloneModel(modelId);
+    if (typeof window.selectStandaloneModel === 'function') {
+        window.selectStandaloneModel(modelId);
+    }
 
     showToast("تم تجهيز الباركود والكيو ار كود للموديل المحدد بنجاح 🔳", "success");
-};
+}
+window.openStandaloneBarcodeForModel = openStandaloneBarcodeForModel;
 
 window.closeStandaloneBarcodeModal = () => {
     const modal = document.getElementById('modal-standalone-barcode');

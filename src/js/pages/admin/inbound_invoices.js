@@ -2,6 +2,7 @@ import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { getCurrentSession } from '../../services/auth.js';
+import { printModelsDirect } from '../../services/barcode_direct_printer.js';
 
 let isInitialized = false;
 let inboundInvoices = [];
@@ -941,7 +942,13 @@ async function viewInboundInvoiceDetails(invoiceId) {
             </div>
         `;
 
-        // Bind print button
+        // Bind print buttons
+        const printBarcodesBtn = document.getElementById('inbound-print-barcodes-btn');
+        if (printBarcodesBtn) {
+            const uniqueModelIds = [...new Set(itemsList.map(i => i.model_id).filter(Boolean))];
+            printBarcodesBtn.onclick = () => printModelsDirect(uniqueModelIds);
+        }
+
         const printBtn = document.getElementById('inbound-print-pdf-btn');
         if (printBtn) {
             printBtn.onclick = () => window.printInboundInvoice(inv, itemsData);

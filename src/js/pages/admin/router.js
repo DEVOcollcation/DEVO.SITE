@@ -19,6 +19,7 @@ let currentUserContext = null;
 const OWNER_ONLY_VIEWS = [
     'view-users',
     'view-home-settings',
+    'view-barcode-template-settings',
     'view-theme-manager',
     'view-backup-restore',
     'view-notification-settings',
@@ -362,7 +363,7 @@ async function loadViewLogic(targetId, subTab = null) {
         return;
     }
 
-    if ((targetId === 'view-data-management' || targetId === 'view-settings-lock' || targetId === 'view-app-updates') && currentUserContext?.role !== 'owner') {
+    if ((targetId === 'view-data-management' || targetId === 'view-settings-lock' || targetId === 'view-app-updates' || targetId === 'view-barcode-template-settings') && currentUserContext?.role !== 'owner') {
         showToast('⛔ هذه الصفحة مخصصة لمالك النظام فقط', 'error');
         const defaultLink = document.querySelector('[data-target="view-dashboard"]');
         if (defaultLink) switchView('view-dashboard', defaultLink);
@@ -468,6 +469,10 @@ async function loadViewLogic(targetId, subTab = null) {
         case 'view-app-updates':
             const { initAppUpdatesView } = await import('./app_updates.js');
             await initAppUpdatesView();
+            break;
+        case 'view-barcode-template-settings':
+            const { initBarcodeTemplateSettingsView } = await import('./barcode_template_settings.js');
+            await initBarcodeTemplateSettingsView();
             break;
         case 'view-system-reset':
             const { initSystemResetView } = await import('./system_reset.js');
@@ -747,6 +752,13 @@ export async function refreshAllSystemData(options = {}) {
                     const auMod = await import('./app_updates.js').catch(() => null);
                     if (auMod && typeof auMod.refreshAppUpdatesView === 'function') {
                         await auMod.refreshAppUpdatesView();
+                    }
+                    break;
+                }
+                case 'view-barcode-template-settings': {
+                    const btsMod = await import('./barcode_template_settings.js').catch(() => null);
+                    if (btsMod && typeof btsMod.refreshBarcodeTemplateSettingsView === 'function') {
+                        await btsMod.refreshBarcodeTemplateSettingsView(true);
                     }
                     break;
                 }

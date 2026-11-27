@@ -76,30 +76,28 @@ function renderAppUpdatesShell() {
   container.innerHTML = `
     <div class="animate-fade-in space-y-5 max-w-[1200px] mx-auto pb-10">
       <!-- Top Hero: App Icon, Installed vs Server Version, Primary Actions -->
-      <div class="bg-devo-dark border border-devo-gray rounded-2xl p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        <div class="flex items-center gap-4 min-w-0">
-          <div class="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-2xl bg-devo-black border border-devo-gray/80 p-1.5 shrink-0 shadow-md flex items-center justify-center">
+      <div class="bg-devo-dark border border-devo-gray rounded-2xl p-5 sm:p-6 flex flex-wrap items-center justify-between gap-5">
+        <div class="flex items-start sm:items-center gap-4 flex-1 min-w-0 sm:min-w-[340px]">
+          <div class="w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-2xl bg-devo-black border border-devo-gray/80 p-1.5 shrink-0 shadow-md flex items-center justify-center">
             <img src="./src/assets/icons/devo-icon.svg?v=18.0.0" alt="أيقونة تطبيق DEVO" class="w-full h-full object-contain rounded-xl">
           </div>
-          <div class="min-w-0 space-y-1">
+          <div class="flex-1 min-w-0 space-y-1.5">
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="text-lg sm:text-xl font-bold text-devo-text">تتبع تحديثات تطبيق DEVO</h2>
-              <span id="au-sync-badge" class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-gray bg-devo-black text-devo-muted">
+              <span id="au-sync-badge" class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-gray bg-devo-black text-devo-muted whitespace-nowrap">
                 جاري الفحص...
               </span>
             </div>
-            <p class="text-xs sm:text-sm text-devo-muted">
-              الإصدار المثبّت حالياً:
-              <strong id="au-installed-version" class="text-devo-text font-mono tabular-nums">v--</strong>
-              <span class="mx-1.5 text-devo-gray">•</span>
-              آخر إصدار متاح:
-              <strong id="au-latest-version" class="text-devo-orange font-mono tabular-nums">v--</strong>
+            <p class="text-xs sm:text-sm text-devo-muted flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>الإصدار المثبّت حالياً: <strong id="au-installed-version" class="text-devo-text font-mono tabular-nums" dir="ltr">v--</strong></span>
+              <span class="text-devo-gray hidden sm:inline">•</span>
+              <span>آخر إصدار متاح: <strong id="au-latest-version" class="text-devo-orange font-mono tabular-nums" dir="ltr">v--</strong></span>
             </p>
             <p id="au-last-checked" class="text-[11px] text-devo-muted">آخر فحص: جاري التحميل...</p>
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div class="flex flex-wrap items-center gap-2.5 w-full 2xl:w-auto">
           <button type="button" id="au-btn-check" class="px-4 py-2.5 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white text-xs sm:text-sm font-bold transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap">
             <i id="au-check-icon" class="ph ph-arrows-clockwise text-base"></i>
             <span>فحص التحديثات الآن</span>
@@ -268,22 +266,22 @@ function renderAppUpdatesState(snap) {
   lastCheckedEl.textContent = `آخر فحص: ${formatArabicDateTime(snap.lastCheckedAt)}`;
 
   if (snap.status === 'checking') {
-    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-info/30 bg-devo-info/10 text-devo-info';
+    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-info/30 bg-devo-info/10 text-devo-info whitespace-nowrap';
     syncBadge.innerHTML = '<i class="ph ph-spinner animate-spin"></i><span>جاري الفحص...</span>';
   } else if (snap.hasUpdate || snap.status === 'update-available') {
-    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-orange/40 bg-devo-orange/15 text-devo-orange';
+    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-orange/40 bg-devo-orange/15 text-devo-orange whitespace-nowrap';
     syncBadge.innerHTML = '<i class="ph ph-arrow-circle-up"></i><span>يتوفر تحديث جديد</span>';
   } else if (snap.status === 'updating') {
-    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-orange/40 bg-devo-orange/15 text-devo-orange';
+    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-orange/40 bg-devo-orange/15 text-devo-orange whitespace-nowrap';
     syncBadge.innerHTML = '<i class="ph ph-arrows-clockwise animate-spin"></i><span>جاري التحديث...</span>';
   } else if (snap.status === 'offline') {
-    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-gray bg-devo-black text-devo-muted';
+    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-gray bg-devo-black text-devo-muted whitespace-nowrap';
     syncBadge.innerHTML = '<i class="ph ph-wifi-slash"></i><span>وضع عدم الاتصال</span>';
   } else if (snap.status === 'error') {
-    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-error/40 bg-devo-error/10 text-devo-error';
+    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-error/40 bg-devo-error/10 text-devo-error whitespace-nowrap';
     syncBadge.innerHTML = '<i class="ph ph-warning-circle"></i><span>تعذر الفحص</span>';
   } else {
-    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-success/30 bg-devo-success/10 text-devo-success';
+    syncBadge.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border border-devo-success/30 bg-devo-success/10 text-devo-success whitespace-nowrap';
     syncBadge.innerHTML = '<i class="ph ph-check-circle"></i><span>محدّث لآخر إصدار</span>';
   }
 

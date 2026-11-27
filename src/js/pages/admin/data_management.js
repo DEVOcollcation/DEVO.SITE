@@ -77,8 +77,8 @@ function renderDataManagementShell() {
         <div class="animate-fade-in relative pb-12 space-y-5 max-w-[1400px] mx-auto">
 
             <!-- Top Workspace Header & Segmented Tabs -->
-            <div class="bg-devo-dark border border-devo-gray rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div class="space-y-1">
+            <div class="bg-devo-dark border border-devo-gray rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                <div class="space-y-1 flex-1 min-w-0 sm:min-w-[280px]">
                     <h2 class="text-lg sm:text-xl font-bold text-devo-text flex items-center gap-2">
                         <i class="ph ph-sliders-horizontal text-devo-orange text-2xl shrink-0"></i>
                         <span>إدارة البيانات والتسويات</span>
@@ -87,7 +87,7 @@ function renderDataManagementShell() {
                 </div>
 
                 <!-- Segmented Control Tabs -->
-                <div class="flex items-center gap-1 p-1 bg-devo-black border border-devo-gray rounded-xl overflow-x-auto shrink-0" role="tablist" aria-label="أقسام إدارة البيانات">
+                <div class="flex items-center gap-1 p-1 bg-devo-black border border-devo-gray rounded-xl overflow-x-auto max-w-full" role="tablist" aria-label="أقسام إدارة البيانات">
                     <button type="button" role="tab" id="dm-tab-btn-models" data-dm-tab="models" class="dm-tab-btn px-3.5 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0">
                         <i class="ph ph-t-shirt text-base"></i>
                         <span>الموديلات والمخزون</span>
