@@ -31,9 +31,21 @@ let currentModelMovements = [];
 export async function initModelsView() {
     if (isInitialized) return;
     
-    // نص البحث: debounce على input فقط (لتجنب الثقل عند كل حرف)
+    // نص البحث: debounce على input فقط (لتجنب الثقل عند كل حرف) مع مزامنة حقل الموبايل والديسكتوب
     const searchEl = document.getElementById('model-search');
-    if (searchEl) searchEl.addEventListener('input', () => debouncedApplyFilters(200));
+    const mobileSearchEl = document.getElementById('models-mobile-search');
+    if (searchEl) {
+        searchEl.addEventListener('input', () => {
+            if (mobileSearchEl && mobileSearchEl.value !== searchEl.value) mobileSearchEl.value = searchEl.value;
+            debouncedApplyFilters(200);
+        });
+    }
+    if (mobileSearchEl) {
+        mobileSearchEl.addEventListener('input', () => {
+            if (searchEl && searchEl.value !== mobileSearchEl.value) searchEl.value = mobileSearchEl.value;
+            debouncedApplyFilters(200);
+        });
+    }
 
     // الـ selects: change فقط (مرة واحدة بدون تكرار) + debounce خفيف
     ['filter-status', 'filter-category', 'filter-class', 'filter-stock'].forEach(id => {
@@ -434,8 +446,23 @@ function updateAdminStats() {
     document.getElementById('stat-series').textContent = totalSeries;
 }
 
+window.toggleModelsMobileFilters = () => {
+    const wrapper = document.getElementById('models-desktop-filters-wrapper');
+    const btn = document.getElementById('models-mobile-filters-toggle');
+    if (!wrapper) return;
+
+    const isOpening = wrapper.classList.contains('hidden');
+    if (isOpening) {
+        wrapper.classList.remove('hidden');
+        if (btn) btn.classList.add('border-devo-orange', 'bg-devo-orange/10');
+    } else {
+        wrapper.classList.add('hidden');
+        if (btn) btn.classList.remove('border-devo-orange', 'bg-devo-orange/10');
+    }
+};
+
 window.clearModelFilters = () => {
-    ['model-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
+    ['model-search', 'models-mobile-search', 'filter-category', 'filter-class', 'filter-stock', 'filter-stock-op', 'filter-stock-qty', 'filter-date-from', 'filter-date-to'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.value = '';
     });
@@ -447,7 +474,9 @@ window.clearModelFilters = () => {
 };
 
 function applyFilters() {
-    const term = document.getElementById('model-search')?.value.toLowerCase() || '';
+    const desktopTerm = document.getElementById('model-search')?.value || '';
+    const mobileTerm = document.getElementById('models-mobile-search')?.value || '';
+    const term = (desktopTerm || mobileTerm).toLowerCase();
     const modelStatus = document.getElementById('filter-status')?.value || 'all';
     const catId = document.getElementById('filter-category')?.value || '';
     const classId = document.getElementById('filter-class')?.value || '';
@@ -456,6 +485,24 @@ function applyFilters() {
     const stockQtyVal = parseInt(document.getElementById('filter-stock-qty')?.value, 10);
     const dateFrom = document.getElementById('filter-date-from')?.value;
     const dateTo = document.getElementById('filter-date-to')?.value;
+
+    let extraFiltersCount = 0;
+    if (modelStatus !== 'all') extraFiltersCount++;
+    if (catId) extraFiltersCount++;
+    if (classId) extraFiltersCount++;
+    if (stockStatus) extraFiltersCount++;
+    if (stockOp && !isNaN(stockQtyVal)) extraFiltersCount++;
+    if (dateFrom || dateTo) extraFiltersCount++;
+
+    const filtersBadge = document.getElementById('models-filters-badge');
+    if (filtersBadge) {
+        if (extraFiltersCount > 0) {
+            filtersBadge.textContent = extraFiltersCount;
+            filtersBadge.classList.remove('hidden');
+        } else {
+            filtersBadge.classList.add('hidden');
+        }
+    }
 
     currentFilteredModels = allModels.filter(m => {
         let isMatch = true;
@@ -534,40 +581,43 @@ function generateModelCardHTML(m) {
     
     const cardClass = isOut ? 'grayscale opacity-75 border-devo-gray' : 'hover:border-devo-orange/50';
     const badgeHTML = isOut 
-        ? `<span class="bg-devo-error text-white text-xs px-2 py-1 rounded shadow-md">نفذت الكمية</span>`
-        : `<span class="bg-devo-success text-white text-xs px-2 py-1 rounded shadow-md">متوفر</span>`;
+        ? `<span class="bg-devo-error text-white text-[9px] sm:text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded shadow-md whitespace-nowrap">نفذت الكمية</span>`
+        : `<span class="bg-devo-success text-white text-[9px] sm:text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded shadow-md whitespace-nowrap">متوفر</span>`;
 
     return `
-    <div id="admin-model-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl transition-all duration-300 flex flex-col ${cardClass}">
-        <div class="h-48 bg-devo-black relative flex items-center justify-center overflow-hidden rounded-t-2xl p-3">
-            <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
-            <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
-            <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-300 hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">
-            <div class="absolute top-3 right-3 z-20">${badgeHTML}</div>
-            ${!m.is_active ? `<div class="absolute top-3 left-3 bg-devo-gray text-white text-xs px-2 py-1 rounded shadow-md z-20">معطل</div>` : ''}
+    <div id="admin-model-card-${m.id}" class="bg-devo-dark border border-devo-gray rounded-2xl transition-all duration-300 flex flex-col overflow-hidden ${cardClass}">
+        <div class="flex flex-row sm:flex-col flex-1 min-w-0">
+            <div class="w-24 h-28 sm:w-full sm:h-48 shrink-0 bg-devo-black relative flex items-center justify-center overflow-hidden p-2 sm:p-3 border-l sm:border-l-0 border-devo-gray/50">
+                <img src="${mainImg}" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-40 pointer-events-none" aria-hidden="true" onerror="this.style.display='none'" loading="lazy" decoding="async">
+                <div class="absolute inset-0 bg-devo-black/20 backdrop-blur-sm pointer-events-none"></div>
+                <img src="${mainImg}" class="relative z-10 max-w-full max-h-full w-auto h-auto object-contain rounded-lg border border-devo-gray/50 shadow-md transition-transform duration-300 hover:scale-[1.03]" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">
+                <div class="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 z-20">${badgeHTML}</div>
+                ${!m.is_active ? `<div class="absolute top-1.5 left-1.5 sm:top-3 sm:left-3 bg-devo-gray text-white text-[9px] sm:text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded shadow-md z-20 whitespace-nowrap">معطل</div>` : ''}
+            </div>
+            <div class="p-2.5 sm:p-4 sm:pb-2 flex-1 min-w-0 flex flex-col justify-between gap-1.5 sm:space-y-3">
+                <div class="min-w-0">
+                    <div class="flex items-center justify-between gap-2 sm:block">
+                        <p class="text-devo-muted text-[10px] font-bold tracking-wider sm:mb-1 truncate tabular-nums">${m.factory_code || m.system_code}</p>
+                        <p class="sm:hidden text-devo-orange text-xs font-black tabular-nums shrink-0">${m.price} <span class="text-[9px] font-normal">ج.م</span></p>
+                    </div>
+                    <h4 class="text-white font-bold truncate text-xs sm:text-sm mt-0.5 sm:mt-0" title="${m.name}">${m.name}</h4>
+                    <p class="hidden sm:block text-devo-orange text-sm font-black mt-1 tabular-nums">${m.price} <span class="text-[10px] font-normal">ج.م</span></p>
+                </div>
+                <div class="text-[11px] sm:text-xs text-devo-muted border-t border-devo-gray pt-1.5 sm:pt-2 space-y-0.5 sm:space-y-1">
+                    <span class="block truncate"><i class="ph ph-tag"></i> ${m.categories?.name || '-'}</span>
+                    <span class="block ${isOut ? 'text-devo-error' : 'text-devo-info'} font-bold tabular-nums truncate">
+                        المتاح: ${totalSeries} سيريه <span class="font-normal text-devo-muted">(${totalPieces} قطعة)</span>
+                    </span>
+                </div>
+            </div>
         </div>
-        <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
-            <div>
-                <p class="text-devo-muted text-[10px] font-bold tracking-wider mb-1">${m.factory_code || m.system_code}</p>
-                <h4 class="text-white font-bold truncate text-sm" title="${m.name}">${m.name}</h4>
-                <p class="text-devo-orange text-sm font-black mt-1">${m.price} <span class="text-[10px] font-normal">ج.م</span></p>
-            </div>
-            <div class="text-xs text-devo-muted border-t border-devo-gray pt-2">
-                <span class="block mb-1"><i class="ph ph-tag"></i> ${m.categories?.name || '-'}</span>
-                <span class="block ${isOut ? 'text-devo-error' : 'text-devo-info'} font-bold">
-                    المتاح: ${totalSeries} سيريه <span class="font-normal text-devo-muted">(${totalPieces} قطعة)</span>
-                </span>
-            </div>
-            <div class="space-y-1.5 pt-2">
-                <div class="grid grid-cols-3 gap-1.5">
-                    <button onclick="viewDetails('${m.id}')" class="py-1.5 bg-devo-black hover:bg-devo-gray text-white rounded text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer" title="التفاصيل"><i class="ph ph-eye"></i> <span>عرض</span></button>
-                    <button onclick="openModelModal('${m.id}')" class="py-1.5 bg-devo-info/10 hover:bg-devo-info text-devo-info hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer" title="تعديل الموديل"><i class="ph ph-pencil"></i> <span>تعديل</span></button>
-                    <button onclick="handleDeleteModel('${m.id}')" class="py-1.5 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer" title="حذف الموديل"><i class="ph ph-trash"></i> <span>حذف</span></button>
-                </div>
-                <div class="grid grid-cols-2 gap-1.5">
-                    <button onclick="printModelBarcodeDirect('${m.id}')" class="py-1.5 bg-devo-orange hover:bg-devo-orangeHover text-white rounded text-xs transition-colors font-bold flex items-center justify-center gap-1 cursor-pointer" title="طباعة الباركود مباشرة بالقالب المعتمد"><i class="ph ph-printer"></i> <span>طباعة باركود</span></button>
-                    <button onclick="openStandaloneBarcodeForModel('${m.id}')" class="py-1.5 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white rounded text-xs transition-colors font-bold flex items-center justify-center gap-1 cursor-pointer" title="إنشاء وتصدير QR/باركود للموديل"><i class="ph ph-qr-code"></i> <span>تصميم QR</span></button>
-                </div>
+        <div class="p-2 pt-1.5 sm:p-4 sm:pt-1 border-t border-devo-gray/40 sm:border-t-0 bg-devo-black/20 sm:bg-transparent">
+            <div class="grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-1.5">
+                <button onclick="viewDetails('${m.id}')" class="sm:col-span-2 py-1.5 bg-devo-black hover:bg-devo-gray text-white rounded text-[10px] sm:text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap" title="التفاصيل"><i class="ph ph-eye"></i> <span>عرض</span></button>
+                <button onclick="openModelModal('${m.id}')" class="sm:col-span-2 py-1.5 bg-devo-info/10 hover:bg-devo-info text-devo-info hover:text-white rounded text-[10px] sm:text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap" title="تعديل الموديل"><i class="ph ph-pencil"></i> <span>تعديل</span></button>
+                <button onclick="handleDeleteModel('${m.id}')" class="sm:col-span-2 py-1.5 bg-devo-error/10 hover:bg-devo-error text-devo-error hover:text-white rounded text-[10px] sm:text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap" title="حذف الموديل"><i class="ph ph-trash"></i> <span>حذف</span></button>
+                <button onclick="printModelBarcodeDirect('${m.id}')" class="sm:col-span-3 py-1.5 bg-devo-orange hover:bg-devo-orangeHover text-white rounded text-[10px] sm:text-xs transition-colors font-bold flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap" title="طباعة الباركود مباشرة بالقالب المعتمد"><i class="ph ph-printer"></i> <span><span class="hidden sm:inline">طباعة </span>باركود</span></button>
+                <button onclick="openStandaloneBarcodeForModel('${m.id}')" class="sm:col-span-3 py-1.5 bg-devo-orange/10 hover:bg-devo-orange text-devo-orange hover:text-white rounded text-[10px] sm:text-xs transition-colors font-bold flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap" title="إنشاء وتصدير QR/باركود للموديل"><i class="ph ph-qr-code"></i> <span><span class="hidden sm:inline">تصميم </span>QR</span></button>
             </div>
         </div>
     </div>`;
@@ -584,9 +634,9 @@ function renderPaginationControls(totalPages) {
     }
 
     let html = `
-        <button onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"><i class="ph ph-caret-right"></i> السابق</button>
-        <span class="px-6 py-2 rounded-lg bg-devo-dark text-devo-orange font-bold border border-devo-gray">صفحة ${currentPage} من ${totalPages}</span>
-        <button onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-4 py-2 rounded-lg border border-devo-gray bg-devo-black text-white hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">التالي <i class="ph ph-caret-left"></i></button>
+        <button onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3 sm:px-4 py-2 rounded-lg border border-devo-gray bg-devo-black text-white text-xs sm:text-sm hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"><i class="ph ph-caret-right"></i> <span>السابق</span></button>
+        <span class="px-3 sm:px-6 py-2 rounded-lg bg-devo-dark text-devo-orange text-xs sm:text-sm font-bold border border-devo-gray whitespace-nowrap tabular-nums">صفحة ${currentPage} من ${totalPages}</span>
+        <button onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3 sm:px-4 py-2 rounded-lg border border-devo-gray bg-devo-black text-white text-xs sm:text-sm hover:bg-devo-gray transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"><span>التالي</span> <i class="ph ph-caret-left"></i></button>
     `;
     topContainer.innerHTML = html; bottomContainer.innerHTML = html;
 }
@@ -594,7 +644,9 @@ function renderPaginationControls(totalPages) {
 window.changePage = (newPage) => {
     currentPage = newPage;
     renderModelsPage();
-    document.getElementById('model-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const mobileSearch = document.getElementById('models-mobile-search');
+    const target = (mobileSearch && mobileSearch.offsetParent !== null) ? mobileSearch : document.getElementById('model-search');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 window.refreshModelsData = async () => {

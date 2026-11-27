@@ -10,7 +10,7 @@ export function showToast(message, type = 'success') {
         container = document.createElement('div');
         container.id = 'toast-container';
         // Fixed position at bottom-left, stack vertically, ensure it floats above everything
-        container.className = 'fixed bottom-6 left-6 z-[100] flex flex-col gap-3 pointer-events-none';
+        container.className = 'fixed bottom-3 left-3 right-3 sm:right-auto sm:bottom-6 sm:left-6 z-[99999] flex flex-col gap-3 pointer-events-none';
         document.body.appendChild(container);
     }
 
@@ -28,7 +28,7 @@ export function showToast(message, type = 'success') {
     const style = config[type] || config.success;
 
     // 4. Apply DEVO Brand Styling (Dark mode, elegant float shadow)
-    toast.className = `flex items-center gap-3 px-4 py-3 bg-devo-dark border ${style.border} rounded-lg shadow-devo-float transform translate-y-10 opacity-0 transition-all duration-300 min-w-[250px] max-w-sm pointer-events-auto`;
+    toast.className = `flex items-center gap-3 px-4 py-3 bg-devo-dark border ${style.border} rounded-lg shadow-devo-float transform translate-y-10 opacity-0 transition-all duration-300 w-full sm:w-auto sm:min-w-[250px] max-w-sm pointer-events-auto`;
     
     toast.innerHTML = `
         <i class="ph ${style.icon} text-xl ${style.color}"></i>

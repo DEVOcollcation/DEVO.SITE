@@ -84,6 +84,7 @@ export async function initAdminOrdersView() {
     console.log('🔍 [DEBUG] isOwnerOrAdmin:', currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin');
 
     const filterInputs = [
+        'ao-mobile-quick-search',
         'ao-search-invoice',
         'ao-search-customer',
         'ao-search-phone',
@@ -104,10 +105,10 @@ export async function initAdminOrdersView() {
         }
     });
 
-    // استعادة حالة فتح/إغلاق البحث المتقدم المحفوظة
+    // استعادة حالة فتح/إغلاق البحث المتقدم المحفوظة (على الديسكتوب فقط لضمان بقاء شاشة الموبايل نظيفة ومضغوطة)
     try {
         const isAdvOpen = localStorage.getItem('devo_admin_orders_adv_search_open') === 'true';
-        if (isAdvOpen) {
+        if (isAdvOpen && window.innerWidth >= 1024) {
             const panel = document.getElementById('ao-advanced-filters-panel');
             const icon = document.getElementById('ao-toggle-adv-icon');
             const btn = document.getElementById('ao-btn-toggle-advanced');
@@ -166,7 +167,11 @@ async function populateWorkerFilter() {
 
 export async function fetchAdminOrders() {
     const tBody = document.getElementById('ao-table-body');
-    if(tBody && allAdminOrders.length === 0) tBody.innerHTML = `<tr><td colspan="9" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></td></tr>`;
+    const cardsBox = document.getElementById('ao-cards-container');
+    if (allAdminOrders.length === 0) {
+        if (tBody) tBody.innerHTML = `<tr><td colspan="9" class="p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></td></tr>`;
+        if (cardsBox) cardsBox.innerHTML = `<div class="bg-devo-dark border border-devo-gray rounded-2xl p-10 text-center"><i class="ph ph-spinner animate-spin text-3xl text-devo-orange"></i></div>`;
+    }
 
     const { data, error } = await supabase
         .from('orders')
@@ -233,11 +238,16 @@ function setupRealtimeAdminOrders() {
             if (data) {
                 applyAdminOrdersFilter();
                 
-                // تنبيه مرئي (وميض برتقالي) للصف الجديد
+                // تنبيه مرئي (وميض برتقالي) للصف والكارت الجديد
                 const newRow = document.getElementById(`admin-order-row-${data.id}`);
                 if(newRow) {
                     newRow.classList.add('bg-devo-orange/30', 'transition-all', 'duration-500');
                     setTimeout(() => newRow.classList.remove('bg-devo-orange/30'), 3000);
+                }
+                const newCard = document.getElementById(`admin-order-card-${data.id}`);
+                if(newCard) {
+                    newCard.classList.add('ring-2', 'ring-devo-orange', 'transition-all', 'duration-500');
+                    setTimeout(() => newCard.classList.remove('ring-2', 'ring-devo-orange'), 3000);
                 }
             }
         })
@@ -248,11 +258,16 @@ function setupRealtimeAdminOrders() {
             if (index > -1) {
                 applyAdminOrdersFilter(); // 🌟 إعادة تطبيق الفلترة لضمان المزامنة اللحظية بين التبويبات والأجهزة 🌟
                 
-                // 🌟 عمل وميض ملفت للانتباه للصف إذا كان ظاهراً بالجدول الحالي 🌟
+                // 🌟 عمل وميض ملفت للانتباه للصف والكارت إذا كان ظاهراً حالياً 🌟
                 const targetRow = document.getElementById(`admin-order-row-${payload.new.id}`);
                 if (targetRow) {
                     targetRow.classList.add('bg-devo-info/30', 'transition-all', 'duration-500');
                     setTimeout(() => targetRow.classList.remove('bg-devo-info/30'), 2000);
+                }
+                const targetCard = document.getElementById(`admin-order-card-${payload.new.id}`);
+                if (targetCard) {
+                    targetCard.classList.add('ring-2', 'ring-devo-info', 'transition-all', 'duration-500');
+                    setTimeout(() => targetCard.classList.remove('ring-2', 'ring-devo-info'), 2000);
                 }
             }
         })
@@ -260,11 +275,16 @@ function setupRealtimeAdminOrders() {
             allAdminOrders = allAdminOrders.filter(o => o.id !== payload.old.id);
             applyAdminOrdersFilter();
             
-            // إزالة الصف من الشاشة بتأثير حركي
+            // إزالة الصف والكارت من الشاشة بتأثير حركي
             const existingRow = document.getElementById(`admin-order-row-${payload.old.id}`);
             if (existingRow) {
                 existingRow.classList.add('opacity-0', 'scale-95', 'transition-all');
                 setTimeout(() => existingRow.remove(), 300);
+            }
+            const existingCard = document.getElementById(`admin-order-card-${payload.old.id}`);
+            if (existingCard) {
+                existingCard.classList.add('opacity-0', 'scale-95', 'transition-all');
+                setTimeout(() => existingCard.remove(), 300);
             }
         })
         .subscribe(async (status, err) => {
@@ -369,6 +389,108 @@ function generateOrderRowHTML(o) {
     `;
 }
 
+function generateOrderCardHTML(o) {
+    const dateStr = new Date(o.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const isOwner = currentUserProfile?.role === 'owner';
+    const conf = statusConfig[o.status] || { text: 'غير معروف', color: 'text-devo-muted bg-transparent' };
+
+    const isAssignedToMe = o.assigned_admin_name === currentUserProfile?.full_name;
+    const canEdit = !o.is_locked || isAssignedToMe || isOwner;
+    const isOwnerOrAdmin = currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin';
+
+    const isRegistered = o.status === 'registered';
+    const isEditable = o.status === 'created' && !o.is_locked;
+    const editLockTitle = isRegistered
+        ? 'تم تسجيل هذا الأوردر ولا يمكن تعديله نهائياً'
+        : (o.is_locked ? 'الأوردر مقفل أو قيد التعديل حالياً' : 'يجب إعادة حالة الأوردر إلى تم إنشاء الأوردر لتعديله');
+
+    const editBtnHtml = isOwnerOrAdmin
+        ? (isEditable
+            ? `<button onclick="openEditOrderChoices('${o.id}')" class="w-9 h-9 bg-devo-orange/15 text-devo-orange hover:bg-devo-orange hover:text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0" title="تعديل الأوردر"><i class="ph ph-pencil-simple text-base"></i></button>`
+            : `<button disabled class="w-9 h-9 bg-devo-gray/30 text-devo-muted rounded-xl cursor-not-allowed opacity-50 flex items-center justify-center shrink-0" title="${editLockTitle}"><i class="ph ph-lock text-base text-devo-muted"></i></button>`)
+        : '';
+
+    const lockBtnHtml = `<button onclick="toggleOrderLock('${o.id}', ${!o.is_locked})" class="w-8 h-8 rounded-lg border border-devo-gray/70 bg-devo-black/60 ${o.is_locked ? 'text-devo-error' : 'text-devo-success'} hover:bg-devo-gray/40 transition-colors flex items-center justify-center shrink-0 cursor-pointer" title="${o.is_locked ? 'إلغاء القفل' : 'قفل واستلام الأوردر'}"><i class="ph ${o.is_locked ? 'ph-lock' : 'ph-lock-open'} text-base"></i></button>`;
+
+    const archiveBadge = o.is_archived
+        ? `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">أرشيف</span>`
+        : `<span class="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">نشط</span>`;
+
+    const buildStatusOptions = (currentVal) => {
+        return Object.keys(statusConfig).map(k => `<option value="${k}" ${k === currentVal ? 'selected' : ''}>${statusConfig[k].text}</option>`).join('');
+    };
+
+    const sellerName = escapeHtml(o.system_users?.full_name || '-');
+    const assignedAdmin = o.assigned_admin_name
+        ? `<span class="bg-devo-info/15 text-devo-info border border-devo-info/30 px-2 py-0.5 rounded-md text-[10px] font-bold inline-flex items-center gap-1 truncate max-w-full"><i class="ph ph-user-gear shrink-0"></i> ${escapeHtml(o.assigned_admin_name)}</span>`
+        : '';
+
+    return `
+        <article id="admin-order-card-${o.id}" class="bg-devo-dark border border-devo-gray rounded-2xl p-3.5 shadow-sm space-y-3 transition-all">
+            <!-- رأس الكارت: رقم الفاتورة + الشارات + التاريخ -->
+            <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-devo-gray/60">
+                <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
+                    <span class="font-mono text-devo-orange font-black text-sm tracking-tight" dir="ltr">#${escapeHtml(o.invoice_number)}</span>
+                    ${archiveBadge}
+                    ${lockBtnHtml}
+                </div>
+                <span class="text-[11px] text-devo-muted whitespace-nowrap shrink-0">${dateStr}</span>
+            </div>
+
+            <!-- بيانات العميل والبائع -->
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1 space-y-0.5">
+                    <h4 class="font-bold text-white text-sm truncate">${escapeHtml(o.customer_name || 'بدون اسم')}</h4>
+                    <div class="flex items-center gap-2 text-xs text-devo-muted flex-wrap">
+                        <span class="font-mono text-devo-info font-semibold" dir="ltr">${escapeHtml(o.phone_1 || '-')}</span>
+                        <span class="text-devo-gray">|</span>
+                        <span class="inline-flex items-center gap-1 truncate"><i class="ph-fill ph-user-circle text-sm"></i> ${sellerName}</span>
+                    </div>
+                </div>
+                ${assignedAdmin ? `<div class="shrink-0 max-w-[45%]">${assignedAdmin}</div>` : ''}
+            </div>
+
+            <!-- ملخص الكمية والإجمالي -->
+            <div class="grid grid-cols-2 gap-2 bg-devo-black/60 border border-devo-gray/60 rounded-xl p-2.5">
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-devo-muted font-bold">الكمية</span>
+                    <span class="text-sm font-black text-white tabular-nums">${Number(o.total_series || 0).toLocaleString('en-US')} <span class="text-[11px] font-medium text-devo-muted">سيري</span></span>
+                </div>
+                <div class="flex flex-col border-r border-devo-gray/60 pr-2.5">
+                    <span class="text-[10px] text-devo-muted font-bold">الإجمالي</span>
+                    <span class="text-sm font-black text-devo-orange tabular-nums">${Number(o.total_price || 0).toLocaleString('en-US')} <span class="text-[11px] font-medium">ج.م</span></span>
+                </div>
+            </div>
+
+            <!-- تغيير الحالة -->
+            <div class="flex items-center gap-2">
+                <select ${!canEdit ? 'disabled' : ''} onchange="updateOrderStatus('${o.id}', this.value)"
+                    class="flex-1 min-w-0 bg-devo-black border border-devo-gray rounded-xl px-2.5 py-2 text-white text-xs font-bold outline-none focus:border-devo-orange cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                    ${buildStatusOptions(o.status)}
+                </select>
+                <span class="text-[11px] ${conf.color} border px-2.5 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0">${conf.text}</span>
+            </div>
+
+            <!-- أزرار الإجراءات -->
+            <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-devo-gray/60 flex-wrap">
+                <button onclick="viewAdminOrderDetails('${o.id}')" class="flex-1 min-w-[110px] h-9 px-3 bg-devo-info/15 text-devo-info hover:bg-devo-info hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap">
+                    <i class="ph ph-eye text-base"></i>
+                    <span>التفاصيل</span>
+                </button>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    ${editBtnHtml}
+                    <button onclick="printAdminOrder('${o.id}', 'customer')" class="w-9 h-9 bg-gray-200 text-gray-800 hover:bg-white rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0" title="طباعة فاتورة العميل"><i class="ph ph-receipt text-base"></i></button>
+                    <button onclick="printAdminOrder('${o.id}', 'detailed')" class="w-9 h-9 bg-devo-orange/20 text-devo-orange hover:bg-devo-orange hover:text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0" title="طباعة فاتورة الإدارة"><i class="ph ph-printer text-base"></i></button>
+                    <button onclick="duplicateAdminOrder('${o.id}')" class="w-9 h-9 bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500 hover:text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0" title="نسخ الأوردر"><i class="ph ph-copy text-base"></i></button>
+                    <button onclick="exportSingleOrderToExcel('${o.id}')" class="w-9 h-9 bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0" title="تصدير Excel"><i class="ph ph-file-xls text-base"></i></button>
+                    <button onclick="toggleAdminOrderArchive('${o.id}', ${!o.is_archived})" class="w-9 h-9 bg-devo-black border border-devo-gray hover:border-devo-orange rounded-xl text-devo-muted hover:text-white transition-colors cursor-pointer flex items-center justify-center shrink-0" title="${o.is_archived ? 'استعادة من الأرشيف' : 'أرشفة الأوردر'}"><i class="ph ${o.is_archived ? 'ph-tray-arrow-up' : 'ph-archive'} text-base"></i></button>
+                    ${isOwner ? `<button onclick="deleteOrder('${o.id}')" class="w-9 h-9 bg-devo-error/10 text-devo-error hover:bg-devo-error hover:text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0" title="حذف وإرجاع المخزون"><i class="ph ph-trash text-base"></i></button>` : ''}
+                </div>
+            </div>
+        </article>
+    `;
+}
+
 // ==========================================
 // 🌟 4. الإحصائيات والفلترة والتبويبات 🌟
 // ==========================================
@@ -401,17 +523,18 @@ window.setVisitorOrdersSubTab = (subTab) => {
 
 function updateVisitorOrdersSubTabsUI(activeSubTab) {
     const tabs = ['pending', 'archived', 'approved', 'rejected', 'all'];
+    const baseSubTabClasses = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0";
     tabs.forEach(tab => {
         const btn = document.getElementById(`vo-subtab-${tab}`);
         if (!btn) return;
         if (tab === activeSubTab) {
             btn.className = tab === 'pending'
-                ? "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-amber-500 text-black flex items-center gap-1.5 cursor-pointer shadow-sm"
+                ? `${baseSubTabClasses} bg-amber-500 text-black shadow-sm`
                 : (tab === 'archived'
-                    ? "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-purple-600 text-white flex items-center gap-1.5 cursor-pointer shadow-sm"
-                    : "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-devo-orange text-white flex items-center gap-1.5 cursor-pointer shadow-sm");
+                    ? `${baseSubTabClasses} bg-purple-600 text-white shadow-sm`
+                    : `${baseSubTabClasses} bg-devo-orange text-white shadow-sm`);
         } else {
-            btn.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-devo-muted hover:text-white hover:bg-devo-gray/30 flex items-center gap-1.5 cursor-pointer";
+            btn.className = `${baseSubTabClasses} text-devo-muted hover:text-white hover:bg-devo-gray/30`;
         }
     });
 }
@@ -421,11 +544,12 @@ function updateTabButtonsUI(activeTabName) {
     const tabArchived = document.getElementById('ao-tab-archived');
     const tabVisitors = document.getElementById('ao-tab-visitors');
 
+    const baseTabClasses = "flex-1 lg:flex-initial justify-center px-1.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap shrink-0";
     const setInactive = (el) => {
-        if (el) el.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all text-devo-muted hover:text-white hover:bg-devo-gray/20 flex items-center gap-1.5 cursor-pointer";
+        if (el) el.className = `${baseTabClasses} text-devo-muted hover:text-white hover:bg-devo-gray/20`;
     };
     const setActive = (el) => {
-        if (el) el.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all bg-devo-orange text-white flex items-center gap-1.5 shadow-sm cursor-pointer";
+        if (el) el.className = `${baseTabClasses} bg-devo-orange text-white shadow-sm`;
     };
 
     setInactive(tabActive);
@@ -602,6 +726,25 @@ function normalizeSearchText(str) {
         .replace(/[\u064B-\u065F]/g, ''); // إزالة الحركات التشكيلية
 }
 
+// 🌟 تبديل فتح/إغلاق فلاتر الموبايل 🌟
+window.toggleAdminOrdersMobileFilters = () => {
+    const primaryWrapper = document.getElementById('ao-primary-filters-wrapper');
+    const advPanel = document.getElementById('ao-advanced-filters-panel');
+    const btn = document.getElementById('ao-mobile-filters-toggle');
+    if (!primaryWrapper) return;
+
+    const isOpening = primaryWrapper.classList.contains('hidden');
+    if (isOpening) {
+        primaryWrapper.classList.remove('hidden');
+        if (advPanel) advPanel.classList.remove('hidden');
+        if (btn) btn.classList.add('border-devo-orange', 'bg-devo-orange/10');
+    } else {
+        primaryWrapper.classList.add('hidden');
+        if (advPanel) advPanel.classList.add('hidden');
+        if (btn) btn.classList.remove('border-devo-orange', 'bg-devo-orange/10');
+    }
+};
+
 // 🌟 تبديل فتح/إغلاق شريط البحث المتقدم 🌟
 window.toggleAdminOrdersAdvancedSearch = () => {
     const panel = document.getElementById('ao-advanced-filters-panel');
@@ -634,6 +777,9 @@ window.toggleAdminOrdersAdvancedSearch = () => {
 };
 
 window.applyAdminOrdersFilter = () => {
+    const rawQuickTerm = document.getElementById('ao-mobile-quick-search')?.value || '';
+    const quickTerm = normalizeSearchText(rawQuickTerm);
+
     const rawInvoiceTerm = document.getElementById('ao-search-invoice')?.value || '';
     const invoiceTerm = normalizeSearchText(rawInvoiceTerm);
 
@@ -655,7 +801,7 @@ window.applyAdminOrdersFilter = () => {
     const dateFrom = document.getElementById('ao-date-from')?.value;
     const dateTo = document.getElementById('ao-date-to')?.value;
 
-    const hasAnyFilter = Boolean(invoiceTerm || customerTerm || phoneTerm || modelTerm || minPrice !== null || maxPrice !== null || workerVal || statusFilter || dateFrom || dateTo);
+    const hasAnyFilter = Boolean(quickTerm || invoiceTerm || customerTerm || phoneTerm || modelTerm || minPrice !== null || maxPrice !== null || workerVal || statusFilter || dateFrom || dateTo);
 
     // 🌟 حساب وإظهار شارة عدد الفلاتر المتقدمة النشطة 🌟
     let advCount = 0;
@@ -663,6 +809,17 @@ window.applyAdminOrdersFilter = () => {
     if (minPrice !== null || maxPrice !== null) advCount++;
     if (workerVal) advCount++;
     if (statusFilter) advCount++;
+
+    const mobileExtraCount = advCount + (invoiceTerm ? 1 : 0) + (customerTerm ? 1 : 0) + (phoneTerm ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
+    const mobileFiltersBadge = document.getElementById('ao-mobile-filters-badge');
+    if (mobileFiltersBadge) {
+        if (mobileExtraCount > 0) {
+            mobileFiltersBadge.textContent = mobileExtraCount;
+            mobileFiltersBadge.classList.remove('hidden');
+        } else {
+            mobileFiltersBadge.classList.add('hidden');
+        }
+    }
 
     const advBadge = document.getElementById('ao-adv-filters-badge');
     const advBtn = document.getElementById('ao-btn-toggle-advanced');
@@ -684,6 +841,13 @@ window.applyAdminOrdersFilter = () => {
     // ==========================================
     if (currentAdminTab === 'visitors') {
         const filtered = allVisitorOrders.filter(vo => {
+            if (quickTerm) {
+                const shortId = normalizeSearchText(vo.id || '');
+                const cust = normalizeSearchText(vo.customer_name || '');
+                const p1 = String(vo.phone_1 || '');
+                const p2 = String(vo.phone_2 || '');
+                if (!shortId.includes(quickTerm) && !cust.includes(quickTerm) && !p1.includes(rawQuickTerm.trim()) && !p2.includes(rawQuickTerm.trim())) return false;
+            }
             if (invoiceTerm) {
                 const shortId = normalizeSearchText(vo.id || '');
                 if (!shortId.includes(invoiceTerm)) return false;
@@ -744,14 +908,16 @@ window.applyAdminOrdersFilter = () => {
         updateAdminStats(filtered, hasAnyFilter);
 
         const tbody = document.getElementById('ao-table-body');
-        if (!tbody) return;
+        const cardsBox = document.getElementById('ao-cards-container');
 
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">لا توجد طلبات زوار تطابق شروط البحث والفلترة.</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">لا توجد طلبات زوار تطابق شروط البحث والفلترة.</td></tr>`;
+            if (cardsBox) cardsBox.innerHTML = `<div class="bg-devo-dark border border-devo-gray rounded-2xl p-8 text-center text-sm text-devo-muted">لا توجد طلبات زوار تطابق شروط البحث والفلترة.</div>`;
             return;
         }
 
-        tbody.innerHTML = filtered.map(vo => generateVisitorOrderRowHTML(vo)).join('');
+        if (tbody) tbody.innerHTML = filtered.map(vo => generateVisitorOrderRowHTML(vo)).join('');
+        if (cardsBox) cardsBox.innerHTML = filtered.map(vo => generateVisitorOrderCardHTML(vo)).join('');
         return;
     }
 
@@ -765,6 +931,16 @@ window.applyAdminOrdersFilter = () => {
         if (!hasAnyFilter) {
             if (currentAdminTab === 'active' && isArchived) return false;
             if (currentAdminTab === 'archived' && !isArchived) return false;
+        }
+
+        // 0. البحث السريع الموحد للموبايل
+        if (quickTerm) {
+            const inv = normalizeSearchText(o.invoice_number || '');
+            const cust = normalizeSearchText(o.customer_name || '');
+            const p1 = String(o.phone_1 || '');
+            const p2 = String(o.phone_2 || '');
+            const rawQ = rawQuickTerm.trim();
+            if (!inv.includes(quickTerm) && !cust.includes(quickTerm) && !p1.includes(rawQ) && !p2.includes(rawQ)) return false;
         }
 
         // 1. البحث برقم الأوردر (Invoice / Order ID)
@@ -829,21 +1005,24 @@ window.applyAdminOrdersFilter = () => {
     updateAdminStats(filtered, hasAnyFilter);
 
     const tbody = document.getElementById('ao-table-body');
-    if (!tbody) return;
+    const cardsBox = document.getElementById('ao-cards-container');
 
     if (filtered.length === 0) {
         const emptyMsg = hasAnyFilter
             ? 'لا توجد أوردرات تطابق شروط البحث والفلترة.'
             : (currentAdminTab === 'archived' ? 'لا توجد أوردرات مؤرشفة حالياً.' : 'لا توجد أوردرات نشطة حالياً.');
-        tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">${emptyMsg}</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr class="no-data-row"><td colspan="9" class="p-10 text-center text-devo-muted">${emptyMsg}</td></tr>`;
+        if (cardsBox) cardsBox.innerHTML = `<div class="bg-devo-dark border border-devo-gray rounded-2xl p-8 text-center text-sm text-devo-muted">${emptyMsg}</div>`;
         return;
     }
 
-    tbody.innerHTML = filtered.map(o => generateOrderRowHTML(o)).join('');
+    if (tbody) tbody.innerHTML = filtered.map(o => generateOrderRowHTML(o)).join('');
+    if (cardsBox) cardsBox.innerHTML = filtered.map(o => generateOrderCardHTML(o)).join('');
 };
 
 window.resetAdminOrdersFilters = () => {
     const filterInputIds = [
+        'ao-mobile-quick-search',
         'ao-search-invoice',
         'ao-search-customer',
         'ao-search-phone',
@@ -930,6 +1109,8 @@ window.updateOrderStatus = async (id, newStatus) => {
     o.assigned_admin_name = assignedAdmin;
     const row = document.getElementById(`admin-order-row-${id}`);
     if (row) row.outerHTML = generateOrderRowHTML(o);
+    const card = document.getElementById(`admin-order-card-${id}`);
+    if (card) card.outerHTML = generateOrderCardHTML(o);
 
     const { error } = await supabase.from('orders').update({ 
         status: newStatus, 
@@ -960,6 +1141,8 @@ window.toggleOrderLock = async (id, lockState) => {
     o.assigned_admin_name = lockState ? currentUserProfile?.full_name : null;
     const row = document.getElementById(`admin-order-row-${id}`);
     if (row) row.outerHTML = generateOrderRowHTML(o);
+    const card = document.getElementById(`admin-order-card-${id}`);
+    if (card) card.outerHTML = generateOrderCardHTML(o);
 
     const { error } = await supabase.from('orders').update({ 
         is_locked: lockState,
@@ -1219,6 +1402,8 @@ window.closeAdminOrderDetails = async () => {
                     o.status = 'created';
                     const row = document.getElementById(`admin-order-row-${orderId}`);
                     if (row) row.outerHTML = generateOrderRowHTML(o);
+                    const card = document.getElementById(`admin-order-card-${orderId}`);
+                    if (card) card.outerHTML = generateOrderCardHTML(o);
                 }
             }
             await logOrderAction(orderId, 'local_edit_cancel', `ألغى الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر محلياً (إغلاق التفاصيل)`);
@@ -1800,6 +1985,8 @@ window.triggerLocalEdit = async () => {
     o.status = 'editing';
     const row = document.getElementById(`admin-order-row-${o.id}`);
     if (row) row.outerHTML = generateOrderRowHTML(o);
+    const card = document.getElementById(`admin-order-card-${o.id}`);
+    if (card) card.outerHTML = generateOrderCardHTML(o);
 
     await logOrderAction(o.id, 'local_edit_start', `بدأ الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر محلياً`);
 
@@ -2629,6 +2816,8 @@ window.cancelLocalEdit = async (orderId) => {
             o.status = 'created';
             const row = document.getElementById(`admin-order-row-${orderId}`);
             if (row) row.outerHTML = generateOrderRowHTML(o);
+            const card = document.getElementById(`admin-order-card-${orderId}`);
+            if (card) card.outerHTML = generateOrderCardHTML(o);
         }
         await logOrderAction(orderId, 'local_edit_cancel', `ألغى الإداري ${currentUserProfile?.full_name || ''} تعديل الأوردر محلياً`);
     }
@@ -3115,6 +3304,93 @@ function generateVisitorOrderRowHTML(vo) {
                 </div>
             </td>
         </tr>
+    `;
+}
+
+function generateVisitorOrderCardHTML(vo) {
+    const dateStr = new Date(vo.created_at).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const itemsCount = vo.visitor_order_items?.length || 0;
+    const shortId = (vo.id || '').split('-')[0].toUpperCase();
+
+    let statusBadge = '';
+    if (vo.status === 'pending') {
+        statusBadge = '<span class="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[11px] px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-clock"></i> في الانتظار</span>';
+    } else if (vo.status === 'approved') {
+        statusBadge = '<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[11px] px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-check-circle"></i> معتمد</span>';
+    } else if (vo.status === 'rejected' || vo.status === 'ignored') {
+        statusBadge = '<span class="bg-rose-500/20 text-rose-400 border border-rose-500/40 text-[11px] px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-x-circle"></i> مرفوض</span>';
+    } else if (vo.status === 'archived') {
+        statusBadge = '<span class="bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[11px] px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1"><i class="ph ph-archive"></i> مؤرشف</span>';
+    } else {
+        statusBadge = `<span class="bg-devo-gray/40 text-devo-muted border border-devo-gray text-[11px] px-2.5 py-0.5 rounded-full font-bold">${escapeHtml(vo.status)}</span>`;
+    }
+
+    const isPending = vo.status === 'pending';
+    const isApproved = vo.status === 'approved';
+    const isRejected = vo.status === 'rejected' || vo.status === 'ignored';
+    const isArchived = vo.status === 'archived';
+
+    const meta = parseWaitingOrderMeta(vo.notes, vo);
+    const workerName = meta.worker_name || vo.worker_name;
+
+    return `
+        <article id="visitor-order-card-${vo.id}" class="bg-devo-dark border border-devo-gray rounded-2xl p-3.5 shadow-sm space-y-3 transition-all">
+            <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-devo-gray/60">
+                <div class="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span class="font-mono text-amber-400 font-black text-sm" dir="ltr">#${shortId}</span>
+                    ${statusBadge}
+                </div>
+                <span class="text-[11px] text-devo-muted whitespace-nowrap shrink-0">${dateStr}</span>
+            </div>
+
+            <div class="space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                    <h4 class="font-bold text-white text-sm truncate">${escapeHtml(vo.customer_name || 'عميل')}</h4>
+                    ${workerName ? `<span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[10px] px-2 py-0.5 rounded font-bold inline-flex items-center gap-1 shrink-0"><i class="ph ph-user"></i> ${escapeHtml(workerName)}</span>` : ''}
+                </div>
+                <div class="text-xs text-devo-info font-mono font-semibold" dir="ltr">${escapeHtml(vo.phone_1 || '-')}${vo.phone_2 ? ' / ' + escapeHtml(vo.phone_2) : ''}</div>
+                ${vo.address ? `<p class="text-xs text-devo-muted truncate">${escapeHtml(vo.address)}</p>` : ''}
+                ${meta.cleanNotes ? `<p class="text-[11px] text-amber-400/90 flex items-center gap-1 truncate"><i class="ph ph-note shrink-0"></i> ${escapeHtml(meta.cleanNotes)}</p>` : ''}
+                ${meta.deposit > 0 ? `<div class="text-[11px] text-emerald-400 font-bold">عربون: ${meta.deposit} ج.م</div>` : ''}
+                ${isRejected && vo.rejection_reason ? `
+                    <div class="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                        <i class="ph ph-warning-circle shrink-0"></i>
+                        <span class="truncate">سبب الرفض: ${escapeHtml(vo.rejection_reason)}</span>
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 bg-devo-black/60 border border-devo-gray/60 rounded-xl p-2.5 text-center">
+                <div>
+                    <span class="block text-[10px] text-devo-muted font-bold">الأصناف</span>
+                    <span class="text-xs font-black text-white tabular-nums">${itemsCount} صنف</span>
+                </div>
+                <div class="border-x border-devo-gray/60">
+                    <span class="block text-[10px] text-devo-muted font-bold">السريات</span>
+                    <span class="text-xs font-black text-devo-orange tabular-nums">${vo.total_series}</span>
+                </div>
+                <div>
+                    <span class="block text-[10px] text-devo-muted font-bold">الإجمالي</span>
+                    <span class="text-xs font-black text-white tabular-nums">${Number(vo.total_price || 0).toLocaleString()} ج.م</span>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-devo-gray/60 flex-wrap">
+                <button onclick="openVisitorOrderModal('${vo.id}', 'view')" class="flex-1 min-w-[95px] h-9 px-3 bg-blue-500/15 text-blue-400 hover:bg-blue-500 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap">
+                    <i class="ph ph-eye text-base"></i>
+                    <span>عرض</span>
+                </button>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    ${!isApproved ? `<button onclick="openVisitorOrderModal('${vo.id}', 'edit')" class="w-9 h-9 bg-amber-500/15 text-amber-400 hover:bg-amber-500 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="تعديل الطلب"><i class="ph ph-pencil-simple text-base"></i></button>` : ''}
+                    <button onclick="printVisitorOrder('${vo.id}')" class="w-9 h-9 bg-purple-500/15 text-purple-400 hover:bg-purple-500 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="طباعة الفاتورة"><i class="ph ph-printer text-base"></i></button>
+                    ${!isApproved ? `<button onclick="approveVisitorOrder('${vo.id}')" class="w-9 h-9 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="اعتماد الطلب"><i class="ph ph-check-circle text-base"></i></button>` : ''}
+                    ${isPending ? `<button onclick="rejectVisitorOrder('${vo.id}')" class="w-9 h-9 bg-rose-500/15 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="رفض الطلب"><i class="ph ph-x-circle text-base"></i></button>` : ''}
+                    ${(isRejected || isArchived) ? `<button onclick="reopenVisitorOrder('${vo.id}')" class="w-9 h-9 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="استعادة لقائمة الانتظار"><i class="ph ph-arrow-counter-clockwise text-base"></i></button>` : ''}
+                    ${!isArchived ? `<button onclick="archiveVisitorOrder('${vo.id}')" class="w-9 h-9 bg-purple-500/15 text-purple-400 hover:bg-purple-500 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="أرشفة الطلب"><i class="ph ph-archive text-base"></i></button>` : ''}
+                    <button onclick="deleteVisitorOrder('${vo.id}')" class="w-9 h-9 bg-devo-error/15 text-devo-error hover:bg-devo-error hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0" title="حذف الطلب نهائياً"><i class="ph ph-trash text-base"></i></button>
+                </div>
+            </div>
+        </article>
     `;
 }
 

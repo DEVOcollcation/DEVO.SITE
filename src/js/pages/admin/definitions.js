@@ -36,7 +36,7 @@ window.switchDefTab = async (tabId) => {
     const addNewBtn = document.querySelector('button[onclick="openDefinitionModalFromCurrent()"]');
 
     if (tabId === 'colors' && addNewBtn) {
-        const btnHtml = `<button id="btn-import-colors" onclick="openColorExcelModal()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-4 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 border border-devo-success/20"><i class="ph ph-file-xls text-xl"></i> استيراد (Excel)</button>`;
+        const btnHtml = `<button id="btn-import-colors" onclick="openColorExcelModal()" class="bg-devo-success/10 hover:bg-devo-success text-devo-success hover:text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 border border-devo-success/20 whitespace-nowrap shrink-0 cursor-pointer"><i class="ph ph-file-xls text-lg sm:text-xl"></i> <span>استيراد (Excel)</span></button>`;
         
         // 🌟 إضافته "قبل" زر الإضافة (بجانبه وليس بداخله) 🌟
         addNewBtn.insertAdjacentHTML('beforebegin', btnHtml);

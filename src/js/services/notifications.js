@@ -376,12 +376,14 @@ function updateNotificationsListUI() {
         if (badge) {
             badge.classList.add('hidden');
             badge.classList.remove('flex');
+            badge.removeAttribute('title');
         }
         return;
     }
 
     if (badge) {
-        badge.textContent = unreadOrders.length;
+        badge.textContent = unreadOrders.length > 99 ? '99+' : unreadOrders.length;
+        badge.title = `${unreadOrders.length} إشعار غير مقروء`;
         badge.classList.remove('hidden');
         badge.classList.add('flex');
     }

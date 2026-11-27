@@ -503,6 +503,9 @@ async function initRouter() {
             const targetId = link.getAttribute('data-target');
             const subTab = link.getAttribute('data-report-tab');
             switchView(targetId, link, subTab);
+            if (window.innerWidth < 1024 && typeof window.closeMobileSidebar === 'function') {
+                window.closeMobileSidebar();
+            }
         });
     });
 
