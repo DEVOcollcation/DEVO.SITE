@@ -926,7 +926,7 @@ window.openModelModal = async (id = null) => {
 
     const invContainer = document.getElementById('m-inventory-container');
     const modalTitle = document.getElementById('model-modal-title');
-    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitBtn = document.getElementById('btn-save-model') || form.querySelector('button[type="submit"]');
 
     const classSelect = document.getElementById('m-class');
     classSelect.onchange = (e) => handleClassChange(e.target.value);
@@ -1040,8 +1040,12 @@ window.closeModelModal = () => {
 
 async function handleSaveModel(e) {
     e.preventDefault();
-    const btn = e.target.querySelector('button[type="submit"]');
-    const originalBtnText = btn.innerHTML;
+    const saveBtn = document.getElementById('btn-save-model') || e.target.querySelector('button[type="submit"]');
+    const printBtn = document.getElementById('btn-save-and-print-barcode');
+    const shouldPrintAfterSave = e.submitter?.id === 'btn-save-and-print-barcode';
+    const activeBtn = (shouldPrintAfterSave && printBtn) ? printBtn : saveBtn;
+    const originalSaveBtnText = saveBtn ? saveBtn.innerHTML : '';
+    const originalPrintBtnText = printBtn ? printBtn.innerHTML : '';
     
     const id = document.getElementById('m-id').value;
     const classId = document.getElementById('m-class').value;
@@ -1085,8 +1089,13 @@ async function handleSaveModel(e) {
         statusMessage = ' (محفوظ كـ معطل لعدم اكتمال البيانات)';
     }
 
-    btn.disabled = true;
-    btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> الحفظ...`;
+    if (saveBtn) saveBtn.disabled = true;
+    if (printBtn) printBtn.disabled = true;
+    if (activeBtn) {
+        activeBtn.innerHTML = shouldPrintAfterSave
+            ? `<i class="ph ph-spinner animate-spin"></i> جاري الحفظ والطباعة...`
+            : `<i class="ph ph-spinner animate-spin"></i> الحفظ...`;
+    }
 
     try {
         let modelId = id;
@@ -1124,13 +1133,34 @@ async function handleSaveModel(e) {
 
         showToast((id ? 'تم الحفظ' : 'تمت الإضافة') + statusMessage, 'success');
         closeModelModal();
-        if (typeof window.refreshAllSystemData === 'function') await window.refreshAllSystemData({ silent: true });
+
+        const sizesMap = {};
+        (defCache.szs || []).forEach(s => { sizesMap[s.id] = s.name; });
+        const colorsMap = {};
+        (defCache.clrs || []).forEach(c => { colorsMap[c.id] = c.name; });
+
+        if (shouldPrintAfterSave && modelId) {
+            await Promise.all([
+                printModelsDirect([modelId], { sizesMap, colorsMap }),
+                typeof window.refreshAllSystemData === 'function'
+                    ? window.refreshAllSystemData({ silent: true })
+                    : Promise.resolve()
+            ]);
+        } else if (typeof window.refreshAllSystemData === 'function') {
+            await window.refreshAllSystemData({ silent: true });
+        }
     } catch (err) {
         if (err.code === '23505') showToast('كود السيستم مستخدم بالفعل!', 'error');
         else showToast(err.message, 'error');
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalBtnText;
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalSaveBtnText;
+        }
+        if (printBtn) {
+            printBtn.disabled = false;
+            printBtn.innerHTML = originalPrintBtnText;
+        }
     }
 }
 

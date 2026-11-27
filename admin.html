@@ -1921,9 +1921,13 @@
                         </div>
                     </div>
 
-                    <div class="flex gap-4 pt-4 sticky bottom-0 bg-devo-dark pb-2 z-10 border-t border-devo-gray">
-                        <button type="button" onclick="closeModelModal()" class="flex-1 py-3 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm">إلغاء</button>
-                        <button type="submit" class="flex-[2] py-3 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg transition-all text-sm">حفظ الموديل</button>
+                    <div class="flex flex-col-reverse sm:flex-row gap-3 pt-4 sticky bottom-0 bg-devo-dark pb-2 z-10 border-t border-devo-gray">
+                        <button type="button" onclick="closeModelModal()" class="sm:w-36 py-3 px-4 rounded-lg border border-devo-gray text-white font-bold hover:bg-devo-gray transition-all text-sm shrink-0 cursor-pointer">إلغاء</button>
+                        <button type="submit" id="btn-save-and-print-barcode" class="flex-1 py-3 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg transition-all text-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer">
+                            <i class="ph ph-printer text-lg"></i>
+                            <span>حفظ وطباعة الباركود</span>
+                        </button>
+                        <button type="submit" id="btn-save-model" class="flex-1 py-3 px-4 rounded-lg bg-devo-orange text-white font-bold hover:bg-devo-orangeHover shadow-lg transition-all text-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer">حفظ الموديل</button>
                     </div>
                 </form>
             </div>
