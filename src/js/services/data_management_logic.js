@@ -53,6 +53,32 @@ export function isSettlementMovement(movement) {
 }
 
 /**
+ * Identifies whether an 'out' stock_movements row represents an inbound invoice
+ * cancellation/reduction (which decreases received stock rather than being a sale).
+ */
+export function isInboundReversalOutMovement(movement) {
+    if (!movement || typeof movement !== 'object') return false;
+    if (movement.movement_type !== 'out') return false;
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    return ref.startsWith('حذف فاتورة دخل') || ref.startsWith('تعديل فاتورة دخل');
+}
+
+/**
+ * Identifies whether an 'in' stock_movements row represents an order edit
+ * reduction or order deletion restoring previously deducted sales stock.
+ */
+export function isOrderReversalInMovement(movement) {
+    if (!movement || typeof movement !== 'object') return false;
+    if (movement.movement_type !== 'in') return false;
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    return (
+        ref.startsWith('تعديل أوردر') ||
+        ref.startsWith('حذف أوردر') ||
+        ref.startsWith('استرجاع رصيد عند حذف فواتير مبيعات')
+    );
+}
+
+/**
  * Builds a standardized settlement reference string stored in stock_movements.
  */
 export function buildSettlementReference(reason = '', kind = 'zero') {
@@ -90,11 +116,32 @@ export function computeColorBaseStock({ availableSeries = 0, soldSeries = 0, set
  * per-color offset map (sold + settled) so gallery cards compute:
  *   baseStock = available + colorOffsetMap[colorId]
  * without double-counting sales that also appear in stock_movements.
+ *
+ * When `orderItemsReliable` is false (e.g. non-admin/worker accounts whose
+ * order_items query is restricted by RLS to only their own orders), full
+ * net sales are derived from stock_movements (sales 'out' minus order-reversal
+ * 'in', excluding inbound-invoice reversals), using any visible orderItems
+ * strictly as a minimum floor.
  */
-export function buildModelColorOffsetMap({ orderItems = [], outMovements = [] } = {}) {
+export function buildModelColorOffsetMap({
+    orderItems = [],
+    outMovements = [],
+    inMovements = [],
+    allMovements = null,
+    orderItemsReliable = true
+} = {}) {
     const soldMap = {};
     const settledMap = {};
-    const legacyOutMap = {};
+    const rawSalesOutMap = {};
+    const orderReversalInMap = {};
+
+    const resolvedOutMovements = Array.isArray(allMovements)
+        ? allMovements.filter(m => m && m.movement_type === 'out')
+        : (Array.isArray(outMovements) ? outMovements : []);
+
+    const resolvedInMovements = Array.isArray(allMovements)
+        ? allMovements.filter(m => m && m.movement_type === 'in')
+        : (Array.isArray(inMovements) ? inMovements : []);
 
     if (Array.isArray(orderItems)) {
         for (const item of orderItems) {
@@ -105,31 +152,64 @@ export function buildModelColorOffsetMap({ orderItems = [], outMovements = [] } 
         }
     }
 
-    if (Array.isArray(outMovements)) {
-        for (const mov of outMovements) {
-            if (!mov || mov.color_id === null || mov.color_id === undefined) continue;
-            const cid = String(mov.color_id);
-            const qty = Math.max(0, Number(mov.quantity) || 0);
-            if (qty <= 0) continue;
+    for (const mov of resolvedOutMovements) {
+        if (!mov || mov.color_id === null || mov.color_id === undefined) continue;
+        const cid = String(mov.color_id);
+        const qty = Math.max(0, Number(mov.quantity) || 0);
+        if (qty <= 0) continue;
 
-            if (isSettlementMovement(mov)) {
-                settledMap[cid] = (settledMap[cid] || 0) + qty;
-            } else if (mov.movement_type === 'out') {
-                legacyOutMap[cid] = (legacyOutMap[cid] || 0) + qty;
-            }
+        if (isSettlementMovement(mov)) {
+            settledMap[cid] = (settledMap[cid] || 0) + qty;
+        } else if (mov.movement_type === 'out' && !isInboundReversalOutMovement(mov)) {
+            rawSalesOutMap[cid] = (rawSalesOutMap[cid] || 0) + qty;
         }
     }
 
-    const hasRealOrderItems = Object.keys(soldMap).length > 0;
+    for (const mov of resolvedInMovements) {
+        if (!mov || mov.color_id === null || mov.color_id === undefined) continue;
+        const cid = String(mov.color_id);
+        const qty = Math.max(0, Number(mov.quantity) || 0);
+        if (qty <= 0) continue;
+
+        if (isOrderReversalInMovement(mov)) {
+            orderReversalInMap[cid] = (orderReversalInMap[cid] || 0) + qty;
+        }
+    }
+
+    const legacyOutMap = {};
+    const movementColorIds = new Set([
+        ...Object.keys(rawSalesOutMap),
+        ...Object.keys(orderReversalInMap)
+    ]);
+    for (const cid of movementColorIds) {
+        const net = Math.max(0, (rawSalesOutMap[cid] || 0) - (orderReversalInMap[cid] || 0));
+        if (net > 0) legacyOutMap[cid] = net;
+    }
+
+    const useAuthoritativeOrderItems = Boolean(orderItemsReliable) && Object.keys(soldMap).length > 0;
+    const effectiveSoldMap = {};
+
+    if (useAuthoritativeOrderItems) {
+        Object.assign(effectiveSoldMap, soldMap);
+    } else {
+        const fallbackIds = new Set([
+            ...Object.keys(legacyOutMap),
+            ...Object.keys(soldMap)
+        ]);
+        for (const cid of fallbackIds) {
+            const val = Math.max(legacyOutMap[cid] || 0, soldMap[cid] || 0);
+            if (val > 0) effectiveSoldMap[cid] = val;
+        }
+    }
+
     const combined = {};
     const allColorIds = new Set([
-        ...Object.keys(soldMap),
-        ...Object.keys(settledMap),
-        ...(hasRealOrderItems ? [] : Object.keys(legacyOutMap))
+        ...Object.keys(effectiveSoldMap),
+        ...Object.keys(settledMap)
     ]);
 
     for (const cid of allColorIds) {
-        const sold = hasRealOrderItems ? (soldMap[cid] || 0) : (legacyOutMap[cid] || 0);
+        const sold = effectiveSoldMap[cid] || 0;
         const settled = settledMap[cid] || 0;
         const total = sold + settled;
         if (total > 0) combined[cid] = total;
@@ -137,7 +217,7 @@ export function buildModelColorOffsetMap({ orderItems = [], outMovements = [] } 
 
     return {
         combined,
-        soldMap: hasRealOrderItems ? soldMap : legacyOutMap,
+        soldMap: effectiveSoldMap,
         settledMap
     };
 }

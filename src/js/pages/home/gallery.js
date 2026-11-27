@@ -89,6 +89,19 @@ export function getResolvedColorName(inv, colorId = null) {
 }
 window.getResolvedColorName = getResolvedColorName;
 
+export function getLoggedInUserRole() {
+    try {
+        const sessionStr = localStorage.getItem('devo_session');
+        if (!sessionStr) return null;
+        let u = JSON.parse(sessionStr);
+        if (u && u.user) u = u.user;
+        if (!u) return null;
+        return u.role ? String(u.role).toLowerCase().trim() : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 export function checkIsWorker() {
     if (typeof window !== 'undefined' && window.isVisitor === false) {
         return true;
@@ -573,6 +586,7 @@ function setupGalleryRealtime() {
 
             if (eventType === 'DELETE') {
                 model.model_inventory = model.model_inventory.filter(i => String(i.color_id) !== String(payload.old.color_id));
+                delete model.colorSalesMap;
                 pendingGalleryInvModels.add(targetModelId);
                 scheduleGalleryInvFlush();
             } else if (eventType === 'UPDATE' || eventType === 'INSERT') {
@@ -591,6 +605,7 @@ function setupGalleryRealtime() {
                         colors: { name: colorName }
                     });
                 }
+                delete model.colorSalesMap;
                 pendingGalleryInvModels.add(targetModelId);
                 scheduleGalleryInvFlush();
             }
@@ -647,7 +662,10 @@ async function reconcileGalleryInventory() {
                             inv.initial_series = serverVal.initial_series;
                             changed = true;
                         }
-                        if (changed) changedIds.add(model.id);
+                        if (changed) {
+                            delete model.colorSalesMap;
+                            changedIds.add(model.id);
+                        }
                     }
                 });
             }
@@ -1119,6 +1137,28 @@ function updateModelViewerDOM(id) {
             if (colorsContainer) {
                 colorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
             }
+
+            if (checkIsWorker() && !model.colorSalesMap) {
+                fetchModelSalesMap(model.id).then((salesMap) => {
+                    model.colorSalesMap = salesMap || {};
+                    const activeModal = document.getElementById('model-viewer-modal');
+                    if (!activeModal || activeModal.classList.contains('hidden')) return;
+                    if (String(activeModal.getAttribute('data-current-model-id')) !== String(model.id)) return;
+
+                    const activeColorsContainer = document.getElementById('viewer-colors-container');
+                    if (model.is_active === false) {
+                        const updatedSummary = computeModelStockSummary(model, model.colorSalesMap, getResolvedColorName);
+                        const totalBaseEl = document.getElementById('viewer-inactive-total-base');
+                        if (totalBaseEl) totalBaseEl.textContent = String(updatedSummary.totalBase);
+                        if (activeColorsContainer) activeColorsContainer.innerHTML = renderInactiveColorsMarkup(updatedSummary);
+                    } else if (activeColorsContainer) {
+                        activeColorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
+                        if (typeof updateModelSaveButtonSummary === 'function') {
+                            updateModelSaveButtonSummary(model.id);
+                        }
+                    }
+                }).catch(() => {});
+            }
         }
     }
 }
@@ -1158,11 +1198,16 @@ window.changeGalleryPage = (newPage) => {
 };
 
 // 🌟 جلب مبيعات الموديل + تسويات المخزون لحساب الأساسي بدقة (الأساسي = المتبقي + المباع + التسويات) 🌟
+// ملاحظة: جدول order_items محمي بسياسة RLS تسمح للمالك والآدمن فقط برؤية كافة الطلبات،
+// بينما جدول stock_movements متاح لجميع الموظفين (owner, admin, worker)؛ لذا نعتمد عليه للعمال.
 async function fetchModelSalesMap(modelId) {
     if (!modelId) return {};
 
+    const role = getLoggedInUserRole();
+    const canReadAllOrderItems = role === 'owner' || role === 'admin';
+
     let orderItems = [];
-    let outMovements = [];
+    let allMovements = [];
 
     const [ordersRes, movsRes] = await Promise.allSettled([
         supabase
@@ -1173,7 +1218,6 @@ async function fetchModelSalesMap(modelId) {
             .from('stock_movements')
             .select('color_id, quantity, movement_type, reference, order_id')
             .eq('model_id', modelId)
-            .eq('movement_type', 'out')
     ]);
 
     if (ordersRes.status === 'fulfilled' && !ordersRes.value.error && Array.isArray(ordersRes.value.data)) {
@@ -1183,12 +1227,16 @@ async function fetchModelSalesMap(modelId) {
     }
 
     if (movsRes.status === 'fulfilled' && !movsRes.value.error && Array.isArray(movsRes.value.data)) {
-        outMovements = movsRes.value.data;
+        allMovements = movsRes.value.data;
     } else if (movsRes.status === 'rejected') {
         console.warn('[Gallery] stock_movements fetch error:', movsRes.reason);
     }
 
-    const { combined } = buildModelColorOffsetMap({ orderItems, outMovements });
+    const { combined } = buildModelColorOffsetMap({
+        orderItems,
+        allMovements,
+        orderItemsReliable: canReadAllOrderItems
+    });
     return combined;
 }
 

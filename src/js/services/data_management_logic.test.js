@@ -6,6 +6,8 @@ import {
     MAX_LOCK_ATTEMPTS,
     LOCK_COOLDOWN_MS,
     isSettlementMovement,
+    isInboundReversalOutMovement,
+    isOrderReversalInMovement,
     buildSettlementReference,
     computeColorBaseStock,
     buildModelColorOffsetMap,
@@ -76,11 +78,60 @@ test('buildModelColorOffsetMap combines order_items sales and [SETTLEMENT] movem
     assert.equal(0 + res.combined['c1'], 100);
 });
 
-test('isSettlementMovement strictly requires out + null order_id + [SETTLEMENT] prefix', () => {
+test('buildModelColorOffsetMap computes full base stock for workers even when order_items is RLS-filtered to only worker orders', () => {
+    // Reproduces model 7437 (25 initial per color: 6, 7, 11, 4 remaining)
+    // Worker RLS returns ONLY the worker's own orders (4, 5, 3, 4) instead of full (19, 18, 14, 21)
+    const rlsFilteredWorkerOrderItems = [
+        { color_id: 'sakkari', quantity: 4 },
+        { color_id: 'black', quantity: 5 },
+        { color_id: 'basali', quantity: 3 },
+        { color_id: 'nibiti', quantity: 4 }
+    ];
+
+    const allMovements = [
+        // Full sales movements across owner + admin + workers
+        { color_id: 'sakkari', movement_type: 'out', quantity: 15, order_id: null, reference: 'فاتورة مبيعات: 1001' },
+        { color_id: 'sakkari', movement_type: 'out', quantity: 4, order_id: null, reference: 'فاتورة مبيعات: 1002' },
+        { color_id: 'black', movement_type: 'out', quantity: 18, order_id: null, reference: 'فاتورة مبيعات: 1001' },
+        { color_id: 'basali', movement_type: 'out', quantity: 17, order_id: null, reference: 'فاتورة مبيعات: 1001' },
+        // Order edited down by 3 -> 'in' reversal must reduce net sold from 17 to 14
+        { color_id: 'basali', movement_type: 'in', quantity: 3, order_id: null, reference: 'تعديل أوردر رقم 1001' },
+        // Nibiti: sold 21 + deleted order of 5 ('out' 5 then 'in' 5) -> net sold 21
+        { color_id: 'nibiti', movement_type: 'out', quantity: 21, order_id: null, reference: 'فاتورة مبيعات: 1001' },
+        { color_id: 'nibiti', movement_type: 'out', quantity: 5, order_id: null, reference: 'فاتورة مبيعات: 1003' },
+        { color_id: 'nibiti', movement_type: 'in', quantity: 5, order_id: null, reference: 'حذف أوردر من الإدارة: 1003' },
+        // Inbound addition & inbound deletion must NOT distort sales
+        { color_id: 'sakkari', movement_type: 'in', quantity: 25, order_id: null, reference: 'فاتورة دخل: IN-1' },
+        { color_id: 'sakkari', movement_type: 'out', quantity: 2, order_id: null, reference: 'حذف فاتورة دخل: IN-2' },
+        { color_id: 'black', movement_type: 'out', quantity: 1, order_id: null, reference: 'تعديل فاتورة دخل (تخفيض كمية): IN-3' }
+    ];
+
+    const workerRes = buildModelColorOffsetMap({
+        orderItems: rlsFilteredWorkerOrderItems,
+        allMovements,
+        orderItemsReliable: false
+    });
+
+    assert.equal(6 + (workerRes.combined['sakkari'] || 0), 25);
+    assert.equal(7 + (workerRes.combined['black'] || 0), 25);
+    assert.equal(11 + (workerRes.combined['basali'] || 0), 25);
+    assert.equal(4 + (workerRes.combined['nibiti'] || 0), 25);
+});
+
+test('isSettlementMovement, isInboundReversalOutMovement, and isOrderReversalInMovement classify movements strictly', () => {
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية' }), true);
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: 'ord-1', reference: '[SETTLEMENT] تسوية' }), false);
     assert.equal(isSettlementMovement({ movement_type: 'in', order_id: null, reference: '[SETTLEMENT] تسوية' }), false);
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: 'فاتورة بيع' }), false);
+
+    assert.equal(isInboundReversalOutMovement({ movement_type: 'out', reference: 'حذف فاتورة دخل: IN-5' }), true);
+    assert.equal(isInboundReversalOutMovement({ movement_type: 'out', reference: 'تعديل فاتورة دخل (تخفيض كمية): IN-5' }), true);
+    assert.equal(isInboundReversalOutMovement({ movement_type: 'out', reference: 'فاتورة مبيعات: 105' }), false);
+
+    assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'تعديل أوردر رقم 105' }), true);
+    assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'حذف أوردر من الإدارة: 105' }), true);
+    assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'استرجاع رصيد عند حذف فواتير مبيعات (إدارة البيانات)' }), true);
+    assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'فاتورة دخل: IN-1' }), false);
 });
 
 test('buildSettlementPlan creates exact updates and [SETTLEMENT] movements and supports color filter scope', () => {
