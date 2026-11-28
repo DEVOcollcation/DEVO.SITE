@@ -1,4 +1,4 @@
-import { findModelByCode, checkIsWorker } from './gallery.js?v=18.2';
+import { findModelByCode, checkIsWorker } from './gallery.js?v=18.5';
 import { classifyBarcodeLookupResult } from '../../services/barcode_lookup_logic.js';
 import {
     classifyCameraError,

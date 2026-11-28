@@ -313,8 +313,10 @@ export async function cacheImageBlob(rawUrl, modelId = null) {
         // Save to IndexedDB
         if (db) {
             const tx = db.transaction(STORE_IMAGES, 'readwrite');
+            tx.onerror = () => {};
+            tx.onabort = () => {};
             const store = tx.objectStore(STORE_IMAGES);
-            store.put({
+            const req = store.put({
                 url: resolvedUrl,
                 blob: blob,
                 mimeType: blob.type || 'image/jpeg',
@@ -322,13 +324,14 @@ export async function cacheImageBlob(rawUrl, modelId = null) {
                 size: blob.size,
                 saved_at: Date.now()
             });
+            req.onerror = () => {};
         }
 
         // Also put in Cache API
         if ('caches' in window) {
             try {
                 const cache = await caches.open('devo-images-v3');
-                cache.put(resolvedUrl, new Response(blob));
+                await cache.put(resolvedUrl, new Response(blob));
             } catch (e) {}
         }
 

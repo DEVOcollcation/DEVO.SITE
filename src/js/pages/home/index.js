@@ -1,14 +1,14 @@
 import { initNavbar } from './navbar.js?v=9.9';
-import { initGallery } from './gallery.js?v=18.4';
+import { initGallery } from './gallery.js?v=18.5';
 import { initHomeContent } from './home_content.js?v=9.3';
 import { initCart } from './cart.js?v=9.9';
 import { initOrdersView } from './orders.js?v=9.6';
-import { initBarcode } from './barcode.js?v=18.2';
+import { initBarcode } from './barcode.js?v=18.5';
 import { initFooter } from './footer_renderer.js';
 import { syncActiveTheme } from '../../services/theme.js';
 import { initNetworkStatusMonitor } from '../../components/network_banner.js';
 import { validateAndSyncSession, setupUserRealtimeSync } from '../../services/auth.js';
-import { initVisitorCart, getVisitorCartQtyForColor } from './visitor_cart.js?v=11.1';
+import { initVisitorCart, getVisitorCartQtyForColor } from './visitor_cart.js?v=18.5';
 
 const bootHomePage = async () => {
     // مراقبة وإظهار بنر الاتصال بالإنترنت عند الانقطاع

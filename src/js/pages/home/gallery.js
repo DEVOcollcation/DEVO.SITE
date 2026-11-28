@@ -28,6 +28,37 @@ import {
 let allModels = (typeof window !== 'undefined' && window.allGalleryModels) ? window.allGalleryModels : [];
 // Separate store for inactive models scanned by authenticated staff so they NEVER leak into the public gallery grid
 const inactiveScannedModels = new Map();
+let currentOpenViewerModel = (typeof window !== 'undefined' && window.currentOpenViewerModel) ? window.currentOpenViewerModel : null;
+
+function resolveModelById(modelId) {
+    if (modelId === undefined || modelId === null || modelId === '') return null;
+    const idStr = String(modelId);
+
+    let found = allModels.find(m => String(m.id) === idStr);
+    if (found) return found;
+
+    if (typeof window !== 'undefined' && Array.isArray(window.allGalleryModels)) {
+        found = window.allGalleryModels.find(m => String(m.id) === idStr);
+        if (found) {
+            if (!allModels.some(m => String(m.id) === idStr)) {
+                allModels.push(found);
+            }
+            return found;
+        }
+    }
+
+    if (currentOpenViewerModel && String(currentOpenViewerModel.id) === idStr) {
+        return currentOpenViewerModel;
+    }
+
+    if (typeof window !== 'undefined' && window.currentOpenViewerModel && String(window.currentOpenViewerModel.id) === idStr) {
+        currentOpenViewerModel = window.currentOpenViewerModel;
+        return currentOpenViewerModel;
+    }
+
+    return inactiveScannedModels.get(idStr) || null;
+}
+
 let currentCategories = new Set();
 let currentUser = null;
 let isWorker = false;
@@ -1108,7 +1139,7 @@ function patchGalleryCardDOM(model) {
 function updateModelViewerDOM(id) {
     const modal = document.getElementById('model-viewer-modal');
     if (modal && !modal.classList.contains('hidden') && String(modal.getAttribute('data-current-model-id')) === String(id)) {
-        const model = allModels.find(m => String(m.id) === String(id));
+        const model = resolveModelById(id);
         if (model) {
             // تحديث الاسم
             const nameEl = document.getElementById('viewer-name');
@@ -1253,10 +1284,7 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
     let model = (modelOverride && String(modelOverride.id) === String(id)) ? modelOverride : null;
 
     if (!model) {
-        model = allModels.find(m => String(m.id) === String(id));
-    }
-    if (!model && isWorkerActive) {
-        model = inactiveScannedModels.get(String(id)) || null;
+        model = resolveModelById(id);
     }
     if (!model) {
         // محاولة سريعة لجلب الموديلات من الكاش المحلي إن لم تكن مصفوفة الذاكرة جاهزة
@@ -1283,9 +1311,15 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
         return;
     }
 
+    currentOpenViewerModel = model;
+    if (typeof window !== 'undefined') window.currentOpenViewerModel = model;
+
     // Keep scanned inactive models cached separately for fast re-open without polluting allModels
     if (isInactiveModel && isWorkerActive) {
         inactiveScannedModels.set(String(model.id), model);
+    } else if (!allModels.some(m => String(m.id) === String(model.id))) {
+        allModels.unshift(model);
+        if (typeof window !== 'undefined') window.allGalleryModels = allModels;
     }
 
     if (!skipHistory && !isInactiveModel) {
@@ -1666,7 +1700,7 @@ function getCartQtyForColor(modelId, colorId) {
 }
 
 async function refreshColorsContainer(modelId) {
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = resolveModelById(modelId);
     if (!model) return;
     const isWorkerActive = checkIsWorker();
     if (isWorkerActive) {
@@ -1894,7 +1928,7 @@ window.decrementQty = (inputId, min = 1) => {
 
 export function syncColorQtyAndAutoSave(modelId, colorId, newQty) {
     const isWorkerActive = checkIsWorker();
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = resolveModelById(modelId);
     if (!model) return;
 
     if (isWorkerActive) {
@@ -2130,7 +2164,7 @@ export function updateColorRowUI(input) {
     if (!input) return;
     const modelId = input.dataset.modelId;
     const colorId = input.dataset.colorId;
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = resolveModelById(modelId);
     updateColorRowUIFast(model, colorId);
     if (modelId) updateModelSaveButtonSummary(modelId);
 }
@@ -2211,7 +2245,7 @@ export function saveWorkerModelCart(modelId, btn, unlockBtn) {
         else if (btn) { btn.disabled = false; delete btn.dataset.locked; }
     };
 
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = resolveModelById(modelId);
     if (!model || !model.model_inventory) {
         unlock();
         return showToast('حدث خطأ في تحميل بيانات الموديل!', 'error');
@@ -2303,7 +2337,7 @@ window.addSetToCart = (event, modelId) => {
         btn.disabled = true;
     }
 
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = resolveModelById(modelId);
     if (!model || !model.model_inventory || model.model_inventory.length === 0) {
         if (btn) { btn.disabled = false; delete btn.dataset.locked; }
         return showToast('لا توجد ألوان متاحة لهذا الموديل!', 'error');
@@ -2357,7 +2391,7 @@ window.addToCart = (event, modelId, colorId) => {
         }
     };
 
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = resolveModelById(modelId);
     if (!model) {
         unlockBtn();
         return showToast('الموديل غير متوفر حالياً', 'error');

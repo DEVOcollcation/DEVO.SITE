@@ -136,7 +136,8 @@ window.visitorAddToCart = (event, modelId, colorId) => {
     const unlock = () => { if (btn) { btn.disabled = false; delete btn.dataset.locked; } };
 
     const allModels = window.allGalleryModels || [];
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = allModels.find(m => String(m.id) === String(modelId))
+        || (window.currentOpenViewerModel && String(window.currentOpenViewerModel.id) === String(modelId) ? window.currentOpenViewerModel : null);
     if (!model) { unlock(); return showToast('الموديل غير متوفر حالياً', 'error'); }
 
     const inv = model.model_inventory?.find(i => String(i.color_id) === String(colorId));
@@ -216,7 +217,8 @@ export function saveVisitorModelCart(modelId, btn, btnText, unlockBtn) {
     };
 
     const allModels = window.allGalleryModels || [];
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = allModels.find(m => String(m.id) === String(modelId))
+        || (window.currentOpenViewerModel && String(window.currentOpenViewerModel.id) === String(modelId) ? window.currentOpenViewerModel : null);
     if (!model || !model.model_inventory) {
         unlock();
         return showToast('حدث خطأ في تحميل بيانات الموديل!', 'error');
@@ -320,7 +322,8 @@ window.visitorAddSetToCart = (event, modelId) => {
     }
 
     const allModels = window.allGalleryModels || [];
-    const model = allModels.find(m => String(m.id) === String(modelId));
+    const model = allModels.find(m => String(m.id) === String(modelId))
+        || (window.currentOpenViewerModel && String(window.currentOpenViewerModel.id) === String(modelId) ? window.currentOpenViewerModel : null);
     if (!model || !model.model_inventory?.length) {
         if (btn) { btn.disabled = false; delete btn.dataset.locked; }
         return showToast('لا توجد ألوان متاحة لهذا الموديل!', 'error');
@@ -339,6 +342,7 @@ window.visitorAddSetToCart = (event, modelId) => {
             const currentVal = parseInt(input.value) || 0;
             const spaceLeft = dbAvailable - currentVal;
             if (spaceLeft <= 0) return;
+            const addVal = Math.min(setCount, spaceLeft);
             const newVal = currentVal + addVal;
             input.value = newVal;
             if (typeof window.syncColorQtyAndAutoSave === 'function') {
