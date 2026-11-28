@@ -1197,7 +1197,7 @@ window.changeGalleryPage = (newPage) => {
     document.getElementById('gal-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
-// 🌟 جلب مبيعات الموديل + تسويات المخزون لحساب الأساسي بدقة (الأساسي = المتبقي + المباع + التسويات) 🌟
+// 🌟 جلب مبيعات الموديل لحساب الأساسي بدقة (الأساسي = المتبقي + المباع) 🌟
 // ملاحظة: جدول order_items محمي بسياسة RLS تسمح للمالك والآدمن فقط برؤية كافة الطلبات،
 // بينما جدول stock_movements متاح لجميع الموظفين (owner, admin, worker)؛ لذا نعتمد عليه للعمال.
 async function fetchModelSalesMap(modelId) {

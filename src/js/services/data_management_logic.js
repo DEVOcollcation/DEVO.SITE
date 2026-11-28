@@ -7,6 +7,7 @@
  */
 
 export const SETTLEMENT_REF_PREFIX = '[SETTLEMENT]';
+export const ARCHIVE_ORDER_SETTLEMENT_REF = `${SETTLEMENT_REF_PREFIX} أرشيف فواتير مبيعات محذوفة`;
 export const SETTINGS_LOCK_KEY = 'settings_security_lock_v1';
 
 export const LOCK_MODES = Object.freeze({
@@ -41,8 +42,7 @@ export const PATTERN_MIDPOINTS = Object.freeze({
 // =========================================================================
 
 /**
- * Identifies whether a stock_movements row represents a settlement / zeroing
- * entry (distinct from regular sales orders).
+ * Identifies whether a stock_movements row represents any [SETTLEMENT] entry.
  */
 export function isSettlementMovement(movement) {
     if (!movement || typeof movement !== 'object') return false;
@@ -50,6 +50,74 @@ export function isSettlementMovement(movement) {
     const hasNoOrder = movement.order_id === null || movement.order_id === undefined || movement.order_id === '';
     const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
     return isOut && hasNoOrder && ref.startsWith(SETTLEMENT_REF_PREFIX);
+}
+
+/**
+ * Identifies whether a [SETTLEMENT] row represents archived deleted sales orders
+ * (which ARE real historical sales preserved in Base Stock when orders are purged).
+ * Stock zeroing / inventory settlement rows are intentionally excluded so re-syncing
+ * real stock via Excel never double-counts remaining inventory in Base Stock.
+ */
+export function isOrderArchiveSettlementMovement(movement) {
+    if (!isSettlementMovement(movement)) return false;
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    return ref === ARCHIVE_ORDER_SETTLEMENT_REF || ref.startsWith(`${ARCHIVE_ORDER_SETTLEMENT_REF} `);
+}
+
+/**
+ * Identifies whether a stock_movements row is a stock-zeroing / inventory
+ * settlement row (anything starting with [SETTLEMENT] except archived deleted
+ * sales orders). These must be excluded from Base Stock and operations logs.
+ */
+export function isStockZeroSettlementMovement(movement) {
+    return isSettlementMovement(movement) && !isOrderArchiveSettlementMovement(movement);
+}
+
+/**
+ * Filters out stock-zeroing [SETTLEMENT] rows from a model's stock_movements
+ * history list so operations logs stay accurate and free of zeroing noise.
+ */
+export function filterExcludedSettlementMovements(movements = []) {
+    if (!Array.isArray(movements)) return [];
+    return movements.filter(mov => mov && !isStockZeroSettlementMovement(mov));
+}
+
+/**
+ * Computes per-color real sold quantities for the Admin Edit Model modal
+ * (preventing deletion of colors that have real customer sales, while ignoring
+ * stock-zeroing settlements, inbound reversals, and ERP/manual sync deductions).
+ */
+export function computeAdminModalSoldMap(outMovements = []) {
+    const soldMap = {};
+    if (!Array.isArray(outMovements)) return soldMap;
+    for (const mov of outMovements) {
+        if (!mov || mov.color_id === null || mov.color_id === undefined) continue;
+        if (mov.movement_type && mov.movement_type !== 'out') continue;
+        if (
+            isStockZeroSettlementMovement(mov) ||
+            isInboundReversalOutMovement(mov) ||
+            isInventorySyncOutMovement(mov)
+        ) {
+            continue;
+        }
+        const qty = Math.max(0, Number(mov.quantity) || 0);
+        if (qty > 0) {
+            const cid = String(mov.color_id);
+            soldMap[cid] = (soldMap[cid] || 0) + qty;
+        }
+    }
+    return soldMap;
+}
+
+/**
+ * Identifies whether an 'out' stock_movements row represents an ERP / manual
+ * stock adjustment (not a customer sale).
+ */
+export function isInventorySyncOutMovement(movement) {
+    if (!movement || typeof movement !== 'object') return false;
+    if (movement.movement_type !== 'out') return false;
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    return ref.startsWith('مزامنة جرد ERP') || ref.startsWith('تعديل رصيد يدوي');
 }
 
 /**
@@ -83,11 +151,11 @@ export function isOrderReversalInMovement(movement) {
  */
 export function buildSettlementReference(reason = '', kind = 'zero') {
     const cleanReason = String(reason || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (kind === 'archive_order') {
+        return cleanReason ? `${ARCHIVE_ORDER_SETTLEMENT_REF} ${cleanReason}` : ARCHIVE_ORDER_SETTLEMENT_REF;
+    }
     if (cleanReason) {
         return `${SETTLEMENT_REF_PREFIX} ${cleanReason}`;
-    }
-    if (kind === 'archive_order') {
-        return `${SETTLEMENT_REF_PREFIX} أرشيف فواتير مبيعات محذوفة`;
     }
     if (kind === 'adjust') {
         return `${SETTLEMENT_REF_PREFIX} تسوية رصيد مخزون`;
@@ -97,7 +165,8 @@ export function buildSettlementReference(reason = '', kind = 'zero') {
 
 /**
  * Computes accurate Base Stock (الأصل) for a single model+color:
- *   Base Stock = Current Remaining + Sold in Invoices + Settled/Zeroed Movements
+ *   Base Stock = Current Remaining + Sold in Invoices + Archived Deleted Sales
+ * (Model stock zeroing / settlement deductions are NOT counted in Base Stock.)
  */
 export function computeColorBaseStock({ availableSeries = 0, soldSeries = 0, settledSeries = 0 } = {}) {
     const available = Math.max(0, Number(availableSeries) || 0);
@@ -158,9 +227,16 @@ export function buildModelColorOffsetMap({
         const qty = Math.max(0, Number(mov.quantity) || 0);
         if (qty <= 0) continue;
 
-        if (isSettlementMovement(mov)) {
+        if (isOrderArchiveSettlementMovement(mov)) {
             settledMap[cid] = (settledMap[cid] || 0) + qty;
-        } else if (mov.movement_type === 'out' && !isInboundReversalOutMovement(mov)) {
+        } else if (
+            isSettlementMovement(mov) ||
+            isInboundReversalOutMovement(mov) ||
+            isInventorySyncOutMovement(mov)
+        ) {
+            // Model stock zeroing/settlements, inbound invoice reversals, and ERP/manual
+            // inventory adjustments must NOT count as sales or inflate Base Stock (الأصل).
+        } else if (mov.movement_type === 'out') {
             rawSalesOutMap[cid] = (rawSalesOutMap[cid] || 0) + qty;
         }
     }
@@ -223,17 +299,15 @@ export function buildModelColorOffsetMap({
 }
 
 /**
- * Builds an exact settlement/zeroing plan for selected models.
- * - targetQty = 0 zeroes remaining stock while recording delta in stock_movements
- * - targetQty > 0 adjusts remaining stock to targetQty:
- *     - If currentQty > targetQty: records positive settlement 'out' movement of (currentQty - targetQty)
- *     - If currentQty < targetQty: increases stock (records 'in' adjustment movement; does not inflate settlement)
- * - onlyColorIds (optional Set/Array): restricts operation to matching colors only.
+ * Builds an exact zeroing / stock adjustment plan for selected models.
+ * - Updates model_inventory.available_series directly to targetQty (e.g. 0)
+ * - Does NOT emit [SETTLEMENT] stock_movements rows so zeroed inventory is never
+ *   double-counted in Base Stock (الأصل) when real stock is later imported via Excel.
+ * - onlyColorIds (optional Array): restricts operation to matching colors only.
  */
 export function buildSettlementPlan(models = [], options = {}) {
     const targetQty = Math.max(0, parseInt(options.targetQty ?? 0, 10) || 0);
     const onlyDecrease = options.onlyDecrease !== false && targetQty === 0;
-    const reason = options.reason || '';
     const colorFilterSet = options.onlyColorIds && options.onlyColorIds.length > 0
         ? new Set(options.onlyColorIds.map(String))
         : null;
@@ -255,7 +329,7 @@ export function buildSettlementPlan(models = [], options = {}) {
             if (currentQty === targetQty) continue;
             if (onlyDecrease && currentQty < targetQty) continue;
 
-            const delta = currentQty - targetQty; // > 0 means settling/removing from remaining
+            const delta = currentQty - targetQty; // > 0 means zeroing/reducing remaining
             affectedModelIds.add(model.id);
 
             updates.push({
@@ -272,27 +346,8 @@ export function buildSettlementPlan(models = [], options = {}) {
 
             if (delta > 0) {
                 totalSeriesSettled += delta;
-                movements.push({
-                    model_id: model.id,
-                    color_id: inv.color_id,
-                    movement_type: 'out',
-                    quantity: delta,
-                    reference: buildSettlementReference(reason, targetQty === 0 ? 'zero' : 'adjust'),
-                    order_id: null,
-                    inbound_id: null
-                });
             } else if (delta < 0) {
-                const added = Math.abs(delta);
-                totalSeriesAdded += added;
-                movements.push({
-                    model_id: model.id,
-                    color_id: inv.color_id,
-                    movement_type: 'in',
-                    quantity: added,
-                    reference: reason ? `تعديل رصيد يدوي (إدارة البيانات): ${reason.trim()}` : 'تعديل رصيد يدوي (إدارة البيانات)',
-                    order_id: null,
-                    inbound_id: null
-                });
+                totalSeriesAdded += Math.abs(delta);
             }
         }
     }

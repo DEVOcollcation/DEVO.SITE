@@ -2,6 +2,10 @@ import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { printModelsDirect } from '../../services/barcode_direct_printer.js';
+import {
+    filterExcludedSettlementMovements,
+    computeAdminModalSoldMap
+} from '../../services/data_management_logic.js';
 
 let isInitialized = false;
 let allModels = [];
@@ -322,6 +326,7 @@ function setupAdminRealtimeTracker() {
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stock_movements' }, async (payload) => {
             if (currentOpenModelId === payload.new.model_id) {
+                if (filterExcludedSettlementMovements([payload.new]).length === 0) return;
                 const { data: colorData } = await supabase.from('colors').select('name').eq('id', payload.new.color_id).single();
                 payload.new.colors = { name: colorData?.name || 'غير معروف' };
                 currentModelMovements.unshift(payload.new);
@@ -689,20 +694,21 @@ window.openStandaloneBarcodeForModel = async (modelId) => {
 // 🌟 4. النافذة التفصيلية وفلاتر الحركات الذكية 🌟
 // ==========================================
 
-// 💡 خوارزمية تنظيف السجل (لإخفاء الحركات الوهمية التي يسببها تعديل الأوردرات) 💡
+// 💡 خوارزمية تنظيف السجل (لإخفاء الحركات الوهمية التي يسببها تعديل الأوردرات واستبعاد حركات التسوية) 💡
 function cleanUpMovements(movements) {
+    const visibleMovements = filterExcludedSettlementMovements(movements);
     let cleaned = [];
     let skipIndices = new Set();
 
-    for (let i = 0; i < movements.length; i++) {
+    for (let i = 0; i < visibleMovements.length; i++) {
         if (skipIndices.has(i)) continue;
-        let m1 = movements[i];
+        let m1 = visibleMovements[i];
         let foundPair = false;
 
         // البحث في الحركات اللاحقة عن حركة عكسية لنفس اللون والكمية في غضون 5 ثواني
-        for (let j = i + 1; j < Math.min(i + 8, movements.length); j++) {
+        for (let j = i + 1; j < Math.min(i + 8, visibleMovements.length); j++) {
             if (skipIndices.has(j)) continue;
-            let m2 = movements[j];
+            let m2 = visibleMovements[j];
             
             const timeDiff = Math.abs(new Date(m1.created_at) - new Date(m2.created_at));
             if (m1.color_id === m2.color_id && m1.quantity === m2.quantity && m1.movement_type !== m2.movement_type && timeDiff < 5000) {
@@ -1009,9 +1015,12 @@ window.openModelModal = async (id = null) => {
         modal.classList.remove('hidden');
         setTimeout(() => modal.classList.remove('opacity-0'), 10);
 
-        const { data: outMovements } = await supabase.from('stock_movements').select('color_id, quantity').eq('model_id', id).eq('movement_type', 'out');
-        const soldMap = {};
-        outMovements?.forEach(m => { soldMap[m.color_id] = (soldMap[m.color_id] || 0) + m.quantity; });
+        const { data: outMovements } = await supabase
+            .from('stock_movements')
+            .select('color_id, quantity, movement_type, reference, order_id')
+            .eq('model_id', id)
+            .eq('movement_type', 'out');
+        const soldMap = computeAdminModalSoldMap(outMovements || []);
 
         invContainer.innerHTML = '';
         model.model_inventory.forEach(inv => {

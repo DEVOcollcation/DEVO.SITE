@@ -3,6 +3,8 @@ import { showToast } from '../../components/toast.js';
 import { requireAuth } from '../../services/auth.js';
 import { checkModelsInInvoices } from './models.js';
 import {
+    SETTLEMENT_REF_PREFIX,
+    isStockZeroSettlementMovement,
     buildSettlementPlan,
     buildOrderArchiveSettlementEntries,
     buildOrderRestoreStockDeltas,
@@ -83,7 +85,7 @@ function renderDataManagementShell() {
                         <i class="ph ph-sliders-horizontal text-devo-orange text-2xl shrink-0"></i>
                         <span>إدارة البيانات والتسويات</span>
                     </h2>
-                    <p class="text-xs text-devo-muted">تحكم دقيق في تسوية وتصفير أرصدة الموديلات مع حفظ الأصل، وحذف الفواتير والطلبات والإشعارات</p>
+                    <p class="text-xs text-devo-muted">تحكم دقيق في تصفير وتعديل أرصدة الموديلات دون احتساب تسويات في الأصل، وحذف الفواتير والطلبات والإشعارات</p>
                 </div>
 
                 <!-- Segmented Control Tabs -->
@@ -243,7 +245,7 @@ function renderDataManagementShell() {
                 <div id="dm-models-actionbar" class="sticky bottom-2 z-20 bg-devo-dark/95 backdrop-blur-md border border-devo-gray shadow-devo-float rounded-xl p-3.5 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 transition-colors">
                     <div class="space-y-0.5 min-w-0">
                         <p class="text-sm font-bold text-devo-text">إجراءات على الموديلات المحددة (<span id="dm-actionbar-count" class="text-devo-orange font-mono tabular-nums">0</span>)</p>
-                        <p class="text-xs text-devo-muted truncate">تصفير/تسوية الرصيد يسجّل حركة تسوية مستقلة تحفظ «الأصل» صحيحاً في كارت الموديل بالمعرض</p>
+                        <p class="text-xs text-devo-muted truncate">تصفير/تعديل الرصيد يضبط المتبقي مباشرة دون تسجيل حركة تسوية، ليُحسب «الأصل» من المبيعات والمتاح الفعلي فقط</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2.5 shrink-0">
                         <button type="button" id="dm-open-zero-modal-btn" class="flex-1 md:flex-none justify-center px-4 py-2.5 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white text-xs sm:text-sm font-bold transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
@@ -969,12 +971,12 @@ function openZeroSettlementModal() {
     const bodyHtml = `
         <div class="space-y-4">
             <div class="bg-devo-black border border-devo-gray rounded-xl p-3.5 text-xs text-devo-muted leading-relaxed">
-                <p class="text-devo-text font-bold mb-1">كيف يتم الحفاظ على «الرصيد الأساسي (الأصل)»؟</p>
-                <p>سيتم ضبط الرصيد المتبقي على القيمة المختارة وتسجيل الفرق تلقائياً كحركة تسوية مستقلة في دفتر المخزون، فيظهر في كارت الموديل المتبقي بصفر (أو القيمة الجديدة) بينما يظل <strong>الأصل</strong> صحيحاً تماماً ولا تتأثر تقارير المبيعات.</p>
+                <p class="text-devo-text font-bold mb-1">تصفير الرصيد دون احتساب تسوية في «الأصل»</p>
+                <p>سيتم ضبط الرصيد المتبقي للموديلات المحددة على القيمة المختارة (مثل <strong>0</strong> قبل رفع شيت الإكسيل) <strong>دون تسجيل أي حركات تسوية</strong> في سجل المخزون؛ وبذلك يُحسب <strong>العدد الأساسي (الأصل)</strong> من المبيعات الفعلية + الرصيد المتبقي الحقيقي فقط دون تضاعف.</p>
             </div>
 
             <div class="space-y-2">
-                <label class="block text-xs font-bold text-devo-text">نوع التسوية</label>
+                <label class="block text-xs font-bold text-devo-text">نوع التعديل</label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <label class="flex items-center gap-2.5 p-3 rounded-xl bg-devo-black border border-devo-gray has-[:checked]:border-devo-orange cursor-pointer">
                         <input type="radio" name="dm-settle-type" value="zero" checked class="accent-devo-orange w-4 h-4">
@@ -982,7 +984,7 @@ function openZeroSettlementModal() {
                     </label>
                     <label class="flex items-center gap-2.5 p-3 rounded-xl bg-devo-black border border-devo-gray has-[:checked]:border-devo-orange cursor-pointer">
                         <input type="radio" name="dm-settle-type" value="custom" class="accent-devo-orange w-4 h-4">
-                        <span class="text-xs font-bold text-devo-text">تسوية لرصيد متبقي محدد</span>
+                        <span class="text-xs font-bold text-devo-text">تعديل لرصيد متبقي محدد</span>
                     </label>
                 </div>
                 <div id="dm-settle-target-wrap" class="hidden pt-1">
@@ -1007,11 +1009,6 @@ function openZeroSettlementModal() {
                 </div>
             ` : ''}
 
-            <div>
-                <label for="dm-settle-reason" class="block text-xs text-devo-muted mb-1">سبب التسوية (اختياري — للتوثيق الداخلي)</label>
-                <input type="text" id="dm-settle-reason" placeholder="مثال: تسوية بواقي تصنيع / جرد نهاية موسم..." maxlength="120" class="w-full bg-devo-black border border-devo-gray focus:border-devo-orange rounded-lg px-3 py-2 text-sm text-devo-text outline-none">
-            </div>
-
             <div id="dm-settle-preview-box" class="bg-devo-black border border-devo-gray rounded-xl p-3.5 grid grid-cols-3 gap-2 text-center"></div>
             <div id="dm-settle-progress" class="hidden space-y-1.5">
                 <div class="h-2 bg-devo-black rounded-full overflow-hidden border border-devo-gray">
@@ -1029,7 +1026,7 @@ function openZeroSettlementModal() {
             <button type="button" id="dm-modal-cancel-btn" class="px-4 py-2 rounded-xl border border-devo-gray text-xs font-bold text-devo-muted hover:text-devo-text">إلغاء</button>
             <button type="button" id="dm-modal-confirm-settle" class="px-5 py-2 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white text-xs font-bold flex items-center gap-1.5">
                 <i class="ph ph-check-circle text-base"></i>
-                <span>تنفيذ التسوية الآن</span>
+                <span>تنفيذ التصفير / التعديل</span>
             </button>
         `
     });
@@ -1038,12 +1035,10 @@ function openZeroSettlementModal() {
         const settleType = document.querySelector('input[name="dm-settle-type"]:checked')?.value || 'zero';
         const targetQty = settleType === 'zero' ? 0 : Math.max(0, parseInt(document.getElementById('dm-settle-target-qty')?.value || '0', 10) || 0);
         const colorScope = document.querySelector('input[name="dm-settle-color-scope"]:checked')?.value || 'all';
-        const reason = document.getElementById('dm-settle-reason')?.value || '';
         return buildSettlementPlan(selectedModels, {
             targetQty,
             onlyDecrease: settleType === 'zero',
-            onlyColorIds: colorScope === 'filtered' ? activeColorIds : null,
-            reason
+            onlyColorIds: colorScope === 'filtered' ? activeColorIds : null
         });
     };
 
@@ -1051,6 +1046,9 @@ function openZeroSettlementModal() {
         const plan = getCurrentPlan();
         const box = document.getElementById('dm-settle-preview-box');
         if (box) {
+            const isPureIncrease = plan.summary.totalSeriesAdded > 0 && plan.summary.totalSeriesSettled === 0;
+            const deltaLabel = isPureIncrease ? 'سيريهات ستُضاف' : 'سيريهات للتصفير / الخصم';
+            const deltaValue = isPureIncrease ? `+${plan.summary.totalSeriesAdded}` : `${plan.summary.totalSeriesSettled}`;
             box.innerHTML = `
                 <div>
                     <p class="text-[11px] text-devo-muted">الموديلات المتأثرة</p>
@@ -1061,8 +1059,8 @@ function openZeroSettlementModal() {
                     <p class="text-lg font-black text-devo-text font-mono tabular-nums">${plan.summary.colorRowsAffected}</p>
                 </div>
                 <div>
-                    <p class="text-[11px] text-devo-muted">سيريهات للتسوية</p>
-                    <p class="text-lg font-black text-devo-orange font-mono tabular-nums">${plan.summary.totalSeriesSettled}</p>
+                    <p class="text-[11px] text-devo-muted">${deltaLabel}</p>
+                    <p class="text-lg font-black text-devo-orange font-mono tabular-nums">${deltaValue}</p>
                 </div>
             `;
         }
@@ -1099,17 +1097,7 @@ function openZeroSettlementModal() {
 
         try {
             const CHUNK = 100;
-            // 1. Insert [SETTLEMENT] movements first so Base Stock ledger is preserved atomically
-            for (let i = 0; i < plan.movements.length; i += CHUNK) {
-                const chunk = plan.movements.slice(i, i + CHUNK);
-                const { error: movErr } = await supabase.from('stock_movements').insert(chunk);
-                if (movErr) throw movErr;
-                const pct = Math.round(((i + chunk.length) / (plan.movements.length + plan.updates.length)) * 100);
-                if (progressBar) progressBar.style.width = `${pct}%`;
-                if (progressText) progressText.textContent = `جاري توثيق حركات التسوية لحفظ الأصل (${pct}%)...`;
-            }
-
-            // 2. Update model_inventory available_series in safe chunks
+            // Update model_inventory.available_series directly without inserting [SETTLEMENT] movements
             for (let i = 0; i < plan.updates.length; i += CHUNK) {
                 const chunk = plan.updates.slice(i, i + CHUNK).map(u => ({
                     id: u.id,
@@ -1122,20 +1110,56 @@ function openZeroSettlementModal() {
                     .upsert(chunk, { onConflict: 'model_id,color_id' });
                 if (invErr) throw invErr;
 
-                const pct = Math.round(((plan.movements.length + i + chunk.length) / (plan.movements.length + plan.updates.length)) * 100);
+                const pct = Math.round(((i + chunk.length) / plan.updates.length) * 100);
                 if (progressBar) progressBar.style.width = `${pct}%`;
-                if (progressText) progressText.textContent = `جاري تحديث أرصدة الموديلات (${pct}%)...`;
+                if (progressText) progressText.textContent = `جاري ضبط أرصدة الموديلات (${pct}%)...`;
+            }
+
+            try {
+                const affectedPairKeys = new Set(plan.updates.map(u => `${u.model_id}::${u.color_id}`));
+                const uniqueModelIds = [...new Set(plan.updates.map(u => u.model_id).filter(Boolean))];
+                const idsToDelete = [];
+                for (let i = 0; i < uniqueModelIds.length; i += 200) {
+                    const modelChunk = uniqueModelIds.slice(i, i + 200);
+                    const { data: legacyRows, error: legacyFetchErr } = await supabase
+                        .from('stock_movements')
+                        .select('id, model_id, color_id, movement_type, order_id, reference')
+                        .in('model_id', modelChunk)
+                        .eq('movement_type', 'out')
+                        .is('order_id', null)
+                        .ilike('reference', `${SETTLEMENT_REF_PREFIX}%`);
+                    if (legacyFetchErr) {
+                        console.warn('[DataManagement] Legacy settlement lookup warning:', legacyFetchErr);
+                        continue;
+                    }
+                    for (const row of legacyRows || []) {
+                        if (affectedPairKeys.has(`${row.model_id}::${row.color_id}`) && isStockZeroSettlementMovement(row)) {
+                            idsToDelete.push(row.id);
+                        }
+                    }
+                }
+                for (let i = 0; i < idsToDelete.length; i += 200) {
+                    const { error: legacyDelErr } = await supabase
+                        .from('stock_movements')
+                        .delete()
+                        .in('id', idsToDelete.slice(i, i + 200));
+                    if (legacyDelErr) {
+                        console.warn('[DataManagement] Legacy settlement cleanup warning:', legacyDelErr);
+                    }
+                }
+            } catch (cleanupErr) {
+                console.warn('[DataManagement] Legacy settlement cleanup skipped:', cleanupErr);
             }
 
             closeDmModal();
-            showToast(`تمت تسوية ${plan.summary.totalSeriesSettled} سيري لـ ${plan.summary.modelsAffected} موديل مع حفظ الأصل بنجاح`, 'success');
+            showToast(`تم ضبط أرصدة ${plan.summary.colorRowsAffected} لون لـ ${plan.summary.modelsAffected} موديل بنجاح دون تسجيل تسويات`, 'success');
             await fetchDmModels();
             if (typeof window.refreshAllSystemData === 'function') {
                 await window.refreshAllSystemData({ silent: true });
             }
         } catch (err) {
             console.error('[DataManagement] Settlement execution error:', err);
-            showToast(`فشلت عملية التسوية: ${err.message}`, 'error');
+            showToast(`فشلت عملية ضبط الرصيد: ${err.message}`, 'error');
             confirmBtn.disabled = false;
         }
     });

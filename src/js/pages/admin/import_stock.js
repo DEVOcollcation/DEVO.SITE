@@ -1,5 +1,9 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
+import {
+    SETTLEMENT_REF_PREFIX,
+    isStockZeroSettlementMovement
+} from '../../services/data_management_logic.js';
 
 let isInitialized = false;
 let allModels = [];
@@ -1435,6 +1439,42 @@ async function handleConfirmSave() {
                 const chunk = allMovementsToInsert.slice(i, i + 200);
                 const { error } = await supabase.from('stock_movements').insert(chunk);
                 if (error) throw error;
+            }
+        }
+
+        if (affectedModelIds.length > 0) {
+            try {
+                const idsToDelete = [];
+                for (let i = 0; i < affectedModelIds.length; i += 200) {
+                    const modelChunk = affectedModelIds.slice(i, i + 200);
+                    const { data: legacyRows, error: legacyFetchErr } = await supabase
+                        .from('stock_movements')
+                        .select('id, movement_type, order_id, reference')
+                        .in('model_id', modelChunk)
+                        .eq('movement_type', 'out')
+                        .is('order_id', null)
+                        .ilike('reference', `${SETTLEMENT_REF_PREFIX}%`);
+                    if (legacyFetchErr) {
+                        console.warn('[ImportStock] Legacy settlement lookup warning:', legacyFetchErr);
+                        continue;
+                    }
+                    for (const row of legacyRows || []) {
+                        if (isStockZeroSettlementMovement(row)) {
+                            idsToDelete.push(row.id);
+                        }
+                    }
+                }
+                for (let i = 0; i < idsToDelete.length; i += 200) {
+                    const { error: legacyDelErr } = await supabase
+                        .from('stock_movements')
+                        .delete()
+                        .in('id', idsToDelete.slice(i, i + 200));
+                    if (legacyDelErr) {
+                        console.warn('[ImportStock] Legacy settlement cleanup warning:', legacyDelErr);
+                    }
+                }
+            } catch (cleanupErr) {
+                console.warn('[ImportStock] Legacy settlement cleanup skipped:', cleanupErr);
             }
         }
 

@@ -2,10 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     SETTLEMENT_REF_PREFIX,
+    ARCHIVE_ORDER_SETTLEMENT_REF,
     LOCK_MODES,
     MAX_LOCK_ATTEMPTS,
     LOCK_COOLDOWN_MS,
     isSettlementMovement,
+    isOrderArchiveSettlementMovement,
+    isStockZeroSettlementMovement,
+    filterExcludedSettlementMovements,
+    computeAdminModalSoldMap,
+    isInventorySyncOutMovement,
     isInboundReversalOutMovement,
     isOrderReversalInMovement,
     buildSettlementReference,
@@ -29,53 +35,69 @@ import {
 } from './data_management_logic.js';
 
 // =========================================================================
-// 1. BASE STOCK & SETTLEMENT EQUATION TESTS (User's exact 100 -> 80 -> 20 -> 0 -> +40 scenario)
+// 1. BASE STOCK & SETTLEMENT EQUATION TESTS
 // =========================================================================
 
-test('Base Stock equation preserves original 100 when settling remaining 20 to 0 and scales when adding +40 later', () => {
-    // Initial: 100 manufactured, 0 sold, 0 settled
-    assert.deepEqual(computeColorBaseStock({ availableSeries: 100, soldSeries: 0, settledSeries: 0 }), {
-        available: 100, sold: 0, settled: 0, baseStock: 100
-    });
+test('Zeroing remaining 5 -> Excel import sets real 4 yields Base Stock = 24 (not 29) for Owner and Worker', () => {
+    // User's exact scenario:
+    // - 20 sold in invoices
+    // - 5 remaining on system before zeroing
+    // - Model zeroed to 0 (no settlement row recorded; even if a legacy [SETTLEMENT] row exists, it is ignored)
+    // - Excel stock sheet uploaded with real physical count = 4 remaining
+    // Expected Base Stock = 20 sold + 4 real remaining = 24 (NOT 20 + 5 + 4 = 29)
+    const orderItems = [
+        { color_id: 'c1', quantity: 20 }
+    ];
+    const allMovements = [
+        { color_id: 'c1', movement_type: 'out', quantity: 20, order_id: null, reference: 'فاتورة مبيعات: 501' },
+        // Legacy [SETTLEMENT] from prior model zeroing (must NOT inflate base stock!)
+        { color_id: 'c1', movement_type: 'out', quantity: 5, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} تسوية وتصفير مخزون` },
+        // Custom [SETTLEMENT] zeroing/waste reason (must NOT inflate base stock!)
+        { color_id: 'c1', movement_type: 'out', quantity: 3, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} هالك` },
+        // Subsequent ERP Excel import setting physical count to 4
+        { color_id: 'c1', movement_type: 'in', quantity: 4, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' }
+    ];
 
-    // Sold 80 -> remaining 20, base still 100
-    assert.deepEqual(computeColorBaseStock({ availableSeries: 20, soldSeries: 80, settledSeries: 0 }), {
-        available: 20, sold: 80, settled: 0, baseStock: 100
-    });
+    const ownerRes = buildModelColorOffsetMap({ orderItems, allMovements, orderItemsReliable: true });
+    assert.equal(ownerRes.soldMap['c1'], 20);
+    assert.equal(ownerRes.settledMap['c1'] || 0, 0);
+    assert.equal(4 + (ownerRes.combined['c1'] || 0), 24);
 
-    // Zeroed remaining 20 via Data Management -> remaining 0, sold 80, settled 20 => base STILL 100!
-    assert.deepEqual(computeColorBaseStock({ availableSeries: 0, soldSeries: 80, settledSeries: 20 }), {
-        available: 0, sold: 80, settled: 20, baseStock: 100
-    });
-
-    // Later inbound batch +40 -> remaining 40, sold 80, settled 20 => base 140!
-    assert.deepEqual(computeColorBaseStock({ availableSeries: 40, soldSeries: 80, settledSeries: 20 }), {
-        available: 40, sold: 80, settled: 20, baseStock: 140
-    });
+    // Worker (order_items RLS-filtered to empty) must get the exact same 24
+    const workerRes = buildModelColorOffsetMap({ orderItems: [], allMovements, orderItemsReliable: false });
+    assert.equal(workerRes.soldMap['c1'], 20);
+    assert.equal(workerRes.settledMap['c1'] || 0, 0);
+    assert.equal(4 + (workerRes.combined['c1'] || 0), 24);
 });
 
-test('buildModelColorOffsetMap combines order_items sales and [SETTLEMENT] movements without double-counting regular out movements', () => {
+test('buildModelColorOffsetMap preserves archived deleted sales orders without double-counting regular sales or ERP sync deductions', () => {
     const orderItems = [
         { color_id: 'c1', quantity: 50 },
         { color_id: 'c1', quantity: 30 }
     ];
-    const outMovements = [
+    const allMovements = [
         // Regular order sale out movement (must NOT be double-counted with order_items!)
-        { color_id: 'c1', movement_type: 'out', quantity: 80, order_id: 'ord-1', reference: 'فاتورة بيع #101' },
-        // Settlement movement from zeroing remaining 20
+        { color_id: 'c1', movement_type: 'out', quantity: 80, order_id: 'ord-1', reference: 'فاتورة مبيعات: 101' },
+        // Legacy stock-zeroing [SETTLEMENT] must be ignored
         { color_id: 'c1', movement_type: 'out', quantity: 20, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} تسوية وتصفير مخزون` },
-        // Another color with only settlement (no sales yet)
-        { color_id: 'c2', movement_type: 'out', quantity: 15, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} هالك` }
+        // Archived deleted sales order [SETTLEMENT] IS preserved in settledMap
+        { color_id: 'c2', movement_type: 'out', quantity: 15, order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF },
+        // ERP inventory reduction 'out' must NOT count as a sale even for workers
+        { color_id: 'c1', movement_type: 'out', quantity: 6, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' }
     ];
 
-    const res = buildModelColorOffsetMap({ orderItems, outMovements });
-    assert.equal(res.soldMap['c1'], 80);
-    assert.equal(res.settledMap['c1'], 20);
-    assert.equal(res.combined['c1'], 100);
-    assert.equal(res.combined['c2'], 15);
+    const ownerRes = buildModelColorOffsetMap({ orderItems, allMovements, orderItemsReliable: true });
+    assert.equal(ownerRes.soldMap['c1'], 80);
+    assert.equal(ownerRes.settledMap['c1'] || 0, 0);
+    assert.equal(ownerRes.combined['c1'], 80);
+    assert.equal(ownerRes.settledMap['c2'], 15);
+    assert.equal(ownerRes.combined['c2'], 15);
 
-    // Remaining 0 + combined 100 => baseStock 100
-    assert.equal(0 + res.combined['c1'], 100);
+    const workerRes = buildModelColorOffsetMap({ orderItems: [], allMovements, orderItemsReliable: false });
+    assert.equal(workerRes.soldMap['c1'], 80);
+    assert.equal(workerRes.settledMap['c2'], 15);
+    assert.equal(workerRes.combined['c1'], 80);
+    assert.equal(workerRes.combined['c2'], 15);
 });
 
 test('buildModelColorOffsetMap computes full base stock for workers even when order_items is RLS-filtered to only worker orders', () => {
@@ -118,11 +140,19 @@ test('buildModelColorOffsetMap computes full base stock for workers even when or
     assert.equal(4 + (workerRes.combined['nibiti'] || 0), 25);
 });
 
-test('isSettlementMovement, isInboundReversalOutMovement, and isOrderReversalInMovement classify movements strictly', () => {
+test('Movement classifiers classify settlements, archived orders, ERP syncs, and reversals strictly', () => {
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية' }), true);
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: 'ord-1', reference: '[SETTLEMENT] تسوية' }), false);
     assert.equal(isSettlementMovement({ movement_type: 'in', order_id: null, reference: '[SETTLEMENT] تسوية' }), false);
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: 'فاتورة بيع' }), false);
+
+    assert.equal(isOrderArchiveSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), true);
+    assert.equal(isOrderArchiveSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية وتصفير مخزون' }), false);
+
+    assert.equal(isInventorySyncOutMovement({ movement_type: 'out', reference: 'مزامنة جرد ERP (تعديل رصيد)' }), true);
+    assert.equal(isInventorySyncOutMovement({ movement_type: 'out', reference: 'تعديل رصيد يدوي (إدارة البيانات)' }), true);
+    assert.equal(isInventorySyncOutMovement({ movement_type: 'in', reference: 'مزامنة جرد ERP (تعديل رصيد)' }), false);
+    assert.equal(isInventorySyncOutMovement({ movement_type: 'out', reference: 'فاتورة مبيعات: 105' }), false);
 
     assert.equal(isInboundReversalOutMovement({ movement_type: 'out', reference: 'حذف فاتورة دخل: IN-5' }), true);
     assert.equal(isInboundReversalOutMovement({ movement_type: 'out', reference: 'تعديل فاتورة دخل (تخفيض كمية): IN-5' }), true);
@@ -132,9 +162,35 @@ test('isSettlementMovement, isInboundReversalOutMovement, and isOrderReversalInM
     assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'حذف أوردر من الإدارة: 105' }), true);
     assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'استرجاع رصيد عند حذف فواتير مبيعات (إدارة البيانات)' }), true);
     assert.equal(isOrderReversalInMovement({ movement_type: 'in', reference: 'فاتورة دخل: IN-1' }), false);
+
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية وتصفير مخزون' }), true);
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] هالك' }), true);
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), false);
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: `${ARCHIVE_ORDER_SETTLEMENT_REF} - سبب` }), false);
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: 'فاتورة مبيعات: 105' }), false);
 });
 
-test('buildSettlementPlan creates exact updates and [SETTLEMENT] movements and supports color filter scope', () => {
+test('filterExcludedSettlementMovements and computeAdminModalSoldMap exclude stock-zeroing settlements cleanly', () => {
+    const movements = [
+        { id: '1', color_id: 'c1', movement_type: 'in', quantity: 25, order_id: null, reference: 'فاتورة دخل: IN-1' },
+        { id: '2', color_id: 'c1', movement_type: 'out', quantity: 10, order_id: 'ord-1', reference: 'فاتورة مبيعات: 100' },
+        { id: '3', color_id: 'c1', movement_type: 'out', quantity: 5, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} تسوية وتصفير مخزون` },
+        { id: '4', color_id: 'c2', movement_type: 'out', quantity: 3, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} هالك` },
+        { id: '5', color_id: 'c2', movement_type: 'out', quantity: 7, order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF },
+        { id: '6', color_id: 'c1', movement_type: 'out', quantity: 2, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' },
+        { id: '7', color_id: 'c1', movement_type: 'out', quantity: 1, order_id: null, reference: 'حذف فاتورة دخل: IN-2' }
+    ];
+
+    const visibleLog = filterExcludedSettlementMovements(movements);
+    assert.deepEqual(visibleLog.map(m => m.id), ['1', '2', '5', '6', '7']);
+
+    const outMovs = movements.filter(m => m.movement_type === 'out');
+    const soldMap = computeAdminModalSoldMap(outMovs);
+    assert.equal(soldMap['c1'], 10);
+    assert.equal(soldMap['c2'], 7);
+});
+
+test('buildSettlementPlan creates exact model_inventory updates without emitting stock_movements rows and supports color filter scope', () => {
     const models = [
         {
             id: 'm1', name: 'طقم شتوي', factory_code: '101',
@@ -146,26 +202,32 @@ test('buildSettlementPlan creates exact updates and [SETTLEMENT] movements and s
         }
     ];
 
-    // Full zeroing across all colors (skips c2 which is already 0)
-    const fullPlan = buildSettlementPlan(models, { targetQty: 0, reason: 'جرد نهاية الموسم' });
+    // Full zeroing across all colors (skips c2 which is already 0, emits NO movements)
+    const fullPlan = buildSettlementPlan(models, { targetQty: 0 });
     assert.equal(fullPlan.summary.modelsAffected, 1);
     assert.equal(fullPlan.summary.colorRowsAffected, 2);
     assert.equal(fullPlan.summary.totalSeriesSettled, 32);
-    assert.equal(fullPlan.movements.length, 2);
-    assert.ok(fullPlan.movements.every(m => isSettlementMovement(m)));
-    assert.equal(fullPlan.movements[0].reference, buildSettlementReference('جرد نهاية الموسم', 'zero'));
+    assert.equal(fullPlan.movements.length, 0);
+    assert.deepEqual(fullPlan.updates.map(u => u.new_series), [0, 0]);
 
     // Scoped to color c3 only
     const colorPlan = buildSettlementPlan(models, { targetQty: 0, onlyColorIds: ['c3'] });
     assert.equal(colorPlan.summary.colorRowsAffected, 1);
     assert.equal(colorPlan.summary.totalSeriesSettled, 12);
     assert.equal(colorPlan.updates[0].color_id, 'c3');
+    assert.equal(colorPlan.movements.length, 0);
 
-    // Partial settlement to target 5 on c1 (20 -> 5 = 15 settled)
+    // Partial adjustment to target 5 on c1 (20 -> 5 = 15 reduced, emits NO movements)
     const partialPlan = buildSettlementPlan(models, { targetQty: 5, onlyColorIds: ['c1'] });
     assert.equal(partialPlan.updates[0].new_series, 5);
-    assert.equal(partialPlan.movements[0].quantity, 15);
-    assert.equal(partialPlan.movements[0].movement_type, 'out');
+    assert.equal(partialPlan.summary.totalSeriesSettled, 15);
+    assert.equal(partialPlan.movements.length, 0);
+
+    // Increasing stock from 0 -> 4 on c2 when onlyDecrease is false
+    const addPlan = buildSettlementPlan(models, { targetQty: 4, onlyDecrease: false, onlyColorIds: ['c2'] });
+    assert.equal(addPlan.updates[0].new_series, 4);
+    assert.equal(addPlan.summary.totalSeriesAdded, 4);
+    assert.equal(addPlan.movements.length, 0);
 });
 
 test('Order deletion helpers correctly build archive settlement entries and restore stock deltas', () => {
@@ -180,7 +242,7 @@ test('Order deletion helpers correctly build archive settlement entries and rest
     assert.equal(archived.length, 2);
     const m1Entry = archived.find(e => e.model_id === 'm1');
     assert.equal(m1Entry.quantity, 80);
-    assert.equal(isSettlementMovement(m1Entry), true);
+    assert.equal(isOrderArchiveSettlementMovement(m1Entry), true);
 
     const restored = buildOrderRestoreStockDeltas(items);
     assert.equal(restored.length, 2);
