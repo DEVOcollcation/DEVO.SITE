@@ -3,8 +3,13 @@ import { showToast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { printModelsDirect } from '../../services/barcode_direct_printer.js';
 import {
+    isSettlementMovement,
     filterExcludedSettlementMovements,
-    computeAdminModalSoldMap
+    computeAdminModalSoldMap,
+    classifyStockMovement,
+    matchesHistoryFilter,
+    computeMovementLogStats,
+    escapeHtml
 } from '../../services/data_management_logic.js';
 
 let isInitialized = false;
@@ -89,6 +94,7 @@ export async function initModelsView() {
     await loadDefinitionsCache();
     await fetchAllModelsChunked(); 
     setupAdminRealtimeTracker(); 
+    purgeAllLegacySettlementMovements({ silent: true }).catch(() => {});
 
     const urlParams = new URLSearchParams(window.location.search);
     const adminModelId = urlParams.get('admin_model');
@@ -97,6 +103,70 @@ export async function initModelsView() {
     }
 
     isInitialized = true;
+}
+
+let hasAutoPurgedSettlements = false;
+
+export async function purgeAllLegacySettlementMovements({ silent = true, force = false } = {}) {
+    if (silent && !force && hasAutoPurgedSettlements) {
+        return { deletedCount: 0, skipped: true };
+    }
+
+    try {
+        const sessionRaw = localStorage.getItem('devo_session');
+        if (!sessionRaw) return { deletedCount: 0, skipped: true };
+        let parsed = JSON.parse(sessionRaw);
+        if (parsed && parsed.user) parsed = parsed.user;
+        const role = String(parsed?.role || '').toLowerCase().trim();
+        if (role !== 'owner' && role !== 'admin') {
+            return { deletedCount: 0, skipped: true };
+        }
+    } catch {
+        return { deletedCount: 0, skipped: true };
+    }
+
+    let deletedCount = 0;
+    try {
+        for (let pass = 0; pass < 20; pass++) {
+            const { data: legacyRows, error: fetchErr } = await supabase
+                .from('stock_movements')
+                .select('id, reference')
+                .or('reference.ilike.%[SETTLEMENT]%,reference.ilike.تسوية%')
+                .limit(1000);
+
+            if (fetchErr) {
+                console.warn('[SettlementPurge] Lookup warning:', fetchErr);
+                return { deletedCount, error: fetchErr };
+            }
+
+            const matchingIds = (legacyRows || [])
+                .filter(row => isSettlementMovement(row))
+                .map(row => row.id)
+                .filter(Boolean);
+
+            if (matchingIds.length === 0) break;
+
+            for (let i = 0; i < matchingIds.length; i += 200) {
+                const chunk = matchingIds.slice(i, i + 200);
+                const { error: delErr } = await supabase
+                    .from('stock_movements')
+                    .delete()
+                    .in('id', chunk);
+                if (delErr) {
+                    console.warn('[SettlementPurge] Delete warning:', delErr);
+                    return { deletedCount, error: delErr };
+                }
+                deletedCount += chunk.length;
+            }
+
+            if ((legacyRows || []).length < 1000) break;
+        }
+        hasAutoPurgedSettlements = true;
+        return { deletedCount, error: null };
+    } catch (err) {
+        console.warn('[SettlementPurge] Skipped:', err);
+        return { deletedCount, error: err };
+    }
 }
 
 // ==========================================
@@ -722,130 +792,332 @@ function cleanUpMovements(movements) {
     return cleaned;
 }
 
-window.viewDetails = async (id) => {
+let currentDetailsTab = 'overview';
+
+window.switchModelDetailsTab = (tab = 'overview') => {
+    currentDetailsTab = tab === 'history' ? 'history' : 'overview';
+
+    const overviewPane = document.getElementById('details-tab-overview');
+    const historyPane = document.getElementById('details-tab-history');
+    const btnOverview = document.getElementById('details-tab-btn-overview');
+    const btnHistory = document.getElementById('details-tab-btn-history');
+
+    const activeCls = 'min-h-[40px] px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 bg-devo-orange text-white shadow-sm cursor-pointer whitespace-nowrap shrink-0';
+    const inactiveCls = 'min-h-[40px] px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 text-devo-muted hover:text-white hover:bg-devo-gray/40 border border-devo-gray/70 cursor-pointer whitespace-nowrap shrink-0';
+
+    if (currentDetailsTab === 'history') {
+        if (overviewPane) overviewPane.classList.add('hidden');
+        if (historyPane) {
+            historyPane.classList.remove('hidden');
+            historyPane.classList.add('flex');
+        }
+        if (btnOverview) {
+            btnOverview.className = inactiveCls;
+            btnOverview.setAttribute('aria-selected', 'false');
+        }
+        if (btnHistory) {
+            btnHistory.className = activeCls;
+            btnHistory.setAttribute('aria-selected', 'true');
+        }
+        window.applyHistoryFilters();
+    } else {
+        if (historyPane) {
+            historyPane.classList.add('hidden');
+            historyPane.classList.remove('flex');
+        }
+        if (overviewPane) overviewPane.classList.remove('hidden');
+        if (btnOverview) {
+            btnOverview.className = activeCls;
+            btnOverview.setAttribute('aria-selected', 'true');
+        }
+        if (btnHistory) {
+            btnHistory.className = inactiveCls;
+            btnHistory.setAttribute('aria-selected', 'false');
+        }
+    }
+};
+
+window.resetHistoryFilters = () => {
+    const searchEl = document.getElementById('hist-search');
+    const typeEl = document.getElementById('hist-type');
+    const colorEl = document.getElementById('hist-color');
+    const dateEl = document.getElementById('hist-date');
+    if (searchEl) searchEl.value = '';
+    if (typeEl) typeEl.value = '';
+    if (colorEl) colorEl.value = '';
+    if (dateEl) dateEl.value = '';
+    window.applyHistoryFilters();
+};
+
+window.openInvoiceFromHistory = async (orderId = '', invoiceNumber = '', mode = 'filter') => {
+    const cleanOrderId = String(orderId || '').trim();
+    const cleanInvoice = String(invoiceNumber || '').replace(/^#/, '').trim();
+    if (!cleanOrderId && !cleanInvoice) return;
+
+    window.closeDetailsModal(true);
+
+    const ordersNavLink = document.querySelector('.nav-link[data-target="view-admin-orders"]');
+    if (typeof window.switchAdminView === 'function') {
+        window.switchAdminView('view-admin-orders', ordersNavLink);
+    }
+
+    try {
+        const ordersMod = await import('./admin_orders.js?v=10.0');
+        if (ordersMod && typeof ordersMod.focusAdminOrderFromHistory === 'function') {
+            await ordersMod.focusAdminOrderFromHistory({
+                orderId: cleanOrderId || null,
+                invoiceNumber: cleanInvoice,
+                mode
+            });
+        }
+    } catch (err) {
+        console.error('[ModelsHistory] Error navigating to invoice:', err);
+        showToast('تعذر فتح فاتورة المبيعات المطلوبة', 'error');
+    }
+};
+
+window.viewDetails = async (id, initialTab = 'overview') => {
     const model = allModels.find(m => m.id === id);
     if (!model) return;
 
     currentOpenModelId = id;
-    history.pushState(null, '', `?admin_model=${id}`); 
+    currentDetailsTab = initialTab === 'history' ? 'history' : 'overview';
+    history.pushState(null, '', `?admin_model=${id}`);
 
     const modal = document.getElementById('view-details-modal');
+    const dialog = document.getElementById('view-details-dialog');
     const content = document.getElementById('details-content');
-    
-    content.innerHTML = `<div class="py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i><p class="mt-2 text-devo-muted">جاري تحميل السجل الزمني...</p></div>`;
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    const subtitleEl = document.getElementById('details-modal-subtitle');
+    const tabCountEl = document.getElementById('details-history-tab-count');
 
-    // 🌟 استدعاء آمن: محاولة جلب اسم العميل من جدول orders إذا كان متاحاً 🌟
+    if (subtitleEl) {
+        subtitleEl.textContent = `${model.name || ''} • سيستم: ${model.system_code || '-'} | مصنع: ${model.factory_code || '-'} • ${model.price || 0} ج.م`;
+    }
+    if (tabCountEl) tabCountEl.textContent = '...';
+
+    content.innerHTML = `<div class="flex-1 flex flex-col items-center justify-center py-20 text-center"><i class="ph ph-spinner animate-spin text-4xl text-devo-orange"></i><p class="mt-3 text-sm text-devo-muted">جاري تحميل بيانات الموديل وسجل حركة المخزون...</p></div>`;
+    modal.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        modal.classList.remove('opacity-0');
+        if (dialog) {
+            dialog.classList.remove('scale-95');
+            dialog.classList.add('scale-100');
+        }
+    });
+
+    // 🌟 استدعاء آمن: محاولة جلب اسم العميل ورقم الفاتورة من جدول orders إذا كان متاحاً 🌟
     let fetchedMovements = [];
     const { data: mData, error: mError } = await supabase
         .from('stock_movements')
-        .select('*, colors(name), orders(customer_name)')
+        .select('*, colors(name), orders(customer_name, invoice_number)')
         .eq('model_id', id)
         .order('created_at', { ascending: false });
 
     if (mError) {
-        // في حالة عدم وجود علاقة (Foreign Key) مباشرة في الداتا بيز
         const fallback = await supabase.from('stock_movements').select('*, colors(name)').eq('model_id', id).order('created_at', { ascending: false });
         fetchedMovements = fallback.data || [];
     } else {
         fetchedMovements = mData || [];
     }
 
-    // 🌟 تطبيق خوارزمية تنظيف السجل 🌟
+    // 🌟 تطبيق خوارزمية تنظيف السجل مع استبعاد التسويات نهائياً 🌟
     currentModelMovements = cleanUpMovements(fetchedMovements);
+    if (tabCountEl) tabCountEl.textContent = String(currentModelMovements.length);
 
     const classSizes = model.classes?.class_sizes || [];
-    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1); 
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
 
     let imagesHtml = '';
     if (model.model_images && model.model_images.length > 0) {
         imagesHtml = `<div class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-40 w-40 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}
+            ${model.model_images.map(img => `<img src="${resolveImageUrl(img.image_url)}" class="h-44 w-44 flex-shrink-0 rounded-xl object-cover border border-devo-gray bg-devo-black shadow-sm" onerror="this.src='./src/assets/icons/devo.png'" loading="lazy" decoding="async">`).join('')}
         </div>`;
     } else {
-        imagesHtml = `<div class="h-40 w-40 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.png" class="w-full h-full object-cover" loading="lazy" decoding="async"></div>`;
+        imagesHtml = `<div class="h-44 w-44 rounded-xl bg-devo-black border border-devo-gray flex items-center justify-center overflow-hidden shadow-sm"><img src="./src/assets/icons/devo.png" class="w-full h-full object-cover" loading="lazy" decoding="async"></div>`;
     }
 
-    const renderSizesTags = classSizes.length > 0 
-        ? classSizes.map(cs => `<span class="bg-devo-black border border-devo-gray px-3 py-1 rounded text-white text-xs shadow-sm"><i class="ph ph-link text-devo-muted"></i> ${cs.sizes?.name}</span>`).join('')
-        : model.model_sizes?.map(s => `<span class="bg-devo-black border border-devo-gray px-3 py-1 rounded text-white text-xs shadow-sm">${s.sizes?.name}</span>`).join('');
+    const renderSizesTags = classSizes.length > 0
+        ? classSizes.map(cs => `<span class="bg-devo-black border border-devo-gray px-3 py-1.5 rounded-lg text-white text-xs font-mono tabular-nums shadow-sm inline-flex items-center gap-1.5"><i class="ph ph-link text-devo-muted"></i> ${escapeHtml(cs.sizes?.name)}</span>`).join('')
+        : model.model_sizes?.map(s => `<span class="bg-devo-black border border-devo-gray px-3 py-1.5 rounded-lg text-white text-xs font-mono tabular-nums shadow-sm">${escapeHtml(s.sizes?.name)}</span>`).join('');
+
+    const totalAvailableSeries = (model.model_inventory || []).reduce((sum, inv) => sum + (Number(inv.available_series) || 0), 0);
+    const totalAvailablePieces = totalAvailableSeries * sizesCount;
+
+    // تجميع كافة الألوان المتاحة في المخزون أو في السجل للفلترة
+    const historyColorOptionsMap = new Map();
+    (model.model_inventory || []).forEach(inv => {
+        if (inv?.color_id) historyColorOptionsMap.set(String(inv.color_id), inv.colors?.name || 'لون');
+    });
+    currentModelMovements.forEach(mov => {
+        if (mov?.color_id && !historyColorOptionsMap.has(String(mov.color_id))) {
+            historyColorOptionsMap.set(String(mov.color_id), mov.colors?.name || 'لون محذوف');
+        }
+    });
+    const colorOptionsHtml = Array.from(historyColorOptionsMap.entries())
+        .map(([cid, cname]) => `<option value="${escapeHtml(cid)}">${escapeHtml(cname)}</option>`)
+        .join('');
 
     content.innerHTML = `
-        <div class="flex flex-wrap justify-between items-start gap-3 mb-6">
-            <div class="max-w-[70%]">${imagesHtml}</div>
-            <div class="flex flex-wrap items-center gap-2">
-                <button type="button" onclick="printModelBarcodeDirect('${model.id}')" class="bg-devo-orange hover:bg-devo-orangeHover text-white px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer">
-                    <i class="ph ph-printer text-base"></i> طباعة الباركود مباشرة
-                </button>
-                <button onclick="shareAdminModel('${model.id}')" class="bg-devo-dark hover:bg-devo-gray border border-devo-gray text-white px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer">
-                    <i class="ph ph-share-network text-base"></i> نسخ رابط الموديل
-                </button>
-            </div>
-        </div>
-
-        <div class="bg-devo-black/30 rounded-xl border border-devo-gray overflow-hidden mb-6">
-            <table class="w-full text-right text-sm">
-                <tbody class="divide-y divide-devo-gray">
-                    <tr><td class="p-3 text-devo-muted w-1/3">كود السيستم / المصنع</td><td class="p-3 text-white font-mono">${model.system_code} <span class="text-devo-muted">|</span> ${model.factory_code}</td></tr>
-                    <tr><td class="p-3 text-devo-muted">اسم الموديل</td><td class="p-3 text-white font-bold">${model.name}</td></tr>
-                    <tr><td class="p-3 text-devo-muted">السعر</td><td class="p-3 text-devo-orange font-bold">${model.price} ج.م</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-                <h4 class="text-devo-orange font-bold mb-3 text-sm flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات المتاحة (${sizesCount} مقاسات)</h4>
-                <div class="flex flex-wrap gap-2">${renderSizesTags || '<span class="text-devo-muted text-xs">لا توجد مقاسات</span>'}</div>
-            </div>
-            <div>
-                <div class="flex justify-between items-center mb-3">
-                    <h4 class="text-devo-orange font-bold text-sm flex items-center gap-2"><i class="ph ph-palette"></i> مخزون الألوان</h4>
-                    <button onclick="openAddStockModal('${model.id}')" class="text-xs bg-devo-success/10 text-devo-success hover:bg-devo-success hover:text-white px-3 py-1.5 rounded-lg transition-colors font-bold flex items-center gap-1"><i class="ph ph-plus"></i> إضافة شحنة</button>
-                </div>
-                <div id="live-modal-inventory" class="space-y-2"></div>
-            </div>
-        </div>
-
-        <div class="border-t border-devo-gray pt-6">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
-                <h4 class="text-devo-orange font-bold text-sm shrink-0"><i class="ph ph-list-numbers"></i> سجل حركة المخزون</h4>
-                
-                <div class="w-full flex flex-wrap md:flex-nowrap gap-2 bg-devo-dark p-2 rounded-lg border border-devo-gray">
-                    <div class="relative flex-1 min-w-[120px]">
-                        <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 text-devo-muted text-xs"></i>
-                        <input type="text" id="hist-search" oninput="applyHistoryFilters()" placeholder="العميل أو الفاتورة..." class="w-full bg-devo-black border border-devo-gray rounded px-7 py-1.5 text-white text-xs outline-none focus:border-devo-orange">
+        <!-- Tab 1: Model Details & Live Inventory -->
+        <div id="details-tab-overview" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div class="lg:col-span-5 space-y-4">
+                    <div class="bg-devo-black/30 border border-devo-gray rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-devo-orange font-bold text-sm flex items-center gap-2"><i class="ph ph-images"></i> صور الموديل</h4>
+                            <span class="text-xs font-bold ${model.is_active !== false ? 'text-devo-success' : 'text-devo-error'}">${model.is_active !== false ? 'نشط بالمعرض' : 'معطل'}</span>
+                        </div>
+                        ${imagesHtml}
                     </div>
-                    <select id="hist-type" onchange="applyHistoryFilters()" class="flex-1 min-w-[90px] bg-devo-black border border-devo-gray rounded px-2 py-1.5 text-white text-xs outline-none focus:border-devo-orange cursor-pointer">
-                        <option value="">كل العمليات</option><option value="in">وارد (+)</option><option value="out">مبيعات (-)</option>
-                    </select>
-                    <select id="hist-color" onchange="applyHistoryFilters()" class="flex-1 min-w-[90px] bg-devo-black border border-devo-gray rounded px-2 py-1.5 text-white text-xs outline-none focus:border-devo-orange cursor-pointer">
-                        <option value="">كل الألوان</option>
-                        ${model.model_inventory.map(i => `<option value="${i.color_id}">${i.colors?.name}</option>`).join('')}
-                    </select>
-                    <input type="date" id="hist-date" onchange="applyHistoryFilters()" class="flex-1 min-w-[110px] bg-devo-black border border-devo-gray rounded px-2 py-1.5 text-devo-muted text-xs outline-none cursor-pointer">
+
+                    <div class="bg-devo-black/30 border border-devo-gray rounded-xl p-4 space-y-2.5">
+                        <h4 class="text-xs font-bold text-devo-muted mb-2">إجراءات سريعة</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <button type="button" onclick="printModelBarcodeDirect('${model.id}')" class="min-h-[42px] bg-devo-orange hover:bg-devo-orangeHover text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                <i class="ph ph-printer text-base"></i> طباعة الباركود
+                            </button>
+                            <button type="button" onclick="shareAdminModel('${model.id}')" class="min-h-[42px] bg-devo-dark hover:bg-devo-gray border border-devo-gray text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                <i class="ph ph-share-network text-base"></i> نسخ رابط الموديل
+                            </button>
+                        </div>
+                        <button type="button" onclick="switchModelDetailsTab('history')" class="w-full min-h-[42px] bg-devo-black hover:bg-devo-gray/50 border border-devo-gray text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between gap-2 cursor-pointer">
+                            <span class="flex items-center gap-2"><i class="ph ph-clock-counter-clockwise text-devo-orange text-base"></i> فتح سجل حركة المخزون بالكامل</span>
+                            <span class="font-mono tabular-nums text-devo-orange">${currentModelMovements.length} حركة ←</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-7 space-y-5">
+                    <div class="bg-devo-black/30 rounded-xl border border-devo-gray overflow-hidden">
+                        <div class="px-4 py-3 border-b border-devo-gray bg-devo-black/50 flex items-center justify-between">
+                            <h4 class="text-devo-orange font-bold text-sm flex items-center gap-2"><i class="ph ph-identification-card"></i> البيانات الأساسية</h4>
+                            <span class="text-xs text-devo-muted font-mono tabular-nums">إجمالي المتبقي: <strong class="text-white">${totalAvailableSeries}</strong> سيريه (${totalAvailablePieces} قطعة)</span>
+                        </div>
+                        <table class="w-full text-right text-sm">
+                            <tbody class="divide-y divide-devo-gray">
+                                <tr><td class="p-3.5 text-devo-muted w-2/5 sm:w-1/3">كود السيستم / المصنع</td><td class="p-3.5 text-white font-mono tabular-nums">${escapeHtml(model.system_code)} <span class="text-devo-muted mx-1">|</span> ${escapeHtml(model.factory_code)}</td></tr>
+                                <tr><td class="p-3.5 text-devo-muted">اسم الموديل</td><td class="p-3.5 text-white font-bold">${escapeHtml(model.name)}</td></tr>
+                                <tr><td class="p-3.5 text-devo-muted">التصنيف / الفئة</td><td class="p-3.5 text-white text-xs sm:text-sm">${escapeHtml(model.categories?.name || 'غير مصنف')} <span class="text-devo-muted mx-1">•</span> ${escapeHtml(model.classes?.name || 'عام')}</td></tr>
+                                <tr><td class="p-3.5 text-devo-muted">السعر</td><td class="p-3.5 text-devo-orange font-bold font-mono tabular-nums">${Number(model.price || 0).toLocaleString()} ج.م</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="bg-devo-black/30 rounded-xl border border-devo-gray p-4">
+                        <h4 class="text-devo-orange font-bold mb-3 text-sm flex items-center gap-2"><i class="ph ph-ruler"></i> المقاسات المتاحة (${sizesCount} مقاسات)</h4>
+                        <div class="flex flex-wrap gap-2">${renderSizesTags || '<span class="text-devo-muted text-xs">لا توجد مقاسات</span>'}</div>
+                    </div>
+
+                    <div class="bg-devo-black/30 rounded-xl border border-devo-gray p-4">
+                        <div class="flex justify-between items-center mb-3 gap-2">
+                            <h4 class="text-devo-orange font-bold text-sm flex items-center gap-2"><i class="ph ph-palette"></i> مخزون الألوان الحالي</h4>
+                            <button type="button" onclick="openAddStockModal('${model.id}')" class="min-h-[38px] text-xs bg-devo-success hover:bg-green-600 text-white px-3.5 py-1.5 rounded-xl transition-colors font-bold flex items-center gap-1.5 cursor-pointer">
+                                <i class="ph ph-plus"></i> إضافة شحنة
+                            </button>
+                        </div>
+                        <div id="live-modal-inventory" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
+                    </div>
                 </div>
             </div>
-            
-            <div class="overflow-x-auto border border-devo-gray rounded-lg max-h-64 custom-scrollbar">
-                <table class="w-full text-right text-sm">
-                    <thead class="bg-devo-black sticky top-0"><tr class="text-devo-muted">
-                        <th class="p-3 font-medium border-b border-devo-gray">النوع</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">اللون</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">الكمية</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">العميل / المرجع</th>
-                        <th class="p-3 font-medium border-b border-devo-gray">التاريخ</th>
-                    </tr></thead>
-                    <tbody id="live-modal-history-tbody" class="divide-y divide-devo-gray bg-devo-black/30">
-                        </tbody>
+        </div>
+
+        <!-- Tab 2: Dedicated Full-Modal Stock Movement Log -->
+        <div id="details-tab-history" class="hidden flex-1 min-h-0 flex-col p-3 sm:p-6 gap-3 sm:gap-4 overflow-y-auto lg:overflow-hidden custom-scrollbar">
+            <!-- Filter-Reactive Stat Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 shrink-0">
+                <div class="bg-devo-black/50 border border-devo-gray rounded-xl p-3 sm:p-4 flex flex-col justify-between gap-1">
+                    <div class="flex items-center justify-between text-xs text-devo-muted font-bold">
+                        <span>العمليات المطابقة</span>
+                        <i class="ph ph-list-numbers text-base text-white"></i>
+                    </div>
+                    <div id="hist-stat-total-count" class="text-lg sm:text-2xl font-black text-white font-mono tabular-nums">0</div>
+                    <div id="hist-stat-total-sub" class="text-[11px] text-devo-muted truncate">من إجمالي 0 حركة</div>
+                </div>
+
+                <div class="bg-devo-black/50 border border-devo-gray rounded-xl p-3 sm:p-4 flex flex-col justify-between gap-1">
+                    <div class="flex items-center justify-between text-xs text-devo-error font-bold">
+                        <span>مبيعات الفواتير (-)</span>
+                        <i class="ph ph-receipt text-base"></i>
+                    </div>
+                    <div id="hist-stat-sales-series" class="text-lg sm:text-2xl font-black text-devo-error font-mono tabular-nums">0 سيريه</div>
+                    <div id="hist-stat-sales-sub" class="text-[11px] text-devo-muted font-mono tabular-nums truncate">0 قطعة • 0 فاتورة فعلية</div>
+                </div>
+
+                <div class="bg-devo-black/50 border border-devo-gray rounded-xl p-3 sm:p-4 flex flex-col justify-between gap-1">
+                    <div class="flex items-center justify-between text-xs text-devo-success font-bold">
+                        <span>الوارد والمرتجع (+)</span>
+                        <i class="ph ph-arrow-down-left text-base"></i>
+                    </div>
+                    <div id="hist-stat-inbound-series" class="text-lg sm:text-2xl font-black text-devo-success font-mono tabular-nums">0 سيريه</div>
+                    <div id="hist-stat-inbound-sub" class="text-[11px] text-devo-muted font-mono tabular-nums truncate">0 قطعة • توريد ومرتجع أوردرات</div>
+                </div>
+
+                <div class="bg-devo-black/50 border border-devo-gray rounded-xl p-3 sm:p-4 flex flex-col justify-between gap-1">
+                    <div class="flex items-center justify-between text-xs text-devo-warning font-bold">
+                        <span>تعديلات جرد إكسيل/ERP</span>
+                        <i class="ph ph-file-xls text-base"></i>
+                    </div>
+                    <div id="hist-stat-erp-series" class="text-lg sm:text-2xl font-black text-devo-warning font-mono tabular-nums">0 سيريه</div>
+                    <div id="hist-stat-erp-sub" class="text-[11px] text-devo-muted truncate">مستبعدة من المبيعات والأصل</div>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="shrink-0 bg-devo-black/50 p-2.5 sm:p-3 rounded-xl border border-devo-gray grid grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-2.5 items-center">
+                <div class="relative col-span-2 lg:col-span-4">
+                    <i class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-devo-muted text-sm"></i>
+                    <input type="text" id="hist-search" oninput="applyHistoryFilters()" placeholder="بحث بالعميل، رقم الفاتورة، أو المرجع..." class="w-full min-h-[40px] bg-devo-black border border-devo-gray rounded-xl pr-9 pl-3 py-2 text-white text-xs outline-none focus:border-devo-orange transition-colors">
+                </div>
+                <div class="col-span-1 lg:col-span-3">
+                    <select id="hist-type" onchange="applyHistoryFilters()" class="w-full min-h-[40px] bg-devo-black border border-devo-gray rounded-xl px-2.5 sm:px-3 py-2 text-white text-xs outline-none focus:border-devo-orange cursor-pointer">
+                        <option value="">كل العمليات</option>
+                        <option value="sale">مبيعات الفواتير فقط (-)</option>
+                        <option value="in_all">كل الوارد والمرتجع (+)</option>
+                        <option value="inbound">وارد / شحنات جديدة (+)</option>
+                        <option value="order_return">مرتجع / تعديل أوردرات (+)</option>
+                        <option value="erp_sync">تعديل جرد (إكسيل / ERP)</option>
+                    </select>
+                </div>
+                <div class="col-span-1 lg:col-span-2">
+                    <select id="hist-color" onchange="applyHistoryFilters()" class="w-full min-h-[40px] bg-devo-black border border-devo-gray rounded-xl px-2.5 sm:px-3 py-2 text-white text-xs outline-none focus:border-devo-orange cursor-pointer">
+                        <option value="">كل الألوان</option>
+                        ${colorOptionsHtml}
+                    </select>
+                </div>
+                <div class="col-span-1 lg:col-span-2">
+                    <input type="date" id="hist-date" onchange="applyHistoryFilters()" class="w-full min-h-[40px] bg-devo-black border border-devo-gray rounded-xl px-2.5 sm:px-3 py-2 text-devo-muted text-xs outline-none focus:border-devo-orange cursor-pointer">
+                </div>
+                <div class="col-span-1 lg:col-span-1">
+                    <button type="button" id="hist-reset-btn" onclick="resetHistoryFilters()" title="إعادة ضبط الفلاتر" class="w-full min-h-[40px] px-2.5 sm:px-3 py-2 bg-devo-dark hover:bg-devo-gray border border-devo-gray rounded-xl text-xs font-bold text-devo-muted hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                        <i class="ph ph-arrow-counter-clockwise text-base"></i>
+                        <span class="lg:hidden">مسح</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Full-Height Scrollable Table -->
+            <div class="min-h-[320px] lg:min-h-0 flex-1 overflow-auto border border-devo-gray rounded-xl bg-devo-black/30 custom-scrollbar">
+                <table class="w-full min-w-[760px] text-right text-sm">
+                    <thead class="bg-devo-black sticky top-0 z-10 shadow-sm">
+                        <tr class="text-devo-muted text-xs">
+                            <th class="p-3.5 font-bold border-b border-devo-gray">التصنيف / النوع</th>
+                            <th class="p-3.5 font-bold border-b border-devo-gray">اللون</th>
+                            <th class="p-3.5 font-bold border-b border-devo-gray">الكمية</th>
+                            <th class="p-3.5 font-bold border-b border-devo-gray">العميل / المرجع</th>
+                            <th class="p-3.5 font-bold border-b border-devo-gray">التاريخ</th>
+                            <th class="p-3.5 font-bold border-b border-devo-gray text-center">إجراء الفاتورة</th>
+                        </tr>
+                    </thead>
+                    <tbody id="live-modal-history-tbody" class="divide-y divide-devo-gray">
+                    </tbody>
                 </table>
             </div>
         </div>
     `;
 
     updateLiveModalInventory(model);
-    window.applyHistoryFilters(); 
+    window.applyHistoryFilters();
+    window.switchModelDetailsTab(currentDetailsTab);
 };
 
 function updateLiveModalInventory(model) {
@@ -853,82 +1125,150 @@ function updateLiveModalInventory(model) {
     if (!container) return;
 
     const classSizes = model.classes?.class_sizes || [];
-    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1); 
+    const sizesCount = classSizes.length > 0 ? classSizes.length : (model.model_sizes?.length || 1);
 
     container.innerHTML = model.model_inventory?.map(inv => `
-        <div class="flex justify-between p-3 bg-devo-black rounded-lg border border-devo-gray items-center transition-all duration-300">
-            <span class="text-white">${inv.colors?.name || 'لون غير محدد'}</span>
-            <span class="font-bold ${inv.available_series === 0 ? 'text-devo-error' : 'text-devo-orange'}">
-                ${inv.available_series} سيريه 
-                <span class="text-xs text-devo-muted font-normal">(${inv.available_series * sizesCount} قطعة)</span>
+        <div class="flex justify-between p-3 bg-devo-black rounded-xl border border-devo-gray items-center transition-all duration-300">
+            <span class="text-white font-medium text-sm">${escapeHtml(inv.colors?.name || 'لون غير محدد')}</span>
+            <span class="font-bold font-mono tabular-nums text-sm ${inv.available_series === 0 ? 'text-devo-error' : 'text-devo-orange'}">
+                ${inv.available_series} سيريه
+                <span class="text-xs text-devo-muted font-normal">(${inv.available_series * sizesCount} ق)</span>
             </span>
         </div>
     `).join('') || '<div class="text-devo-muted text-xs p-3">لا توجد ألوان.</div>';
 }
 
-// 🌟 تطبيق فلاتر الحركات (تشمل البحث باسم العميل) 🌟
+// 🌟 تطبيق فلاتر الحركات وتحديث كروت الإحصائيات اللحظية 🌟
 window.applyHistoryFilters = () => {
-    const term = document.getElementById('hist-search')?.value.toLowerCase().trim() || '';
+    const term = document.getElementById('hist-search')?.value || '';
     const type = document.getElementById('hist-type')?.value || '';
     const colorId = document.getElementById('hist-color')?.value || '';
     const dateStr = document.getElementById('hist-date')?.value || '';
     const tbody = document.getElementById('live-modal-history-tbody');
-    
+    const tabCountEl = document.getElementById('details-history-tab-count');
+
+    if (tabCountEl) tabCountEl.textContent = String(currentModelMovements.length);
+
+    const filtered = currentModelMovements.filter(mov => matchesHistoryFilter(mov, { term, type, colorId, dateStr }));
+    const model = allModels.find(m => m.id === currentOpenModelId);
+    const sizesCount = model?.classes?.class_sizes?.length || model?.model_sizes?.length || 1;
+    const stats = computeMovementLogStats(filtered, sizesCount);
+
+    // تحديث كروت الإحصائيات التفاعلية لتعكس الفلترة الحالية فقط
+    const totalCountEl = document.getElementById('hist-stat-total-count');
+    const totalSubEl = document.getElementById('hist-stat-total-sub');
+    const salesSeriesEl = document.getElementById('hist-stat-sales-series');
+    const salesSubEl = document.getElementById('hist-stat-sales-sub');
+    const inboundSeriesEl = document.getElementById('hist-stat-inbound-series');
+    const inboundSubEl = document.getElementById('hist-stat-inbound-sub');
+    const erpSeriesEl = document.getElementById('hist-stat-erp-series');
+    const erpSubEl = document.getElementById('hist-stat-erp-sub');
+
+    if (totalCountEl) totalCountEl.textContent = String(stats.totalCount);
+    if (totalSubEl) {
+        totalSubEl.textContent = stats.totalCount === currentModelMovements.length
+            ? `عرض جميع الحركات (${currentModelMovements.length})`
+            : `مطابق للفلتر من أصل ${currentModelMovements.length}`;
+    }
+    if (salesSeriesEl) salesSeriesEl.textContent = `${stats.salesSeries} سيريه`;
+    if (salesSubEl) salesSubEl.textContent = `${stats.salesPieces} قطعة • ${stats.salesCount} فاتورة فعلية`;
+    if (inboundSeriesEl) inboundSeriesEl.textContent = `${stats.inboundSeries} سيريه`;
+    if (inboundSubEl) inboundSubEl.textContent = `${stats.inboundPieces} قطعة • ${stats.inboundCount} عملية توريد/مرتجع`;
+    if (erpSeriesEl) {
+        const sign = stats.erpSyncNetSeries > 0 ? '+' : '';
+        erpSeriesEl.textContent = `${sign}${stats.erpSyncNetSeries} سيريه`;
+    }
+    if (erpSubEl) {
+        erpSubEl.textContent = stats.erpSyncCount > 0
+            ? `${stats.erpSyncCount} حركة (+${stats.erpSyncInSeries} / -${stats.erpSyncOutSeries}) • مستبعدة من المبيعات`
+            : 'لا توجد تعديلات إكسيل بالفلتر • مستبعدة من الأصل';
+    }
+
     if (!tbody) return;
 
-    const filtered = currentModelMovements.filter(mov => {
-        let isMatch = true;
-        
-        // البحث بالمرجع أو باسم العميل
-        const customerRef = (mov.orders?.customer_name || mov.reference || '').toLowerCase();
-        if (term && !customerRef.includes(term)) isMatch = false;
-        
-        if (type && mov.movement_type !== type) isMatch = false;
-        if (colorId && mov.color_id !== colorId) isMatch = false;
-        if (dateStr) {
-            const mDate = new Date(mov.created_at).toISOString().split('T')[0];
-            if (mDate !== dateStr) isMatch = false;
-        }
-        return isMatch;
-    });
-
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-devo-muted text-xs">لا توجد حركات مطابقة.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-devo-muted text-sm">لا توجد حركات مطابقة لشروط الفلترة الحالية.</td></tr>`;
         return;
     }
 
-    const model = allModels.find(m => m.id === currentOpenModelId);
-    const sizesCount = model?.classes?.class_sizes?.length || model?.model_sizes?.length || 1;
-
     tbody.innerHTML = filtered.map(mov => {
-        const customerName = mov.orders?.customer_name || mov.reference || '---';
-        
+        const cls = classifyStockMovement(mov);
+        const qty = Number(mov.quantity) || 0;
+        const pieces = qty * sizesCount;
+        const customerName = mov.orders?.customer_name ? String(mov.orders.customer_name).trim() : '';
+        const refText = mov.reference ? String(mov.reference).trim() : '';
+        const displayRef = customerName && refText && !refText.includes(customerName)
+            ? `${customerName} — ${refText}`
+            : (customerName || refText || '---');
+
+        let typeVisual = `<span class="text-devo-muted font-bold inline-flex items-center gap-1.5"><i class="ph ph-arrows-left-right"></i> ${escapeHtml(cls.label)}</span>`;
+        if (cls.category === 'sale') {
+            typeVisual = `<span class="text-devo-error font-bold inline-flex items-center gap-1.5"><i class="ph ph-arrow-up-right"></i> ${escapeHtml(cls.label)}</span>`;
+        } else if (cls.category === 'erp_sync') {
+            typeVisual = `<span class="text-devo-warning font-bold inline-flex items-center gap-1.5"><i class="ph ph-file-xls"></i> ${escapeHtml(cls.label)}</span>`;
+        } else if (cls.category === 'order_return') {
+            typeVisual = `<span class="text-devo-info font-bold inline-flex items-center gap-1.5"><i class="ph ph-arrow-u-up-left"></i> ${escapeHtml(cls.label)}</span>`;
+        } else if (cls.category === 'inbound') {
+            typeVisual = `<span class="text-devo-success font-bold inline-flex items-center gap-1.5"><i class="ph ph-arrow-down-left"></i> ${escapeHtml(cls.label)}</span>`;
+        } else if (cls.category === 'inbound_reversal') {
+            typeVisual = `<span class="text-devo-orange font-bold inline-flex items-center gap-1.5"><i class="ph ph-minus-circle"></i> ${escapeHtml(cls.label)}</span>`;
+        }
+
+        const safeOrderId = escapeHtml(mov.order_id || '');
+        const safeInv = escapeHtml(cls.invoiceNumber || '');
+        const hasInvoiceAction = Boolean(safeOrderId || safeInv) && (cls.category === 'sale' || cls.category === 'order_return');
+
+        const actionHtml = hasInvoiceAction
+            ? `<div class="flex items-center justify-center gap-1.5 flex-wrap">
+                    <button type="button" onclick="openInvoiceFromHistory('${safeOrderId}', '${safeInv}', 'filter')" class="min-h-[34px] px-2.5 py-1 rounded-lg bg-devo-dark hover:bg-devo-gray border border-devo-gray hover:border-devo-orange text-white text-[11px] font-bold transition-colors inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" title="الانتقال لإدارة الأوردرات وفلترة الفاتورة">
+                        <i class="ph ph-funnel text-devo-orange"></i>
+                        <span>عرض الفاتورة</span>
+                    </button>
+                    <button type="button" onclick="openInvoiceFromHistory('${safeOrderId}', '${safeInv}', 'edit')" class="min-h-[34px] px-2.5 py-1 rounded-lg bg-devo-orange hover:bg-devo-orangeHover text-white text-[11px] font-bold transition-colors inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" title="تعديل الفاتورة أو إسنادها لموظف للتعديل">
+                        <i class="ph ph-pencil-simple"></i>
+                        <span>تعديل / إسناد</span>
+                    </button>
+               </div>`
+            : `<span class="text-[11px] text-devo-muted">${cls.category === 'erp_sync' ? 'تعديل جرد غير فاتوري' : '—'}</span>`;
+
         return `
-        <tr class="hover:bg-devo-black transition-colors">
-            <td class="p-3 ${mov.movement_type === 'in' ? 'text-devo-success' : 'text-devo-error'} font-bold text-xs">
-                ${mov.movement_type === 'in' ? '<i class="ph ph-arrow-down-left"></i> وارد' : '<i class="ph ph-arrow-up-right"></i> مبيعات'}
+        <tr class="hover:bg-devo-black/50 transition-colors">
+            <td class="p-3.5 text-xs whitespace-nowrap">${typeVisual}</td>
+            <td class="p-3.5 text-white text-xs whitespace-nowrap">${escapeHtml(mov.colors?.name || '---')}</td>
+            <td class="p-3.5 text-white font-bold leading-tight text-xs font-mono tabular-nums whitespace-nowrap">
+                ${qty} سيريه
+                <span class="block text-[11px] text-devo-muted font-normal">(${pieces} قطعة)</span>
             </td>
-            <td class="p-3 text-white text-xs">${mov.colors?.name}</td>
-            <td class="p-3 text-white font-bold leading-tight text-xs">
-                ${mov.quantity} <br>
-                <span class="text-[10px] text-devo-muted font-normal">(${mov.quantity * sizesCount} ق)</span>
+            <td class="p-3.5 text-white text-xs">
+                <div class="font-medium break-words max-w-[320px]">${escapeHtml(displayRef)}</div>
+                ${cls.invoiceNumber ? `<span class="text-[11px] font-mono tabular-nums text-devo-orange">فاتورة #${escapeHtml(cls.invoiceNumber)}</span>` : ''}
             </td>
-            <td class="p-3 text-white text-xs font-mono" title="${customerName}">${customerName.length > 25 ? customerName.substring(0,25)+'...' : customerName}</td>
-            <td class="p-3 text-devo-muted text-[10px]">${new Date(mov.created_at).toLocaleString('ar-EG')}</td>
+            <td class="p-3.5 text-devo-muted text-[11px] font-mono tabular-nums whitespace-nowrap">${new Date(mov.created_at).toLocaleString('ar-EG')}</td>
+            <td class="p-3.5 text-center">${actionHtml}</td>
         </tr>
-    `}).join('');
+    `;
+    }).join('');
 };
 
-window.closeDetailsModal = () => {
+window.closeDetailsModal = (skipHistory = false) => {
     const modal = document.getElementById('view-details-modal');
+    const dialog = document.getElementById('view-details-dialog');
+    if (!modal) return;
+
     modal.classList.add('opacity-0');
+    if (dialog) {
+        dialog.classList.remove('scale-100');
+        dialog.classList.add('scale-95');
+    }
     currentOpenModelId = null;
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    urlParams.delete('admin_model');
-    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-    history.pushState(null, '', newUrl);
-    
+
+    if (!skipHistory) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.delete('admin_model');
+        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '') + window.location.hash;
+        history.pushState(null, '', newUrl);
+    }
+
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 

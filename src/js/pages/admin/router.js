@@ -394,7 +394,7 @@ async function loadViewLogic(targetId, subTab = null) {
             initDefinitionsView();
             break;
         case 'view-models':
-            const { initModelsView } = await import('./models.js?v=8.0'); 
+            const { initModelsView } = await import('./models.js?v=8.2'); 
             await initModelsView(); 
             break;
         case 'view-home-settings':
@@ -409,7 +409,7 @@ async function loadViewLogic(targetId, subTab = null) {
             await initPrintBarcodesView();
             break;
         case 'view-admin-orders':
-            const { initAdminOrdersView } = await import('./admin_orders.js?v=9.9');
+            const { initAdminOrdersView } = await import('./admin_orders.js?v=10.0');
             await initAdminOrdersView();
             break;
         case 'view-reports': {
@@ -425,7 +425,7 @@ async function loadViewLogic(targetId, subTab = null) {
             break;
         }
         case 'view-import-stock':
-            const { initImportStockView } = await import('./import_stock.js');
+            const { initImportStockView } = await import('./import_stock.js?v=1.1');
             await initImportStockView();
             break;
         case 'view-import-images':
@@ -459,7 +459,7 @@ async function loadViewLogic(targetId, subTab = null) {
             await initNotificationSettingsView();
             break;
         case 'view-data-management':
-            const { initDataManagementView } = await import('./data_management.js');
+            const { initDataManagementView } = await import('./data_management.js?v=1.1');
             await initDataManagementView();
             break;
         case 'view-settings-lock':
@@ -631,7 +631,7 @@ export async function refreshAllSystemData(options = {}) {
 
     try {
         // 1. Refetch definitions & lookup caches for dependent modules
-        const modelsMod = await import('./models.js').catch(() => null);
+        const modelsMod = await import('./models.js?v=8.2').catch(() => null);
         if (modelsMod && typeof modelsMod.loadDefinitionsCache === 'function') {
             await modelsMod.loadDefinitionsCache();
         }
@@ -646,7 +646,7 @@ export async function refreshAllSystemData(options = {}) {
             await barcodeMod.fetchBarcodeFilterOptions();
         }
 
-        const importMod = await import('./import_stock.js').catch(() => null);
+        const importMod = await import('./import_stock.js?v=1.1').catch(() => null);
         if (importMod && typeof importMod.loadInitialData === 'function') {
             await importMod.loadInitialData();
         }
@@ -690,7 +690,7 @@ export async function refreshAllSystemData(options = {}) {
                     break;
                 }
                 case 'view-admin-orders': {
-                    const ordersMod = await import('./admin_orders.js?v=9.9').catch(() => null);
+                    const ordersMod = await import('./admin_orders.js?v=10.0').catch(() => null);
                     if (ordersMod && typeof ordersMod.fetchAdminOrders === 'function') {
                         await ordersMod.fetchAdminOrders();
                     }
@@ -738,7 +738,7 @@ export async function refreshAllSystemData(options = {}) {
                     break;
                 }
                 case 'view-data-management': {
-                    const dmMod = await import('./data_management.js').catch(() => null);
+                    const dmMod = await import('./data_management.js?v=1.1').catch(() => null);
                     if (dmMod && typeof dmMod.refreshDataManagementData === 'function') {
                         await dmMod.refreshDataManagementData();
                     }

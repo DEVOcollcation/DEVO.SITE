@@ -1,5 +1,5 @@
 import { initNavbar } from './navbar.js?v=9.9';
-import { initGallery } from './gallery.js?v=18.2';
+import { initGallery } from './gallery.js?v=18.4';
 import { initHomeContent } from './home_content.js?v=9.3';
 import { initCart } from './cart.js?v=9.9';
 import { initOrdersView } from './orders.js?v=9.6';

@@ -2018,14 +2018,30 @@
             </div>
         </div>
 
-        <div id="view-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-devo-float transform scale-95 transition-transform duration-300">
-                <div class="p-5 border-b border-devo-gray flex justify-between items-center bg-devo-black/50">
-                    <h3 class="text-xl font-bold text-white">تفاصيل الموديل والمخزون</h3>
-                    <button onclick="closeDetailsModal()" class="text-devo-muted hover:text-white"><i class="ph ph-x text-2xl"></i></button>
-                </div>
-                <div class="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar" id="details-content">
+        <div id="view-details-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex items-center justify-center p-2 sm:p-4 lg:p-5 opacity-0 transition-opacity duration-300">
+            <div id="view-details-dialog" class="bg-devo-dark border border-devo-gray rounded-2xl w-full max-w-[97vw] xl:max-w-[1440px] h-[94vh] max-h-[94vh] flex flex-col overflow-hidden shadow-devo-float transform scale-95 transition-transform duration-300">
+                <div class="px-4 sm:px-6 py-3.5 border-b border-devo-gray flex items-center justify-between gap-3 bg-devo-black/50 shrink-0">
+                    <div class="min-w-0">
+                        <h3 class="text-base sm:text-xl font-bold text-white truncate">تفاصيل الموديل والمخزون</h3>
+                        <p id="details-modal-subtitle" class="text-xs text-devo-muted truncate mt-0.5 font-mono tabular-nums">جاري التحميل...</p>
                     </div>
+                    <button type="button" onclick="closeDetailsModal()" aria-label="إغلاق نافذة تفاصيل الموديل" class="w-10 h-10 rounded-xl bg-devo-black/80 border border-devo-gray text-devo-muted hover:text-white hover:border-devo-orange flex items-center justify-center transition-colors shrink-0 cursor-pointer">
+                        <i class="ph ph-x text-xl"></i>
+                    </button>
+                </div>
+                <div id="details-tabs-bar" role="tablist" aria-label="أقسام تفاصيل الموديل" class="px-3 sm:px-6 py-2.5 border-b border-devo-gray bg-devo-black/30 flex items-center gap-2 shrink-0 overflow-x-auto custom-scrollbar">
+                    <button type="button" role="tab" id="details-tab-btn-overview" aria-selected="true" onclick="switchModelDetailsTab('overview')" class="min-h-[40px] px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 bg-devo-orange text-white shadow-sm cursor-pointer whitespace-nowrap shrink-0">
+                        <i class="ph ph-t-shirt text-base"></i>
+                        <span>بيانات الموديل والمخزون</span>
+                    </button>
+                    <button type="button" role="tab" id="details-tab-btn-history" aria-selected="false" onclick="switchModelDetailsTab('history')" class="min-h-[40px] px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 text-devo-muted hover:text-white hover:bg-devo-gray/50 border border-devo-gray cursor-pointer whitespace-nowrap shrink-0">
+                        <i class="ph ph-clock-counter-clockwise text-base"></i>
+                        <span>سجل حركة المخزون</span>
+                        <span class="text-xs font-mono tabular-nums opacity-90">(<span id="details-history-tab-count">0</span>)</span>
+                    </button>
+                </div>
+                <div class="flex-1 min-h-0 flex flex-col overflow-hidden" id="details-content">
+                </div>
             </div>
         </div>
 

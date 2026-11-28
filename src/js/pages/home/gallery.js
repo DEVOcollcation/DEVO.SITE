@@ -330,6 +330,7 @@ async function fetchGalleryModels() {
     try {
         const cachedData = await getAllCachedModels();
         if (cachedData && cachedData.length > 0 && allModels.length === 0) {
+            cachedData.forEach(m => { if (m && typeof m === 'object') delete m.colorSalesMap; });
             allModels = cachedData;
             if (typeof window !== 'undefined') window.allGalleryModels = allModels;
             populateCategoryFilter();
@@ -1138,7 +1139,7 @@ function updateModelViewerDOM(id) {
                 colorsContainer.innerHTML = generateColorsHTML(model, sizesCount);
             }
 
-            if (checkIsWorker() && !model.colorSalesMap) {
+            if (checkIsWorker()) {
                 fetchModelSalesMap(model.id).then((salesMap) => {
                     model.colorSalesMap = salesMap || {};
                     const activeModal = document.getElementById('model-viewer-modal');
@@ -1208,6 +1209,7 @@ async function fetchModelSalesMap(modelId) {
 
     let orderItems = [];
     let allMovements = [];
+    let ordersFetchOk = false;
 
     const [ordersRes, movsRes] = await Promise.allSettled([
         supabase
@@ -1222,6 +1224,7 @@ async function fetchModelSalesMap(modelId) {
 
     if (ordersRes.status === 'fulfilled' && !ordersRes.value.error && Array.isArray(ordersRes.value.data)) {
         orderItems = ordersRes.value.data;
+        ordersFetchOk = true;
     } else if (ordersRes.status === 'rejected') {
         console.warn('[Gallery] order_items fetch error:', ordersRes.reason);
     }
@@ -1235,7 +1238,7 @@ async function fetchModelSalesMap(modelId) {
     const { combined } = buildModelColorOffsetMap({
         orderItems,
         allMovements,
-        orderItemsReliable: canReadAllOrderItems
+        orderItemsReliable: canReadAllOrderItems && ordersFetchOk
     });
     return combined;
 }
@@ -1260,6 +1263,7 @@ window.openModelViewer = async (id, skipHistory = false, modelOverride = null) =
         try {
             const cachedData = await getAllCachedModels();
             if (cachedData && cachedData.length > 0) {
+                cachedData.forEach(m => { if (m && typeof m === 'object') delete m.colorSalesMap; });
                 allModels = cachedData;
                 if (typeof window !== 'undefined') window.allGalleryModels = allModels;
                 model = allModels.find(m => String(m.id) === String(id));
@@ -1665,7 +1669,7 @@ async function refreshColorsContainer(modelId) {
     const model = allModels.find(m => String(m.id) === String(modelId));
     if (!model) return;
     const isWorkerActive = checkIsWorker();
-    if (isWorkerActive && !model.colorSalesMap) {
+    if (isWorkerActive) {
         model.colorSalesMap = await fetchModelSalesMap(model.id);
     }
     const classSizes = model.classes?.class_sizes || [];

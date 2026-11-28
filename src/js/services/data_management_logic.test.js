@@ -11,9 +11,14 @@ import {
     isStockZeroSettlementMovement,
     filterExcludedSettlementMovements,
     computeAdminModalSoldMap,
+    isInventorySyncMovement,
     isInventorySyncOutMovement,
     isInboundReversalOutMovement,
     isOrderReversalInMovement,
+    extractInvoiceNumberFromMovement,
+    classifyStockMovement,
+    matchesHistoryFilter,
+    computeMovementLogStats,
     buildSettlementReference,
     computeColorBaseStock,
     buildModelColorOffsetMap,
@@ -70,7 +75,7 @@ test('Zeroing remaining 5 -> Excel import sets real 4 yields Base Stock = 24 (no
     assert.equal(4 + (workerRes.combined['c1'] || 0), 24);
 });
 
-test('buildModelColorOffsetMap preserves archived deleted sales orders without double-counting regular sales or ERP sync deductions', () => {
+test('buildModelColorOffsetMap ignores ALL settlement rows (archived, audit, zeroing) and avoids double-counting', () => {
     const orderItems = [
         { color_id: 'c1', quantity: 50 },
         { color_id: 'c1', quantity: 30 }
@@ -80,8 +85,10 @@ test('buildModelColorOffsetMap preserves archived deleted sales orders without d
         { color_id: 'c1', movement_type: 'out', quantity: 80, order_id: 'ord-1', reference: 'فاتورة مبيعات: 101' },
         // Legacy stock-zeroing [SETTLEMENT] must be ignored
         { color_id: 'c1', movement_type: 'out', quantity: 20, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} تسوية وتصفير مخزون` },
-        // Archived deleted sales order [SETTLEMENT] IS preserved in settledMap
+        // Legacy archived deleted sales order [SETTLEMENT] must ALSO be ignored (Remaining + Sold ONLY!)
         { color_id: 'c2', movement_type: 'out', quantity: 15, order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF },
+        // Legacy periodic audit settlement ('تسوية جرد دوري: ...') must ALSO be ignored
+        { color_id: 'c2', movement_type: 'out', quantity: 9, order_id: null, reference: 'تسوية جرد دوري: AUD-2026' },
         // ERP inventory reduction 'out' must NOT count as a sale even for workers
         { color_id: 'c1', movement_type: 'out', quantity: 6, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' }
     ];
@@ -90,14 +97,30 @@ test('buildModelColorOffsetMap preserves archived deleted sales orders without d
     assert.equal(ownerRes.soldMap['c1'], 80);
     assert.equal(ownerRes.settledMap['c1'] || 0, 0);
     assert.equal(ownerRes.combined['c1'], 80);
-    assert.equal(ownerRes.settledMap['c2'], 15);
-    assert.equal(ownerRes.combined['c2'], 15);
+    assert.equal(ownerRes.settledMap['c2'] || 0, 0);
+    assert.equal(ownerRes.combined['c2'] || 0, 0);
 
     const workerRes = buildModelColorOffsetMap({ orderItems: [], allMovements, orderItemsReliable: false });
     assert.equal(workerRes.soldMap['c1'], 80);
-    assert.equal(workerRes.settledMap['c2'], 15);
+    assert.equal(workerRes.settledMap['c2'] || 0, 0);
     assert.equal(workerRes.combined['c1'], 80);
-    assert.equal(workerRes.combined['c2'], 15);
+    assert.equal(workerRes.combined['c2'] || 0, 0);
+});
+
+test('Owner with zero sold orders (orderItems=[]) keeps Base Stock = Remaining + 0 without falling back to stock_movements', () => {
+    const allMovements = [
+        { color_id: 'c1', movement_type: 'out', quantity: 12, order_id: null, reference: 'فاتورة مبيعات: 999' },
+        { color_id: 'c1', movement_type: 'out', quantity: 5, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} تسوية وتصفير مخزون` }
+    ];
+    const ownerRes = buildModelColorOffsetMap({ orderItems: [], allMovements, orderItemsReliable: true });
+    assert.deepEqual(ownerRes.soldMap, {});
+    assert.deepEqual(ownerRes.settledMap, {});
+    assert.deepEqual(ownerRes.combined, {});
+});
+
+test('computeColorBaseStock always computes Remaining + Sold ONLY and ignores any legacy settledSeries', () => {
+    const res = computeColorBaseStock({ availableSeries: 10, soldSeries: 5, settledSeries: 99 });
+    assert.deepEqual(res, { available: 10, sold: 5, settled: 0, baseStock: 15 });
 });
 
 test('buildModelColorOffsetMap computes full base stock for workers even when order_items is RLS-filtered to only worker orders', () => {
@@ -125,7 +148,10 @@ test('buildModelColorOffsetMap computes full base stock for workers even when or
         // Inbound addition & inbound deletion must NOT distort sales
         { color_id: 'sakkari', movement_type: 'in', quantity: 25, order_id: null, reference: 'فاتورة دخل: IN-1' },
         { color_id: 'sakkari', movement_type: 'out', quantity: 2, order_id: null, reference: 'حذف فاتورة دخل: IN-2' },
-        { color_id: 'black', movement_type: 'out', quantity: 1, order_id: null, reference: 'تعديل فاتورة دخل (تخفيض كمية): IN-3' }
+        { color_id: 'black', movement_type: 'out', quantity: 1, order_id: null, reference: 'تعديل فاتورة دخل (تخفيض كمية): IN-3' },
+        // Legacy periodic audit or zeroing settlements must NOT distort sales
+        { color_id: 'sakkari', movement_type: 'out', quantity: 8, order_id: null, reference: 'تسوية جرد دوري: AUD-1' },
+        { color_id: 'nibiti', movement_type: 'out', quantity: 9, order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }
     ];
 
     const workerRes = buildModelColorOffsetMap({
@@ -140,13 +166,15 @@ test('buildModelColorOffsetMap computes full base stock for workers even when or
     assert.equal(4 + (workerRes.combined['nibiti'] || 0), 25);
 });
 
-test('Movement classifiers classify settlements, archived orders, ERP syncs, and reversals strictly', () => {
+test('Movement classifiers classify ALL settlements, ERP syncs, and reversals strictly', () => {
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية' }), true);
-    assert.equal(isSettlementMovement({ movement_type: 'out', order_id: 'ord-1', reference: '[SETTLEMENT] تسوية' }), false);
-    assert.equal(isSettlementMovement({ movement_type: 'in', order_id: null, reference: '[SETTLEMENT] تسوية' }), false);
+    assert.equal(isSettlementMovement({ movement_type: 'out', order_id: 'ord-1', reference: '[SETTLEMENT] تسوية' }), true);
+    assert.equal(isSettlementMovement({ movement_type: 'in', order_id: null, reference: '[SETTLEMENT] تسوية' }), true);
+    assert.equal(isSettlementMovement({ movement_type: 'in', order_id: null, reference: 'تسوية جرد دوري: AUD-1' }), true);
+    assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), true);
     assert.equal(isSettlementMovement({ movement_type: 'out', order_id: null, reference: 'فاتورة بيع' }), false);
 
-    assert.equal(isOrderArchiveSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), true);
+    assert.equal(isOrderArchiveSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), false);
     assert.equal(isOrderArchiveSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية وتصفير مخزون' }), false);
 
     assert.equal(isInventorySyncOutMovement({ movement_type: 'out', reference: 'مزامنة جرد ERP (تعديل رصيد)' }), true);
@@ -165,12 +193,12 @@ test('Movement classifiers classify settlements, archived orders, ERP syncs, and
 
     assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] تسوية وتصفير مخزون' }), true);
     assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: '[SETTLEMENT] هالك' }), true);
-    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), false);
-    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: `${ARCHIVE_ORDER_SETTLEMENT_REF} - سبب` }), false);
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF }), true);
+    assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: 'تسوية جرد دوري: AUD-1' }), true);
     assert.equal(isStockZeroSettlementMovement({ movement_type: 'out', order_id: null, reference: 'فاتورة مبيعات: 105' }), false);
 });
 
-test('filterExcludedSettlementMovements and computeAdminModalSoldMap exclude stock-zeroing settlements cleanly', () => {
+test('filterExcludedSettlementMovements and computeAdminModalSoldMap exclude ALL settlement rows cleanly', () => {
     const movements = [
         { id: '1', color_id: 'c1', movement_type: 'in', quantity: 25, order_id: null, reference: 'فاتورة دخل: IN-1' },
         { id: '2', color_id: 'c1', movement_type: 'out', quantity: 10, order_id: 'ord-1', reference: 'فاتورة مبيعات: 100' },
@@ -178,16 +206,17 @@ test('filterExcludedSettlementMovements and computeAdminModalSoldMap exclude sto
         { id: '4', color_id: 'c2', movement_type: 'out', quantity: 3, order_id: null, reference: `${SETTLEMENT_REF_PREFIX} هالك` },
         { id: '5', color_id: 'c2', movement_type: 'out', quantity: 7, order_id: null, reference: ARCHIVE_ORDER_SETTLEMENT_REF },
         { id: '6', color_id: 'c1', movement_type: 'out', quantity: 2, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' },
-        { id: '7', color_id: 'c1', movement_type: 'out', quantity: 1, order_id: null, reference: 'حذف فاتورة دخل: IN-2' }
+        { id: '7', color_id: 'c1', movement_type: 'out', quantity: 1, order_id: null, reference: 'حذف فاتورة دخل: IN-2' },
+        { id: '8', color_id: 'c2', movement_type: 'out', quantity: 4, order_id: null, reference: 'تسوية جرد دوري: AUD-1' }
     ];
 
     const visibleLog = filterExcludedSettlementMovements(movements);
-    assert.deepEqual(visibleLog.map(m => m.id), ['1', '2', '5', '6', '7']);
+    assert.deepEqual(visibleLog.map(m => m.id), ['1', '2', '6', '7']);
 
     const outMovs = movements.filter(m => m.movement_type === 'out');
     const soldMap = computeAdminModalSoldMap(outMovs);
     assert.equal(soldMap['c1'], 10);
-    assert.equal(soldMap['c2'], 7);
+    assert.equal(soldMap['c2'] || 0, 0);
 });
 
 test('buildSettlementPlan creates exact model_inventory updates without emitting stock_movements rows and supports color filter scope', () => {
@@ -230,7 +259,7 @@ test('buildSettlementPlan creates exact model_inventory updates without emitting
     assert.equal(addPlan.movements.length, 0);
 });
 
-test('Order deletion helpers correctly build archive settlement entries and restore stock deltas', () => {
+test('Order deletion helpers emit NO archive settlement entries while preserving restore stock deltas', () => {
     const items = [
         { model_id: 'm1', color_id: 'c1', quantity: 50 },
         { model_id: 'm1', color_id: 'c1', quantity: 30 },
@@ -239,10 +268,7 @@ test('Order deletion helpers correctly build archive settlement entries and rest
     ];
 
     const archived = buildOrderArchiveSettlementEntries(items);
-    assert.equal(archived.length, 2);
-    const m1Entry = archived.find(e => e.model_id === 'm1');
-    assert.equal(m1Entry.quantity, 80);
-    assert.equal(isOrderArchiveSettlementMovement(m1Entry), true);
+    assert.deepEqual(archived, []);
 
     const restored = buildOrderRestoreStockDeltas(items);
     assert.equal(restored.length, 2);
@@ -381,3 +407,137 @@ test('PIN validation, salted PBKDF2 hashing, config normalization, and cooldown 
 test('escapeHtml neutralizes HTML special characters', () => {
     assert.equal(escapeHtml('<script>"alert(\'x\')&"</script>'), '&lt;script&gt;&quot;alert(&#39;x&#39;)&amp;&quot;&lt;/script&gt;');
 });
+
+// =========================================================================
+// 4. MOVEMENT LOG CLASSIFICATION, ERP/EXCEL SEPARATION & FILTER-REACTIVE STATS
+// =========================================================================
+
+test('classifyStockMovement never classifies ERP/Excel adjustments as sales and extracts invoice numbers accurately', () => {
+    const erpOut = classifyStockMovement({
+        movement_type: 'out',
+        quantity: 2,
+        order_id: null,
+        reference: 'مزامنة جرد ERP (تعديل رصيد)'
+    });
+    assert.equal(erpOut.category, 'erp_sync');
+    assert.equal(erpOut.isSale, false);
+    assert.equal(erpOut.isErpSync, true);
+    assert.equal(erpOut.label, 'تعديل جرد (إكسيل -)');
+    assert.equal(erpOut.invoiceNumber, null);
+
+    const erpIn = classifyStockMovement({
+        movement_type: 'in',
+        quantity: 5,
+        order_id: null,
+        reference: 'مزامنة جرد ERP (تعديل رصيد)'
+    });
+    assert.equal(erpIn.category, 'erp_sync');
+    assert.equal(erpIn.isSale, false);
+    assert.equal(erpIn.label, 'تعديل جرد (إكسيل +)');
+
+    const saleMov = classifyStockMovement({
+        movement_type: 'out',
+        quantity: 1,
+        order_id: null,
+        reference: 'فاتورة مبيعات: 563'
+    });
+    assert.equal(saleMov.category, 'sale');
+    assert.equal(saleMov.isSale, true);
+    assert.equal(saleMov.invoiceNumber, '563');
+
+    const orderReturn = classifyStockMovement({
+        movement_type: 'in',
+        quantity: 2,
+        order_id: 'ord-560',
+        reference: 'تعديل أوردر رقم 560'
+    });
+    assert.equal(orderReturn.category, 'order_return');
+    assert.equal(orderReturn.isSale, false);
+    assert.equal(orderReturn.isOrderReturn, true);
+    assert.equal(orderReturn.invoiceNumber, '560');
+
+    // Inbound invoice must NEVER match as a customer sales invoice number
+    assert.equal(extractInvoiceNumberFromMovement({
+        movement_type: 'in',
+        reference: 'فاتورة دخل: IN-900'
+    }), null);
+
+    assert.equal(isInventorySyncMovement({
+        movement_type: 'out',
+        order_id: null,
+        reference: 'تعديل من شيت الإكسيل'
+    }), true);
+});
+
+test('computeMovementLogStats & matchesHistoryFilter recalculate stats live based on active filters and exclude ERP from sales', () => {
+    const movements = [
+        { id: '1', color_id: 'tubi', movement_type: 'out', quantity: 2, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)', created_at: '2026-11-27T15:08:00Z', colors: { name: 'طوبي' } },
+        { id: '2', color_id: 'tubi', movement_type: 'out', quantity: 1, order_id: null, reference: 'فاتورة مبيعات: 563', created_at: '2026-11-27T12:23:00Z', colors: { name: 'طوبي' }, orders: { customer_name: 'عميل 563' } },
+        { id: '3', color_id: 'tubi', movement_type: 'out', quantity: 1, order_id: null, reference: 'فاتورة مبيعات: 560', created_at: '2026-11-27T06:55:00Z', colors: { name: 'طوبي' } },
+        { id: '4', color_id: 'tubi', movement_type: 'out', quantity: 2, order_id: null, reference: 'فاتورة مبيعات: 557', created_at: '2026-11-27T06:34:00Z', colors: { name: 'طوبي' } },
+        { id: '5', color_id: 'beige', movement_type: 'in', quantity: 10, order_id: null, reference: 'فاتورة دخل: IN-12', created_at: '2026-11-26T10:00:00Z', colors: { name: 'بيج' } },
+        { id: '6', color_id: 'beige', movement_type: 'in', quantity: 1, order_id: 'o-1', reference: 'تعديل أوردر رقم 560', created_at: '2026-11-27T07:00:00Z', colors: { name: 'بيج' } }
+    ];
+
+    // Unfiltered (sizesCount = 4):
+    // Sales = 1 + 1 + 2 = 4 series (16 pcs, 3 invoices) — excludes the 2-series ERP sync!
+    // Inbound/Return = 10 + 1 = 11 series (44 pcs, 2 ops)
+    // ERP Sync = 1 op (-2 series)
+    const allStats = computeMovementLogStats(movements, 4);
+    assert.equal(allStats.totalCount, 6);
+    assert.equal(allStats.salesCount, 3);
+    assert.equal(allStats.salesSeries, 4);
+    assert.equal(allStats.salesPieces, 16);
+    assert.equal(allStats.inboundCount, 2);
+    assert.equal(allStats.inboundSeries, 11);
+    assert.equal(allStats.inboundPieces, 44);
+    assert.equal(allStats.erpSyncCount, 1);
+    assert.equal(allStats.erpSyncOutSeries, 2);
+    assert.equal(allStats.erpSyncNetSeries, -2);
+
+    // Filter to color = 'tubi' & type = 'sale': excludes ERP row & beige rows
+    const tubiSalesOnly = movements.filter(m => matchesHistoryFilter(m, { colorId: 'tubi', type: 'sale' }));
+    assert.equal(tubiSalesOnly.length, 3);
+    const tubiSalesStats = computeMovementLogStats(tubiSalesOnly, 4);
+    assert.equal(tubiSalesStats.totalCount, 3);
+    assert.equal(tubiSalesStats.salesSeries, 4);
+    assert.equal(tubiSalesStats.erpSyncCount, 0);
+
+    // Filter by invoice search '563'
+    const search563 = movements.filter(m => matchesHistoryFilter(m, { term: '563' }));
+    assert.equal(search563.length, 1);
+    assert.equal(computeMovementLogStats(search563, 4).salesSeries, 1);
+
+    // Filter to ERP sync only
+    const erpOnly = movements.filter(m => matchesHistoryFilter(m, { type: 'erp_sync' }));
+    assert.equal(erpOnly.length, 1);
+    const erpStats = computeMovementLogStats(erpOnly, 4);
+    assert.equal(erpStats.salesSeries, 0);
+    assert.equal(erpStats.erpSyncOutSeries, 2);
+});
+
+test('Excel/ERP stock adjustments (both in and out) never enter Base Stock for Owner or Worker', () => {
+    // Remaining in inventory after Excel upload = 9
+    // Real customer invoices sold = 4
+    // Excel sync added +3 earlier and subtracted -2 later -> total Base Stock MUST remain 9 + 4 = 13!
+    const allMovements = [
+        { color_id: 'tubi', movement_type: 'in', quantity: 3, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' },
+        { color_id: 'tubi', movement_type: 'out', quantity: 2, order_id: null, reference: 'مزامنة جرد ERP (تعديل رصيد)' },
+        { color_id: 'tubi', movement_type: 'out', quantity: 4, order_id: null, reference: 'فاتورة مبيعات: 563' }
+    ];
+
+    const ownerMap = buildModelColorOffsetMap({
+        orderItems: [{ color_id: 'tubi', quantity: 4 }],
+        allMovements,
+        orderItemsReliable: true
+    });
+    const workerMap = buildModelColorOffsetMap({
+        orderItems: [],
+        allMovements,
+        orderItemsReliable: false
+    });
+
+    assert.equal(9 + (ownerMap.combined['tubi'] || 0), 13);
+    assert.equal(9 + (workerMap.combined['tubi'] || 0), 13);
+});
+

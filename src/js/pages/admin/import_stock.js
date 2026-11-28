@@ -1,8 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import {
-    SETTLEMENT_REF_PREFIX,
-    isStockZeroSettlementMovement
+    isSettlementMovement
 } from '../../services/data_management_logic.js';
 
 let isInitialized = false;
@@ -1451,15 +1450,13 @@ async function handleConfirmSave() {
                         .from('stock_movements')
                         .select('id, movement_type, order_id, reference')
                         .in('model_id', modelChunk)
-                        .eq('movement_type', 'out')
-                        .is('order_id', null)
-                        .ilike('reference', `${SETTLEMENT_REF_PREFIX}%`);
+                        .or('reference.ilike.%[SETTLEMENT]%,reference.ilike.تسوية%');
                     if (legacyFetchErr) {
                         console.warn('[ImportStock] Legacy settlement lookup warning:', legacyFetchErr);
                         continue;
                     }
                     for (const row of legacyRows || []) {
-                        if (isStockZeroSettlementMovement(row)) {
+                        if (isSettlementMovement(row)) {
                             idsToDelete.push(row.id);
                         }
                     }

@@ -1,12 +1,10 @@
 import { supabase } from '../../config/supabase.js';
 import { showToast } from '../../components/toast.js';
 import { requireAuth } from '../../services/auth.js';
-import { checkModelsInInvoices } from './models.js';
+import { checkModelsInInvoices, purgeAllLegacySettlementMovements } from './models.js';
 import {
-    SETTLEMENT_REF_PREFIX,
-    isStockZeroSettlementMovement,
+    isSettlementMovement,
     buildSettlementPlan,
-    buildOrderArchiveSettlementEntries,
     buildOrderRestoreStockDeltas,
     buildInboundDeductStockDeltas,
     filterModelsByHunter,
@@ -57,6 +55,7 @@ export async function initDataManagementView() {
         isDmInitialized = true;
     }
 
+    purgeAllLegacySettlementMovements({ silent: true }).catch(() => {});
     await refreshDataManagementData();
 }
 
@@ -83,9 +82,9 @@ function renderDataManagementShell() {
                 <div class="space-y-1 flex-1 min-w-0 sm:min-w-[280px]">
                     <h2 class="text-lg sm:text-xl font-bold text-devo-text flex items-center gap-2">
                         <i class="ph ph-sliders-horizontal text-devo-orange text-2xl shrink-0"></i>
-                        <span>إدارة البيانات والتسويات</span>
+                        <span>إدارة البيانات والمخزون</span>
                     </h2>
-                    <p class="text-xs text-devo-muted">تحكم دقيق في تصفير وتعديل أرصدة الموديلات دون احتساب تسويات في الأصل، وحذف الفواتير والطلبات والإشعارات</p>
+                    <p class="text-xs text-devo-muted">تحكم دقيق في تصفير وتعديل أرصدة الموديلات دون تسجيل أو احتساب أي تسويات (العدد الأساسي = المتبقي + المباع فقط)، وحذف الفواتير والطلبات والإشعارات</p>
                 </div>
 
                 <!-- Segmented Control Tabs -->
@@ -208,7 +207,11 @@ function renderDataManagementShell() {
                             <span class="text-devo-gray hidden sm:inline">|</span>
                             <span class="text-devo-muted hidden sm:inline">إجمالي الرصيد المتبقي بالمحدد: <span id="dm-selected-series" class="text-devo-orange font-bold font-mono tabular-nums">0</span> سيري</span>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button" id="dm-purge-settlements-btn" class="px-3 py-1.5 rounded-lg bg-devo-error/15 border border-devo-error/40 hover:bg-devo-error/25 text-xs font-bold text-devo-error transition-colors flex items-center gap-1.5 whitespace-nowrap">
+                                <i class="ph ph-broom text-sm"></i>
+                                <span>حذف بيانات التسوية المحفوظة</span>
+                            </button>
                             <button type="button" id="dm-select-all-filtered-btn" class="px-3 py-1.5 rounded-lg bg-devo-dark border border-devo-gray hover:border-devo-orange/60 text-xs text-devo-text transition-colors whitespace-nowrap">
                                 تحديد كل المطابق
                             </button>
@@ -245,12 +248,12 @@ function renderDataManagementShell() {
                 <div id="dm-models-actionbar" class="sticky bottom-2 z-20 bg-devo-dark/95 backdrop-blur-md border border-devo-gray shadow-devo-float rounded-xl p-3.5 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 transition-colors">
                     <div class="space-y-0.5 min-w-0">
                         <p class="text-sm font-bold text-devo-text">إجراءات على الموديلات المحددة (<span id="dm-actionbar-count" class="text-devo-orange font-mono tabular-nums">0</span>)</p>
-                        <p class="text-xs text-devo-muted truncate">تصفير/تعديل الرصيد يضبط المتبقي مباشرة دون تسجيل حركة تسوية، ليُحسب «الأصل» من المبيعات والمتاح الفعلي فقط</p>
+                        <p class="text-xs text-devo-muted truncate">تصفير/تعديل الرصيد يضبط المتبقي مباشرة دون تسجيل أو احتساب أي تسويات؛ العدد الأساسي = المتبقي + المباع فقط</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2.5 shrink-0">
                         <button type="button" id="dm-open-zero-modal-btn" class="flex-1 md:flex-none justify-center px-4 py-2.5 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white text-xs sm:text-sm font-bold transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
                             <i class="ph ph-arrows-counter-clockwise text-base"></i>
-                            <span>تصفير / تسوية الرصيد</span>
+                            <span>تصفير / تعديل الرصيد المتبقي</span>
                         </button>
                         <button type="button" id="dm-open-delete-models-btn" class="flex-1 md:flex-none justify-center px-4 py-2.5 rounded-xl bg-devo-error/15 hover:bg-devo-error/25 border border-devo-error/40 text-devo-error text-xs sm:text-sm font-bold transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
                             <i class="ph ph-trash text-base"></i>
@@ -291,7 +294,7 @@ function renderDataManagementShell() {
                                 <i class="ph ph-receipt text-devo-orange text-lg"></i>
                                 <span>حذف فواتير المبيعات والأوردرات</span>
                             </h3>
-                            <p class="text-xs text-devo-muted mt-0.5">حذف كل الفواتير أو حسب الحالة والتاريخ مع تحديد أثر الحذف على المخزون والأصل</p>
+                            <p class="text-xs text-devo-muted mt-0.5">حذف كل الفواتير أو حسب الحالة والتاريخ مع تحديد أثر الحذف على المخزون المتبقي</p>
                         </div>
                         <button type="button" id="dm-delete-orders-btn" class="px-4 py-2.5 rounded-xl bg-devo-error hover:bg-red-700 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
                             <i class="ph ph-trash text-base"></i>
@@ -324,13 +327,9 @@ function renderDataManagementShell() {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <label class="flex items-start gap-3 p-3.5 rounded-xl bg-devo-black border border-devo-gray has-[:checked]:border-devo-orange cursor-pointer transition-colors">
                                 <input type="radio" name="dm-orders-stock-mode" value="keep" checked class="mt-0.5 accent-devo-orange w-4 h-4 shrink-0">
-                                <div class="space-y-1.5">
+                                <div class="space-y-1">
                                     <span class="block text-xs sm:text-sm font-bold text-devo-text">إبقاء الرصيد الحالي كما هو</span>
-                                    <span class="block text-xs text-devo-muted leading-relaxed">يحذف الفواتير فقط دون إضافة كمياتها للمخزن مرة أخرى.</span>
-                                    <label class="flex items-center gap-2 pt-1 text-xs text-devo-orange cursor-pointer">
-                                        <input type="checkbox" id="dm-orders-preserve-base" checked class="accent-devo-orange w-3.5 h-3.5 rounded">
-                                        <span>حفظ كمياتها كـ «تسوية أرشيفية» ليظل الأصل صحيحاً بكارت الموديل</span>
-                                    </label>
+                                    <span class="block text-xs text-devo-muted leading-relaxed">يحذف الفواتير فقط دون المساس بالرصيد الحالي ودون تسجيل أي تسويات.</span>
                                 </div>
                             </label>
                             <label class="flex items-start gap-3 p-3.5 rounded-xl bg-devo-black border border-devo-gray has-[:checked]:border-devo-orange cursor-pointer transition-colors">
@@ -641,7 +640,27 @@ function attachGlobalEvents() {
         renderDmModelsTable();
     });
 
-    // Model operations
+    // Model & legacy settlement purge operations
+    document.getElementById('dm-purge-settlements-btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('dm-purge-settlements-btn');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await purgeAllLegacySettlementMovements({ silent: false, force: true });
+            if (res?.deletedCount > 0) {
+                showToast(`تم حذف ${res.deletedCount} سجل تسوية قديم نهائياً من قاعدة البيانات`, 'success');
+            } else {
+                showToast('لا توجد أي بيانات تسوية محفوظة في قاعدة البيانات', 'info');
+            }
+            await fetchDmModels();
+            if (typeof window.refreshAllSystemData === 'function') {
+                await window.refreshAllSystemData({ silent: true });
+            }
+        } catch (err) {
+            showToast(`تعذر حذف بيانات التسوية: ${err.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    });
     document.getElementById('dm-open-zero-modal-btn')?.addEventListener('click', openZeroSettlementModal);
     document.getElementById('dm-open-delete-models-btn')?.addEventListener('click', openDeleteModelsModal);
 
@@ -971,8 +990,8 @@ function openZeroSettlementModal() {
     const bodyHtml = `
         <div class="space-y-4">
             <div class="bg-devo-black border border-devo-gray rounded-xl p-3.5 text-xs text-devo-muted leading-relaxed">
-                <p class="text-devo-text font-bold mb-1">تصفير الرصيد دون احتساب تسوية في «الأصل»</p>
-                <p>سيتم ضبط الرصيد المتبقي للموديلات المحددة على القيمة المختارة (مثل <strong>0</strong> قبل رفع شيت الإكسيل) <strong>دون تسجيل أي حركات تسوية</strong> في سجل المخزون؛ وبذلك يُحسب <strong>العدد الأساسي (الأصل)</strong> من المبيعات الفعلية + الرصيد المتبقي الحقيقي فقط دون تضاعف.</p>
+                <p class="text-devo-text font-bold mb-1">تصفير وتعديل الرصيد دون تسجيل أي بيانات تسوية</p>
+                <p>سيتم ضبط الرصيد المتبقي للموديلات المحددة على القيمة المختارة (مثل <strong>0</strong> قبل رفع شيت الإكسيل) <strong>دون تخزين أي أرقام تسوية</strong>؛ ويُحسب <strong>العدد الأساسي</strong> من <strong>(المتبقي + المباع فقط)</strong>.</p>
             </div>
 
             <div class="space-y-2">
@@ -1020,13 +1039,13 @@ function openZeroSettlementModal() {
     `;
 
     openDmModal({
-        title: `<i class="ph ph-arrows-counter-clockwise text-devo-orange text-lg"></i><span>تصفير / تسوية رصيد الموديلات</span>`,
+        title: `<i class="ph ph-arrows-counter-clockwise text-devo-orange text-lg"></i><span>تصفير / تعديل الرصيد المتبقي للموديلات</span>`,
         bodyHtml,
         footerHtml: `
             <button type="button" id="dm-modal-cancel-btn" class="px-4 py-2 rounded-xl border border-devo-gray text-xs font-bold text-devo-muted hover:text-devo-text">إلغاء</button>
             <button type="button" id="dm-modal-confirm-settle" class="px-5 py-2 rounded-xl bg-devo-orange hover:bg-devo-orangeHover text-white text-xs font-bold flex items-center gap-1.5">
                 <i class="ph ph-check-circle text-base"></i>
-                <span>تنفيذ التصفير / التعديل</span>
+                <span>تنفيذ التعديل</span>
             </button>
         `
     });
@@ -1125,15 +1144,13 @@ function openZeroSettlementModal() {
                         .from('stock_movements')
                         .select('id, model_id, color_id, movement_type, order_id, reference')
                         .in('model_id', modelChunk)
-                        .eq('movement_type', 'out')
-                        .is('order_id', null)
-                        .ilike('reference', `${SETTLEMENT_REF_PREFIX}%`);
+                        .or('reference.ilike.%[SETTLEMENT]%,reference.ilike.تسوية%');
                     if (legacyFetchErr) {
                         console.warn('[DataManagement] Legacy settlement lookup warning:', legacyFetchErr);
                         continue;
                     }
                     for (const row of legacyRows || []) {
-                        if (affectedPairKeys.has(`${row.model_id}::${row.color_id}`) && isStockZeroSettlementMovement(row)) {
+                        if ((affectedPairKeys.has(`${row.model_id}::${row.color_id}`) || row.color_id === null) && isSettlementMovement(row)) {
                             idsToDelete.push(row.id);
                         }
                     }
@@ -1367,7 +1384,6 @@ async function openDeleteOrdersModal() {
     const dateFrom = document.getElementById('dm-orders-date-from')?.value || '';
     const dateTo = document.getElementById('dm-orders-date-to')?.value || '';
     const stockMode = document.querySelector('input[name="dm-orders-stock-mode"]:checked')?.value || 'keep';
-    const preserveBase = document.getElementById('dm-orders-preserve-base')?.checked !== false;
 
     const { startIso, endIso } = buildDateBoundaries(dateFrom, dateTo);
 
@@ -1403,9 +1419,7 @@ async function openDeleteOrdersModal() {
 
         const stockSummaryText = stockMode === 'restore'
             ? `سيتم استرجاع <strong>${totalSeries}</strong> سيري إلى رصيد المخزون المتاح قبل حذف الفواتير.`
-            : preserveBase
-                ? `سيبقى الرصيد المتاح كما هو، وسيتم ترحيل <strong>${totalSeries}</strong> سيري إلى دفتر التسويات ليظل «الأصل» صحيحاً في كارت الموديل.`
-                : `سيبقى الرصيد المتاح كما هو ولن يتم حفظ كميات هذه الفواتير ضمن الأصل.`;
+            : `سيبقى الرصيد المتاح كما هو ولن يتم تسجيل أي تسويات.`;
 
         bodyEl.innerHTML = `
             <div class="space-y-4">
@@ -1446,12 +1460,6 @@ async function openDeleteOrdersModal() {
                 if (stockMode === 'restore') {
                     const deltas = buildOrderRestoreStockDeltas(allItems);
                     await applyRestoreStockDeltas(deltas, 'استرجاع رصيد عند حذف فواتير مبيعات (إدارة البيانات)');
-                } else if (preserveBase && allItems.length > 0) {
-                    const archiveEntries = buildOrderArchiveSettlementEntries(allItems);
-                    for (let i = 0; i < archiveEntries.length; i += 100) {
-                        const { error: mErr } = await supabase.from('stock_movements').insert(archiveEntries.slice(i, i + 100));
-                        if (mErr) throw mErr;
-                    }
                 }
 
                 // Delete matched orders in chunks (cascades order_items, order_logs, preparation, order-linked stock_movements)

@@ -42,50 +42,46 @@ export const PATTERN_MIDPOINTS = Object.freeze({
 // =========================================================================
 
 /**
- * Identifies whether a stock_movements row represents any [SETTLEMENT] entry.
+ * Identifies whether a stock_movements row represents ANY settlement entry
+ * (either `[SETTLEMENT] ...` or legacy periodic audit `'تسوية جرد دوري: ...'`).
  */
 export function isSettlementMovement(movement) {
     if (!movement || typeof movement !== 'object') return false;
-    const isOut = movement.movement_type === 'out';
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    if (!ref) return false;
     const hasNoOrder = movement.order_id === null || movement.order_id === undefined || movement.order_id === '';
-    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
-    return isOut && hasNoOrder && ref.startsWith(SETTLEMENT_REF_PREFIX);
+    return ref.includes(SETTLEMENT_REF_PREFIX) || ref.startsWith('تسوية') || (hasNoOrder && ref.includes('تسوية'));
 }
 
 /**
- * Identifies whether a [SETTLEMENT] row represents archived deleted sales orders
- * (which ARE real historical sales preserved in Base Stock when orders are purged).
- * Stock zeroing / inventory settlement rows are intentionally excluded so re-syncing
- * real stock via Excel never double-counts remaining inventory in Base Stock.
+ * Settlement archiving is permanently disabled: Base Stock is strictly
+ * Remaining + Real Sold Invoices only, so archived settlement rows never count.
  */
-export function isOrderArchiveSettlementMovement(movement) {
-    if (!isSettlementMovement(movement)) return false;
-    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
-    return ref === ARCHIVE_ORDER_SETTLEMENT_REF || ref.startsWith(`${ARCHIVE_ORDER_SETTLEMENT_REF} `);
+export function isOrderArchiveSettlementMovement(_movement) {
+    return false;
 }
 
 /**
- * Identifies whether a stock_movements row is a stock-zeroing / inventory
- * settlement row (anything starting with [SETTLEMENT] except archived deleted
- * sales orders). These must be excluded from Base Stock and operations logs.
+ * Identifies whether a stock_movements row is any excluded settlement row.
+ * All settlement rows are excluded from Base Stock and operations logs.
  */
 export function isStockZeroSettlementMovement(movement) {
-    return isSettlementMovement(movement) && !isOrderArchiveSettlementMovement(movement);
+    return isSettlementMovement(movement);
 }
 
 /**
- * Filters out stock-zeroing [SETTLEMENT] rows from a model's stock_movements
- * history list so operations logs stay accurate and free of zeroing noise.
+ * Filters out ALL settlement rows from a model's stock_movements history list
+ * so operations logs stay clean and free of any settlement entries.
  */
 export function filterExcludedSettlementMovements(movements = []) {
     if (!Array.isArray(movements)) return [];
-    return movements.filter(mov => mov && !isStockZeroSettlementMovement(mov));
+    return movements.filter(mov => mov && !isSettlementMovement(mov));
 }
 
 /**
  * Computes per-color real sold quantities for the Admin Edit Model modal
  * (preventing deletion of colors that have real customer sales, while ignoring
- * stock-zeroing settlements, inbound reversals, and ERP/manual sync deductions).
+ * all settlements, inbound reversals, and ERP/manual sync deductions).
  */
 export function computeAdminModalSoldMap(outMovements = []) {
     const soldMap = {};
@@ -94,12 +90,14 @@ export function computeAdminModalSoldMap(outMovements = []) {
         if (!mov || mov.color_id === null || mov.color_id === undefined) continue;
         if (mov.movement_type && mov.movement_type !== 'out') continue;
         if (
-            isStockZeroSettlementMovement(mov) ||
+            isSettlementMovement(mov) ||
             isInboundReversalOutMovement(mov) ||
-            isInventorySyncOutMovement(mov)
+            isInventorySyncMovement(mov)
         ) {
             continue;
         }
+        const cls = classifyStockMovement(mov);
+        if (!cls.isSale) continue;
         const qty = Math.max(0, Number(mov.quantity) || 0);
         if (qty > 0) {
             const cid = String(mov.color_id);
@@ -110,14 +108,45 @@ export function computeAdminModalSoldMap(outMovements = []) {
 }
 
 /**
+ * Identifies whether ANY stock_movements row (both 'in' and 'out') represents
+ * an Excel / ERP inventory import or manual balance sync adjustment.
+ * These movements must NEVER count as customer sales or inflate Base Stock (الأصل).
+ */
+export function isInventorySyncMovement(movement) {
+    if (!movement || typeof movement !== 'object') return false;
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    if (!ref) return false;
+    const lower = ref.toLowerCase();
+    const hasNoOrder = movement.order_id === null || movement.order_id === undefined || movement.order_id === '';
+    if (
+        ref.startsWith('مزامنة جرد ERP') ||
+        ref.startsWith('تعديل رصيد يدوي') ||
+        ref.startsWith('إنشاء موديل جديد عبر استيراد ERP') ||
+        ref.startsWith('تعديل السعر من الإكسيل')
+    ) {
+        return true;
+    }
+    if (hasNoOrder && (
+        lower.includes('مزامنة جرد') ||
+        lower.includes('استيراد erp') ||
+        lower.includes('إكسيل') ||
+        lower.includes('اكسيل') ||
+        lower.includes('excel') ||
+        lower.includes('تعديل رصيد')
+    )) {
+        return true;
+    }
+    return false;
+}
+
+/**
  * Identifies whether an 'out' stock_movements row represents an ERP / manual
  * stock adjustment (not a customer sale).
  */
 export function isInventorySyncOutMovement(movement) {
     if (!movement || typeof movement !== 'object') return false;
     if (movement.movement_type !== 'out') return false;
-    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
-    return ref.startsWith('مزامنة جرد ERP') || ref.startsWith('تعديل رصيد يدوي');
+    return isInventorySyncMovement(movement);
 }
 
 /**
@@ -147,6 +176,293 @@ export function isOrderReversalInMovement(movement) {
 }
 
 /**
+ * Extracts a customer sales invoice number from a movement row (either via
+ * joined `orders.invoice_number` or parsed cleanly from its Arabic reference).
+ * Returns null for inbound invoices, ERP syncs, and settlements.
+ */
+export function extractInvoiceNumberFromMovement(movement) {
+    if (!movement || typeof movement !== 'object') return null;
+    if (isSettlementMovement(movement) || isInventorySyncMovement(movement) || isInboundReversalOutMovement(movement)) {
+        return null;
+    }
+
+    const joinedInv = movement.orders?.invoice_number;
+    if (joinedInv !== undefined && joinedInv !== null && String(joinedInv).trim() !== '') {
+        return String(joinedInv).trim().replace(/^#/, '');
+    }
+
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+    if (!ref) return null;
+    if (ref.startsWith('فاتورة دخل') || ref.startsWith('حذف فاتورة دخل') || ref.startsWith('تعديل فاتورة دخل')) {
+        return null;
+    }
+
+    const patterns = [
+        /فاتورة\s+مبيعات[:\s#]*([A-Za-z0-9_-]+)/i,
+        /فاتورة\s+بيع[:\s#]*([A-Za-z0-9_-]+)/i,
+        /تعديل\s+أوردر(?:\s+رقم)?[:\s#]*([A-Za-z0-9_-]+)/i,
+        /حذف\s+أوردر(?:\s+من\s+الإدارة)?[:\s#]*([A-Za-z0-9_-]+)/i,
+        /أوردر(?:\s+رقم)?[:\s#]*([A-Za-z0-9_-]+)/i
+    ];
+
+    for (const regex of patterns) {
+        const match = ref.match(regex);
+        if (match && match[1]) {
+            return match[1].trim();
+        }
+    }
+    return null;
+}
+
+/**
+ * Classifies any stock_movements row into an explicit semantic category so
+ * ERP/Excel adjustments are never mislabeled or counted as customer sales.
+ */
+export function classifyStockMovement(movement) {
+    if (!movement || typeof movement !== 'object') {
+        return {
+            category: 'other_out',
+            label: 'حركة غير محددة',
+            direction: 'out',
+            isSale: false,
+            isErpSync: false,
+            isInbound: false,
+            isOrderReturn: false,
+            isSettlement: false,
+            invoiceNumber: null
+        };
+    }
+
+    const direction = movement.movement_type === 'in' ? 'in' : 'out';
+    const ref = typeof movement.reference === 'string' ? movement.reference.trim() : '';
+
+    if (isSettlementMovement(movement)) {
+        return {
+            category: 'settlement',
+            label: 'تسوية مخزون',
+            direction,
+            isSale: false,
+            isErpSync: false,
+            isInbound: false,
+            isOrderReturn: false,
+            isSettlement: true,
+            invoiceNumber: null
+        };
+    }
+
+    if (isInventorySyncMovement(movement)) {
+        const isPriceOnly = ref.startsWith('تعديل السعر من الإكسيل') || ref.startsWith('إنشاء موديل جديد عبر استيراد ERP');
+        return {
+            category: 'erp_sync',
+            label: isPriceOnly
+                ? 'تحديث بيانات (إكسيل/ERP)'
+                : (direction === 'out' ? 'تعديل جرد (إكسيل -)' : 'تعديل جرد (إكسيل +)'),
+            direction,
+            isSale: false,
+            isErpSync: true,
+            isInbound: false,
+            isOrderReturn: false,
+            isSettlement: false,
+            invoiceNumber: null
+        };
+    }
+
+    if (isInboundReversalOutMovement(movement)) {
+        return {
+            category: 'inbound_reversal',
+            label: 'خصم / تعديل وارد',
+            direction: 'out',
+            isSale: false,
+            isErpSync: false,
+            isInbound: true,
+            isOrderReturn: false,
+            isSettlement: false,
+            invoiceNumber: null
+        };
+    }
+
+    const invoiceNumber = extractInvoiceNumberFromMovement(movement);
+
+    if (isOrderReversalInMovement(movement)) {
+        return {
+            category: 'order_return',
+            label: 'مرتجع / تعديل أوردر',
+            direction: 'in',
+            isSale: false,
+            isErpSync: false,
+            isInbound: false,
+            isOrderReturn: true,
+            isSettlement: false,
+            invoiceNumber
+        };
+    }
+
+    if (direction === 'in') {
+        return {
+            category: 'inbound',
+            label: 'وارد / توريد',
+            direction: 'in',
+            isSale: false,
+            isErpSync: false,
+            isInbound: true,
+            isOrderReturn: false,
+            isSettlement: false,
+            invoiceNumber: null
+        };
+    }
+
+    const hasOrderRef =
+        Boolean(movement.order_id) ||
+        Boolean(invoiceNumber) ||
+        ref.includes('فاتورة مبيعات') ||
+        ref.includes('فاتورة بيع') ||
+        ref.startsWith('تعديل أوردر') ||
+        ref.startsWith('أوردر');
+
+    if (hasOrderRef) {
+        return {
+            category: 'sale',
+            label: 'مبيعات فاتورة',
+            direction: 'out',
+            isSale: true,
+            isErpSync: false,
+            isInbound: false,
+            isOrderReturn: false,
+            isSettlement: false,
+            invoiceNumber
+        };
+    }
+
+    return {
+        category: 'other_out',
+        label: 'خصم مخزون',
+        direction: 'out',
+        isSale: false,
+        isErpSync: false,
+        isInbound: false,
+        isOrderReturn: false,
+        isSettlement: false,
+        invoiceNumber: null
+    };
+}
+
+/**
+ * Formats a timestamp to local YYYY-MM-DD for accurate date filter comparison.
+ */
+export function toLocalDateKey(isoOrDate) {
+    if (!isoOrDate) return '';
+    const d = new Date(isoOrDate);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/**
+ * Pure predicate checking whether a movement row matches the active History Log filters.
+ */
+export function matchesHistoryFilter(movement, filters = {}) {
+    if (!movement || typeof movement !== 'object') return false;
+    const term = String(filters.term || '').toLowerCase().trim();
+    const typeFilter = String(filters.type || '').trim();
+    const colorId = String(filters.colorId || '').trim();
+    const dateStr = String(filters.dateStr || '').trim();
+
+    const cls = classifyStockMovement(movement);
+
+    if (term) {
+        const customerRef = [
+            movement.orders?.customer_name || '',
+            movement.reference || '',
+            cls.invoiceNumber || '',
+            cls.label || ''
+        ].join(' ').toLowerCase();
+        if (!customerRef.includes(term)) return false;
+    }
+
+    if (typeFilter) {
+        if (typeFilter === 'sale' && !cls.isSale) return false;
+        else if (typeFilter === 'inbound' && cls.category !== 'inbound') return false;
+        else if (typeFilter === 'order_return' && cls.category !== 'order_return') return false;
+        else if (typeFilter === 'in_all' && cls.direction !== 'in') return false;
+        else if (typeFilter === 'erp_sync' && cls.category !== 'erp_sync') return false;
+        else if (typeFilter === 'in' && movement.movement_type !== 'in') return false;
+        else if (typeFilter === 'out' && movement.movement_type !== 'out') return false;
+    }
+
+    if (colorId && String(movement.color_id || '') !== colorId) return false;
+
+    if (dateStr) {
+        if (toLocalDateKey(movement.created_at) !== dateStr) return false;
+    }
+
+    return true;
+}
+
+/**
+ * Computes filter-reactive summary KPIs for the Stock Movement Log tab.
+ * Real customer sales are strictly separated from Excel/ERP inventory adjustments.
+ */
+export function computeMovementLogStats(movements = [], sizesCount = 1) {
+    const safeSizes = Math.max(1, Number(sizesCount) || 1);
+    const stats = {
+        totalCount: 0,
+        salesCount: 0,
+        salesSeries: 0,
+        salesPieces: 0,
+        inboundCount: 0,
+        inboundSeries: 0,
+        inboundPieces: 0,
+        orderReturnCount: 0,
+        orderReturnSeries: 0,
+        erpSyncCount: 0,
+        erpSyncInSeries: 0,
+        erpSyncOutSeries: 0,
+        erpSyncNetSeries: 0,
+        totalInSeries: 0,
+        totalOutSeries: 0,
+        netFlowSeries: 0
+    };
+
+    if (!Array.isArray(movements)) return stats;
+
+    for (const mov of movements) {
+        if (!mov) continue;
+        stats.totalCount += 1;
+        const qty = Math.max(0, Number(mov.quantity) || 0);
+        const cls = classifyStockMovement(mov);
+
+        if (cls.direction === 'in') stats.totalInSeries += qty;
+        else stats.totalOutSeries += qty;
+
+        if (cls.isSale) {
+            stats.salesCount += 1;
+            stats.salesSeries += qty;
+        } else if (cls.category === 'inbound') {
+            stats.inboundCount += 1;
+            stats.inboundSeries += qty;
+        } else if (cls.category === 'order_return') {
+            stats.orderReturnCount += 1;
+            stats.orderReturnSeries += qty;
+            stats.inboundCount += 1;
+            stats.inboundSeries += qty;
+        } else if (cls.category === 'erp_sync') {
+            stats.erpSyncCount += 1;
+            if (cls.direction === 'in') stats.erpSyncInSeries += qty;
+            else stats.erpSyncOutSeries += qty;
+        }
+    }
+
+    stats.salesPieces = stats.salesSeries * safeSizes;
+    stats.inboundPieces = stats.inboundSeries * safeSizes;
+    stats.erpSyncNetSeries = stats.erpSyncInSeries - stats.erpSyncOutSeries;
+    stats.netFlowSeries = stats.totalInSeries - stats.totalOutSeries;
+
+    return stats;
+}
+
+/**
  * Builds a standardized settlement reference string stored in stock_movements.
  */
 export function buildSettlementReference(reason = '', kind = 'zero') {
@@ -165,32 +481,31 @@ export function buildSettlementReference(reason = '', kind = 'zero') {
 
 /**
  * Computes accurate Base Stock (الأصل) for a single model+color:
- *   Base Stock = Current Remaining + Sold in Invoices + Archived Deleted Sales
- * (Model stock zeroing / settlement deductions are NOT counted in Base Stock.)
+ *   Base Stock = Current Remaining + Sold in Invoices ONLY.
+ * (No settlement values or Excel sync adjustments are ever added to Base Stock.)
  */
-export function computeColorBaseStock({ availableSeries = 0, soldSeries = 0, settledSeries = 0 } = {}) {
+export function computeColorBaseStock({ availableSeries = 0, soldSeries = 0 } = {}) {
     const available = Math.max(0, Number(availableSeries) || 0);
     const sold = Math.max(0, Number(soldSeries) || 0);
-    const settled = Math.max(0, Number(settledSeries) || 0);
     return {
         available,
         sold,
-        settled,
-        baseStock: available + sold + settled
+        settled: 0,
+        baseStock: available + sold
     };
 }
 
 /**
- * Combines order_items and stock_movements for a model into a unified
- * per-color offset map (sold + settled) so gallery cards compute:
- *   baseStock = available + colorOffsetMap[colorId]
- * without double-counting sales that also appear in stock_movements.
+ * Computes per-color sold offsets for gallery cards so every user computes:
+ *   baseStock = available + soldMap[colorId]
+ * strictly from Remaining + Sold (ignoring all settlement rows & Excel/ERP syncs completely).
  *
- * When `orderItemsReliable` is false (e.g. non-admin/worker accounts whose
- * order_items query is restricted by RLS to only their own orders), full
- * net sales are derived from stock_movements (sales 'out' minus order-reversal
- * 'in', excluding inbound-invoice reversals), using any visible orderItems
- * strictly as a minimum floor.
+ * When `orderItemsReliable` is true (Owner / Admin query succeeded), `order_items`
+ * is strictly authoritative (even when 0 items are sold).
+ * When `orderItemsReliable` is false (e.g. worker accounts whose order_items query
+ * is restricted by RLS to their own orders), full net sales are derived from
+ * `stock_movements` (real sales 'out' minus order-reversal 'in', ignoring all
+ * settlement rows, inbound reversals, and ERP/Excel/manual sync adjustments).
  */
 export function buildModelColorOffsetMap({
     orderItems = [],
@@ -227,16 +542,18 @@ export function buildModelColorOffsetMap({
         const qty = Math.max(0, Number(mov.quantity) || 0);
         if (qty <= 0) continue;
 
-        if (isOrderArchiveSettlementMovement(mov)) {
-            settledMap[cid] = (settledMap[cid] || 0) + qty;
-        } else if (
+        if (
             isSettlementMovement(mov) ||
             isInboundReversalOutMovement(mov) ||
-            isInventorySyncOutMovement(mov)
+            isInventorySyncMovement(mov)
         ) {
-            // Model stock zeroing/settlements, inbound invoice reversals, and ERP/manual
-            // inventory adjustments must NOT count as sales or inflate Base Stock (الأصل).
-        } else if (mov.movement_type === 'out') {
+            // All settlement rows, inbound reversals, and ERP/Excel/manual syncs
+            // must NEVER count as sales or inflate Base Stock (الأصل).
+            continue;
+        }
+
+        const cls = classifyStockMovement(mov);
+        if (mov.movement_type === 'out' && cls.isSale) {
             rawSalesOutMap[cid] = (rawSalesOutMap[cid] || 0) + qty;
         }
     }
@@ -246,6 +563,8 @@ export function buildModelColorOffsetMap({
         const cid = String(mov.color_id);
         const qty = Math.max(0, Number(mov.quantity) || 0);
         if (qty <= 0) continue;
+
+        if (isInventorySyncMovement(mov)) continue;
 
         if (isOrderReversalInMovement(mov)) {
             orderReversalInMap[cid] = (orderReversalInMap[cid] || 0) + qty;
@@ -262,10 +581,8 @@ export function buildModelColorOffsetMap({
         if (net > 0) legacyOutMap[cid] = net;
     }
 
-    const useAuthoritativeOrderItems = Boolean(orderItemsReliable) && Object.keys(soldMap).length > 0;
     const effectiveSoldMap = {};
-
-    if (useAuthoritativeOrderItems) {
+    if (orderItemsReliable) {
         Object.assign(effectiveSoldMap, soldMap);
     } else {
         const fallbackIds = new Set([
@@ -278,21 +595,8 @@ export function buildModelColorOffsetMap({
         }
     }
 
-    const combined = {};
-    const allColorIds = new Set([
-        ...Object.keys(effectiveSoldMap),
-        ...Object.keys(settledMap)
-    ]);
-
-    for (const cid of allColorIds) {
-        const sold = effectiveSoldMap[cid] || 0;
-        const settled = settledMap[cid] || 0;
-        const total = sold + settled;
-        if (total > 0) combined[cid] = total;
-    }
-
     return {
-        combined,
+        combined: { ...effectiveSoldMap },
         soldMap: effectiveSoldMap,
         settledMap
     };
@@ -365,32 +669,11 @@ export function buildSettlementPlan(models = [], options = {}) {
 }
 
 /**
- * Aggregates deleted sales order items by (model_id, color_id) into
- * [SETTLEMENT] stock_movements rows so deleting sales invoices while keeping
- * stock as-is preserves every model's Base Stock (الأصل).
+ * Settlement storage on deleted orders is disabled permanently:
+ * returns an empty array so zero settlement rows are ever stored.
  */
-export function buildOrderArchiveSettlementEntries(orderItems = [], reason = '') {
-    const grouped = new Map();
-    for (const item of orderItems) {
-        if (!item || !item.model_id || !item.color_id) continue;
-        const qty = Math.max(0, Number(item.quantity) || 0);
-        if (qty <= 0) continue;
-        const key = `${item.model_id}::${item.color_id}`;
-        const prev = grouped.get(key) || { model_id: item.model_id, color_id: item.color_id, quantity: 0 };
-        prev.quantity += qty;
-        grouped.set(key, prev);
-    }
-
-    const ref = buildSettlementReference(reason, 'archive_order');
-    return Array.from(grouped.values()).map(entry => ({
-        model_id: entry.model_id,
-        color_id: entry.color_id,
-        movement_type: 'out',
-        quantity: entry.quantity,
-        reference: ref,
-        order_id: null,
-        inbound_id: null
-    }));
+export function buildOrderArchiveSettlementEntries(_orderItems = [], _reason = '') {
+    return [];
 }
 
 /**

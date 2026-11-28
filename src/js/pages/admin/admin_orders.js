@@ -6,6 +6,9 @@ import { printOrderCustomerInvoice } from '../../utils/print.js?v=3';
 import { parseWaitingOrderMeta } from '../../services/waiting_orders.js';
 
 let isInitialized = false;
+let initPromise = null;
+let adminOrdersChannel = null;
+let visitorOrdersChannel = null;
 let allAdminOrders = [];
 let currentUserProfile = null;
 let currentEditingOrderId = null;
@@ -67,73 +70,83 @@ const statusConfig = {
 
 export async function initAdminOrdersView() {
     if (isInitialized) return;
+    if (initPromise) return initPromise;
 
-    try {
-        const savedOrdersTab = localStorage.getItem('devo_active_admin_orders_tab') || 'active';
-        currentAdminTab = savedOrdersTab;
-        updateTabButtonsUI(savedOrdersTab);
-        updateAdminTableHead(savedOrdersTab);
-    } catch (e) {}
+    initPromise = (async () => {
+        try {
+            const savedOrdersTab = localStorage.getItem('devo_active_admin_orders_tab') || 'active';
+            currentAdminTab = savedOrdersTab;
+            updateTabButtonsUI(savedOrdersTab);
+            updateAdminTableHead(savedOrdersTab);
+        } catch (e) {}
 
-    const { session } = getCurrentSession();
-    if(session) currentUserProfile = session.user;
+        const { session } = getCurrentSession();
+        if(session) currentUserProfile = session.user;
 
-    // 🔍 DEBUG: فحص بيانات المستخدم المحملة
-    console.log('🔍 [DEBUG] initAdminOrdersView - currentUserProfile:', JSON.stringify(currentUserProfile));
-    console.log('🔍 [DEBUG] role:', currentUserProfile?.role);
-    console.log('🔍 [DEBUG] isOwnerOrAdmin:', currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin');
+        // 🔍 DEBUG: فحص بيانات المستخدم المحملة
+        console.log('🔍 [DEBUG] initAdminOrdersView - currentUserProfile:', JSON.stringify(currentUserProfile));
+        console.log('🔍 [DEBUG] role:', currentUserProfile?.role);
+        console.log('🔍 [DEBUG] isOwnerOrAdmin:', currentUserProfile?.role === 'owner' || currentUserProfile?.role === 'admin');
 
-    const filterInputs = [
-        'ao-mobile-quick-search',
-        'ao-search-invoice',
-        'ao-search-customer',
-        'ao-search-phone',
-        'ao-search-model',
-        'ao-filter-min-price',
-        'ao-filter-max-price',
-        'ao-filter-worker',
-        'ao-status',
-        'ao-date-from',
-        'ao-date-to'
-    ];
+        const filterInputs = [
+            'ao-mobile-quick-search',
+            'ao-search-invoice',
+            'ao-search-customer',
+            'ao-search-phone',
+            'ao-search-model',
+            'ao-filter-min-price',
+            'ao-filter-max-price',
+            'ao-filter-worker',
+            'ao-status',
+            'ao-date-from',
+            'ao-date-to'
+        ];
 
-    filterInputs.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('input', applyAdminOrdersFilter);
-            el.addEventListener('change', applyAdminOrdersFilter);
-        }
-    });
+        filterInputs.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', applyAdminOrdersFilter);
+                el.addEventListener('change', applyAdminOrdersFilter);
+            }
+        });
 
-    // استعادة حالة فتح/إغلاق البحث المتقدم المحفوظة (على الديسكتوب فقط لضمان بقاء شاشة الموبايل نظيفة ومضغوطة)
-    try {
-        const isAdvOpen = localStorage.getItem('devo_admin_orders_adv_search_open') === 'true';
-        if (isAdvOpen && window.innerWidth >= 1024) {
-            const panel = document.getElementById('ao-advanced-filters-panel');
-            const icon = document.getElementById('ao-toggle-adv-icon');
-            const btn = document.getElementById('ao-btn-toggle-advanced');
-            if (panel) {
-                panel.classList.remove('hidden');
-                if (icon) {
-                    icon.classList.remove('ph-caret-down');
-                    icon.classList.add('ph-caret-up');
-                }
-                if (btn) {
-                    btn.classList.add('border-devo-orange', 'bg-devo-gray/30');
+        // استعادة حالة فتح/إغلاق البحث المتقدم المحفوظة (على الديسكتوب فقط لضمان بقاء شاشة الموبايل نظيفة ومضغوطة)
+        try {
+            const isAdvOpen = localStorage.getItem('devo_admin_orders_adv_search_open') === 'true';
+            if (isAdvOpen && window.innerWidth >= 1024) {
+                const panel = document.getElementById('ao-advanced-filters-panel');
+                const icon = document.getElementById('ao-toggle-adv-icon');
+                const btn = document.getElementById('ao-btn-toggle-advanced');
+                if (panel) {
+                    panel.classList.remove('hidden');
+                    if (icon) {
+                        icon.classList.remove('ph-caret-down');
+                        icon.classList.add('ph-caret-up');
+                    }
+                    if (btn) {
+                        btn.classList.add('border-devo-orange', 'bg-devo-gray/30');
+                    }
                 }
             }
-        }
-    } catch (e) {}
+        } catch (e) {}
 
-    await Promise.all([
-        populateWorkerFilter(),
-        fetchAdminOrders(),
-        fetchVisitorOrders()
-    ]);
-    setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي للأوردرات 🌟
-    setupRealtimeVisitorOrders(); // 🌟 تفعيل رادار طلبات الزوار اللحظي 🌟
+        await Promise.all([
+            populateWorkerFilter(),
+            fetchAdminOrders(),
+            fetchVisitorOrders()
+        ]);
+        setupRealtimeAdminOrders(); // 🌟 تفعيل الرادار اللحظي الذكي للأوردرات 🌟
+        setupRealtimeVisitorOrders(); // 🌟 تفعيل رادار طلبات الزوار اللحظي 🌟
 
-    isInitialized = true;
+        isInitialized = true;
+    })();
+
+    try {
+        await initPromise;
+    } catch (err) {
+        initPromise = null;
+        throw err;
+    }
 }
 
 // ==========================================
@@ -229,8 +242,13 @@ async function fetchFullOrderById(orderId) {
 // ==========================================
 // 🌟 2. الرادار اللحظي (Targeted DOM Updates) 🌟
 // ==========================================
-function setupRealtimeAdminOrders() {
-    supabase.channel('admin_orders_tracker')
+function setupRealtimeAdminOrders(forceReconnect = false) {
+    if (adminOrdersChannel && !forceReconnect) return;
+    if (adminOrdersChannel && forceReconnect) {
+        try { supabase.removeChannel(adminOrdersChannel); } catch (e) {}
+        adminOrdersChannel = null;
+    }
+    adminOrdersChannel = supabase.channel('admin_orders_tracker')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
             // جلب الأوردر الجديد بالكامل مع علاقاته
             const data = await fetchFullOrderById(payload.new.id);
@@ -301,7 +319,7 @@ function setupRealtimeAdminOrders() {
 
 // 🌐 إعادة الاتصال التلقائي برادار الأدمن عند عودة الإنترنت 🌐
 window.addEventListener('online', () => {
-    setupRealtimeAdminOrders();
+    setupRealtimeAdminOrders(true);
 });
 
 // ==========================================
@@ -1042,6 +1060,126 @@ window.resetAdminOrdersFilters = () => {
 
     applyAdminOrdersFilter();
 };
+
+export async function focusAdminOrderFromHistory({ orderId = null, invoiceNumber = '', mode = 'filter' } = {}) {
+    await initAdminOrdersView();
+
+    const cleanInv = String(invoiceNumber || '').replace(/^#/, '').trim();
+    const cleanId = orderId ? String(orderId).trim() : '';
+
+    const otherFilterIds = [
+        'ao-mobile-quick-search',
+        'ao-search-customer',
+        'ao-search-phone',
+        'ao-search-model',
+        'ao-filter-min-price',
+        'ao-filter-max-price',
+        'ao-filter-worker',
+        'ao-status',
+        'ao-date-from',
+        'ao-date-to'
+    ];
+    otherFilterIds.forEach(fid => {
+        const el = document.getElementById(fid);
+        if (el) el.value = '';
+    });
+
+    let matched = allAdminOrders.find(o => {
+        if (cleanId && String(o.id) === cleanId) return true;
+        if (cleanInv && normalizeSearchText(o.invoice_number || '') === normalizeSearchText(cleanInv)) return true;
+        return false;
+    });
+
+    if (!matched && cleanId) {
+        matched = await fetchFullOrderById(cleanId);
+        if (matched && !allAdminOrders.some(x => String(x.id) === String(matched.id))) {
+            allAdminOrders.unshift(matched);
+        }
+    }
+
+    if (!matched && cleanInv) {
+        try {
+            const { data } = await supabase
+                .from('orders')
+                .select(`
+                    *,
+                    system_users!worker_id (full_name),
+                    order_items (
+                        *,
+                        models (name, system_code, factory_code, price, classes(class_sizes(size_id)), model_sizes(size_id)),
+                        colors (name, color_code)
+                    )
+                `)
+                .eq('invoice_number', cleanInv)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (data && data.length > 0) {
+                matched = data[0];
+                if (!allAdminOrders.some(x => String(x.id) === String(matched.id))) {
+                    allAdminOrders.unshift(matched);
+                }
+            }
+        } catch (err) {
+            console.warn('[AdminOrders] Invoice lookup fallback error:', err);
+        }
+    }
+
+    const targetTab = matched?.is_archived ? 'archived' : 'active';
+    currentAdminTab = targetTab;
+    try { localStorage.setItem('devo_active_admin_orders_tab', targetTab); } catch (e) {}
+    const voSubtabs = document.getElementById('vo-subtabs-container');
+    if (voSubtabs) voSubtabs.classList.add('hidden');
+    updateTabButtonsUI(targetTab);
+    updateAdminTableHead(targetTab);
+
+    const searchValue = String(matched?.invoice_number || cleanInv || '').trim();
+    const invoiceInput = document.getElementById('ao-search-invoice');
+    if (invoiceInput) {
+        invoiceInput.value = searchValue;
+    }
+
+    window.applyAdminOrdersFilter();
+
+    if (!matched) {
+        showToast(
+            searchValue
+                ? `تمت الفلترة على #${searchValue} — لم يتم العثور على الفاتورة (قد تكون محذوفة)`
+                : 'تعذر العثور على الفاتورة المطلوبة',
+            'warning'
+        );
+        return null;
+    }
+
+    requestAnimationFrame(() => {
+        const row = document.getElementById(`admin-order-row-${matched.id}`);
+        const card = document.getElementById(`admin-order-card-${matched.id}`);
+        const targetEl = (row && row.offsetParent !== null) ? row : (card || row);
+        if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetEl.classList.add('ring-2', 'ring-devo-orange', 'bg-devo-orange/10');
+            setTimeout(() => {
+                targetEl.classList.remove('ring-2', 'ring-devo-orange', 'bg-devo-orange/10');
+            }, 2600);
+        }
+    });
+
+    if (mode === 'edit') {
+        if (matched.status === 'registered') {
+            showToast('هذا الأوردر في حالة (تم التسجيل) — تم فتحه للمعاينة فقط', 'info');
+            await window.viewAdminOrderDetails(matched.id);
+        } else {
+            await window.openEditOrderChoices(matched.id);
+        }
+    } else if (mode === 'view') {
+        await window.viewAdminOrderDetails(matched.id);
+    } else {
+        showToast(`تمت الفلترة على فاتورة المبيعات #${matched.invoice_number}`, 'success');
+    }
+
+    return matched;
+}
+window.focusAdminOrderFromHistory = focusAdminOrderFromHistory;
 
 window.toggleAdminOrderArchive = async (id, archiveStatus) => {
     const o = allAdminOrders.find(x => x.id === id);
@@ -3181,7 +3319,8 @@ async function fetchVisitorOrders() {
 }
 
 function setupRealtimeVisitorOrders() {
-    supabase.channel('admin_visitor_orders_radar')
+    if (visitorOrdersChannel) return;
+    visitorOrdersChannel = supabase.channel('admin_visitor_orders_radar')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_orders' }, async (payload) => {
             await fetchVisitorOrders();
             if (payload.eventType === 'INSERT') {
